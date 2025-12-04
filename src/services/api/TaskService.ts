@@ -1,4 +1,4 @@
-import { db, ref, set, get, update, remove, push } from "../firebase/firebase";
+import { db, ref, set, get, update, remove, push } from "./firebase";
 import type { Task } from "../../models/Task";
 
 export class TaskService {
