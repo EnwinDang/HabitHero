@@ -1,5 +1,13 @@
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, get, set, update, remove, push } from "firebase/database";
+import { 
+  getDatabase, 
+  ref, get, set, update, remove, push 
+} from "firebase/database";
+
+import {
+  getAuth,
+  GoogleAuthProvider,
+} from "firebase/auth";
 
 // Firebase config van jouw project
 const firebaseConfig = {
@@ -12,11 +20,17 @@ const firebaseConfig = {
   appId: "1:63808260264:web:fcbfe863fc8011ab2a1a9d"
 };
 
-// Firebase initialiseren
+// ------------ INIT FIREBASE -----------
 export const app = initializeApp(firebaseConfig);
 
-// Realtime Database initialiseren
+// ------------ DATABASE ---------------
 export const db = getDatabase(app);
 
-// Exporteer database functies
+// ------------ AUTHENTICATION ----------
+export const auth = getAuth(app);
+
+// Google Login Provider
+export const googleProvider = new GoogleAuthProvider();
+
+// ------------ EXPORTS -----------------
 export { ref, get, set, update, remove, push };
