@@ -17,9 +17,7 @@ export class XPSystem {
       if (newXp >= required) {
         newXp -= required;
         newLevel = nextLevel;
-      } else {
-        break;
-      }
+      } 
     }
 
     return {
