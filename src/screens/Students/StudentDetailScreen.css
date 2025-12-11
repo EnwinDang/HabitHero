@@ -1,0 +1,47 @@
+.section {
+  margin-bottom: 20px;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1F1F23;
+  margin-bottom: 10px;
+  margin-top: 0;
+}
+
+.progress-row {
+  padding: 10px;
+  background-color: #fff;
+  border-radius: 8px;
+  border: 1px solid #E2E2EA;
+  margin-bottom: 10px;
+}
+
+.module-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1F1F23;
+  margin-bottom: 8px;
+}
+
+.timeline-row {
+  padding: 10px;
+  background-color: #fff;
+  border-radius: 8px;
+  border: 1px solid #E2E2EA;
+  margin-bottom: 10px;
+}
+
+.timeline-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1F1F23;
+  margin-bottom: 4px;
+}
+
+.muted {
+  color: #6B7280;
+  font-size: 13px;
+}
+

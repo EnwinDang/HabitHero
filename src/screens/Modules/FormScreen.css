@@ -1,0 +1,52 @@
+.form-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1F1F23;
+  margin-bottom: 16px;
+  margin-top: 0;
+}
+
+.form-label {
+  display: block;
+  font-weight: 600;
+  color: #1F1F23;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+.form-chips {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.form-chip {
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1px solid #E2E2EA;
+  background-color: #fff;
+  color: #1F1F23;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.form-chip:hover {
+  background-color: #F9FAFB;
+}
+
+.form-chip-active {
+  background-color: #6C63FF;
+  border-color: #6C63FF;
+  color: #fff;
+}
+
+.form-actions {
+  display: flex;
+  flex-direction: row;
+  margin-top: 20px;
+  gap: 10px;
+}
+

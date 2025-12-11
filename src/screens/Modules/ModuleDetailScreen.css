@@ -1,0 +1,75 @@
+.module-header {
+  margin-bottom: 24px;
+}
+
+.module-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.module-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1F1F23;
+  margin: 0 0 8px 0;
+}
+
+.module-description {
+  color: #6B7280;
+  font-size: 15px;
+  margin: 0;
+}
+
+.date-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6B7280;
+}
+
+.date-icon {
+  color: #9CA3AF;
+}
+
+.completion-text {
+  color: #6B7280;
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-button {
+  padding: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6B7280;
+  transition: all 0.2s;
+}
+
+.action-button:hover {
+  background-color: #F3F4F6;
+}
+
+.action-button-danger {
+  color: #EF4444;
+}
+
+.action-button-danger:hover {
+  background-color: #FEE2E2;
+}
+
+.exercise-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}

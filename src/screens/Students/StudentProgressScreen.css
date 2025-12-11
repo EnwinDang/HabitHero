@@ -1,0 +1,50 @@
+.meta-text {
+  color: #6B7280;
+  font-size: 14px;
+}
+
+.filters {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.filter-chip,
+.sort-chip {
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 1px solid #E2E2EA;
+  background-color: #fff;
+  color: #1F1F23;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.filter-chip:hover,
+.sort-chip:hover {
+  background-color: #F9FAFB;
+}
+
+.filter-chip-active,
+.sort-chip-active {
+  background-color: #6C63FF;
+  border-color: #6C63FF;
+  color: #fff;
+}
+
+.student-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.percent {
+  font-size: 14px;
+  color: #1F1F23;
+  font-weight: 600;
+}
+

@@ -1,0 +1,42 @@
+.select-container {
+  margin-bottom: 16px;
+}
+
+.select-label {
+  display: block;
+  margin-bottom: 4px;
+  color: #1F1F23;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.select-field {
+  width: 100%;
+  border: 1px solid #E2E2EA;
+  border-radius: 12px;
+  padding: 10px 16px;
+  background-color: #fff;
+  color: #1F1F23;
+  font-size: 16px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.select-field:focus {
+  outline: none;
+  border-color: #6C63FF;
+}
+
+.select-field:disabled {
+  background-color: #F3F4F6;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.select-helper {
+  display: block;
+  margin-top: 4px;
+  color: #6B7280;
+  font-size: 12px;
+}
+

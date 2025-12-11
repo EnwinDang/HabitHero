@@ -1,0 +1,46 @@
+.kpi-card {
+  min-width: 0;
+}
+
+.kpi-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.kpi-label {
+  color: #6B7280;
+  font-size: 13px;
+  font-weight: 500;
+  flex: 1;
+}
+
+.kpi-icon {
+  color: #6C63FF;
+  flex-shrink: 0;
+}
+
+.kpi-value {
+  color: #1F1F23;
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.kpi-trend {
+  color: #4ADE80;
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.kpi-sub-label {
+  color: #6B7280;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.kpi-progress {
+  margin-top: 12px;
+}

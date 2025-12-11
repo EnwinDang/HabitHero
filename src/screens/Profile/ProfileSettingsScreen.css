@@ -1,0 +1,25 @@
+.section {
+  margin-bottom: 20px;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1F1F23;
+  margin-bottom: 10px;
+  margin-top: 0;
+}
+
+.toggle-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.toggle-label {
+  color: #1F1F23;
+  font-weight: 600;
+}
+

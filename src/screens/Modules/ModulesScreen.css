@@ -1,0 +1,11 @@
+.module-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.meta-text {
+  color: #6B7280;
+  font-size: 13px;
+}
+
