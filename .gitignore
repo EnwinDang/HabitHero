@@ -34,3 +34,6 @@ HabitHero/
 firebase-debug.log
 .firebaserc
 firebase.env
+*.zip
+*.zip
+src.zip
