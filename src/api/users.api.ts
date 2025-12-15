@@ -1,16 +1,110 @@
 import { apiFetch } from "./client";
+import type { User, UserSettings } from "../models/user.model";
+import type { Inventory, EquippedItems } from "../models/inventory.model";
+import type { UserAchievementProgress } from "../models/achievement.model";
+import type { Pet } from "../models/pet.model";
 
-export function getMe() {
-  return apiFetch("/auth/me");
-}
+export type UsersQuery = {
+  limit?: number;
+  offset?: number;
+  role?: "student" | "teacher" | "admin";
+  status?: "active" | "disabled";
+};
 
-export function getUser(uid: string) {
-  return apiFetch(`/users/${uid}`);
-}
+export type PatchUserRequest = Partial<Pick<User, "displayName" | "photoURL" | "role" | "status">> & {
+  settings?: Partial<UserSettings>;
+  stats?: Partial<User["stats"]>;
+};
 
-export function updateUser(uid: string, data: any) {
-  return apiFetch(`/users/${uid}`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
+function qs(params: Record<string, any>): string {
+  const sp = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v === undefined || v === null || v === "") return;
+    sp.append(k, String(v));
   });
+  const s = sp.toString();
+  return s ? `?${s}` : "";
 }
+
+export const UsersAPI = {
+  list(query: UsersQuery = {}): Promise<{ pagination: any; data: User[] }> {
+    return apiFetch(`/users${qs(query)}`);
+  },
+
+  create(user: User): Promise<User> {
+    return apiFetch<User>("/users", { method: "POST", body: JSON.stringify(user) });
+  },
+
+  get(uid: string): Promise<User> {
+    return apiFetch<User>(`/users/${uid}`);
+  },
+
+  replace(uid: string, user: User): Promise<User> {
+    return apiFetch<User>(`/users/${uid}`, { method: "PUT", body: JSON.stringify(user) });
+  },
+
+  patch(uid: string, patch: PatchUserRequest): Promise<User> {
+    return apiFetch<User>(`/users/${uid}`, { method: "PATCH", body: JSON.stringify(patch) });
+  },
+
+  delete(uid: string): Promise<void> {
+    return apiFetch<void>(`/users/${uid}`, { method: "DELETE" });
+  },
+
+  // Settings
+  getSettings(uid: string): Promise<UserSettings> {
+    return apiFetch<UserSettings>(`/users/${uid}/settings`);
+  },
+
+  patchSettings(uid: string, patch: Partial<UserSettings>): Promise<UserSettings> {
+    return apiFetch<UserSettings>(`/users/${uid}/settings`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+  },
+
+  // Inventory / Equipped
+  getInventory(uid: string): Promise<Inventory> {
+    return apiFetch<Inventory>(`/users/${uid}/inventory`);
+  },
+
+  patchInventory(uid: string, patch: Partial<Inventory>): Promise<Inventory> {
+    return apiFetch<Inventory>(`/users/${uid}/inventory`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+  },
+
+  getEquipped(uid: string): Promise<EquippedItems> {
+    return apiFetch<EquippedItems>(`/users/${uid}/equipped`);
+  },
+
+  patchEquipped(uid: string, patch: Partial<EquippedItems>): Promise<EquippedItems> {
+    return apiFetch<EquippedItems>(`/users/${uid}/equipped`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+  },
+
+  // Achievements progress
+  getAchievementProgress(uid: string): Promise<UserAchievementProgress[]> {
+    return apiFetch<UserAchievementProgress[]>(`/users/${uid}/achievements`);
+  },
+
+  getAchievement(uid: string, achievementId: string): Promise<UserAchievementProgress> {
+    return apiFetch<UserAchievementProgress>(`/users/${uid}/achievements/${achievementId}`);
+  },
+
+  // Pets owned
+  getPets(uid: string): Promise<Pet[]> {
+    return apiFetch<Pet[]>(`/users/${uid}/pets`);
+  },
+
+  addPet(uid: string, petId: string): Promise<void> {
+    return apiFetch<void>(`/users/${uid}/pets`, { method: "POST", body: JSON.stringify({ petId }) });
+  },
+
+  removePet(uid: string, petId: string): Promise<void> {
+    return apiFetch<void>(`/users/${uid}/pets`, { method: "DELETE", body: JSON.stringify({ petId }) });
+  },
+};
