@@ -4,5 +4,4 @@ export {
   registerWithEmail,
   loginWithGoogle,
   logout,
-  getCurrentUser,
 } from "./auth/auth.service";

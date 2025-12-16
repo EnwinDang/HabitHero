@@ -1,8 +1,9 @@
-import { apiFetch } from "./client";
+import { api } from "./axios-instance";
 import type { User } from "../models/user.model";
 
 export const AuthAPI = {
-  me(): Promise<User> {
-    return apiFetch<User>("/auth/me");
+  async me(): Promise<User> {
+    const res = await api.get<User>("/auth/me");
+    return res.data;
   },
 };

@@ -16,8 +16,10 @@ export default function LoginPage() {
 
     try {
       await loginWithEmail(email, password);
-      navigate("/");
+      console.log("✅ Email login successful");
+      navigate("/dashboard");
     } catch (err: any) {
+      console.error("❌ Email login error:", err);
       setError(err.message || "Login mislukt");
     } finally {
       setLoading(false);
@@ -30,8 +32,10 @@ export default function LoginPage() {
 
     try {
       await loginWithGoogle();
-      navigate("/");
+      console.log("✅ Google login successful");
+      navigate("/dashboard");
     } catch (err: any) {
+      console.error("❌ Google login error:", err);
       setError(err.message || "Google login mislukt");
     } finally {
       setLoading(false);

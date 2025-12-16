@@ -19,7 +19,7 @@ export default function RegisterPage() {
 
     try {
       await registerWithEmail(email, password);
-      navigate("/");
+      navigate("/dashboard");
     } catch (err: any) {
       setError(err.message || "Registratie mislukt");
     } finally {
@@ -33,7 +33,7 @@ export default function RegisterPage() {
 
     try {
       await loginWithGoogle();
-      navigate("/");
+      navigate("/dashboard");
     } catch (err: any) {
       setError(err.message || "Google registratie mislukt");
     } finally {

@@ -1,26 +1,14 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
-import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
-import { auth } from "@/firebase";
+import { useAuth } from "@/context/AuthContext";
 
 interface Props {
   children: ReactNode;
 }
 
 export default function ProtectedRoute({ children }: Props) {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { firebaseUser, loading } = useAuth();
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  // 🔄 Firebase is nog aan het checken
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -29,11 +17,9 @@ export default function ProtectedRoute({ children }: Props) {
     );
   }
 
-  // ❌ Niet ingelogd
-  if (!user) {
+  if (!firebaseUser) {
     return <Navigate to="/login" replace />;
   }
 
-  // ✅ Ingelogd
   return <>{children}</>;
 }

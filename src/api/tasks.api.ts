@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { api } from "./axios-instance";
 import type { Task, TaskCompletionResult } from "../models/task.model";
 
 export type TasksQuery = {
@@ -23,47 +23,35 @@ export type CompleteTaskRequest = {
 };
 
 export const TasksAPI = {
-  list(query: TasksQuery = {}): Promise<Task[]> {
-    return apiFetch<Task[]>(`/tasks${qs(query)}`);
+  async list(query: TasksQuery = {}): Promise<Task[]> {
+    const res = await api.get<Task[]>(`/tasks${qs(query)}`);
+    return res.data;
   },
 
-  create(task: Task): Promise<Task> {
-    return apiFetch<Task>("/tasks", { method: "POST", body: JSON.stringify(task) });
+  async create(task: Task): Promise<Task> {
+    const res = await api.post<Task>("/tasks", task);
+    return res.data;
   },
 
-  get(taskId: string): Promise<Task> {
-    return apiFetch<Task>(`/tasks/${taskId}`);
+  async complete(taskId: string, req?: CompleteTaskRequest): Promise<TaskCompletionResult> {
+    const res = await api.post<TaskCompletionResult>(
+      `/tasks/${taskId}/complete`,
+      req || {}
+    );
+    return res.data;
   },
 
-  replace(taskId: string, task: Task): Promise<Task> {
-    return apiFetch<Task>(`/tasks/${taskId}`, { method: "PUT", body: JSON.stringify(task) });
+  async getTask(taskId: string): Promise<Task> {
+    const res = await api.get<Task>(`/tasks/${taskId}`);
+    return res.data;
   },
 
-  patch(taskId: string, patch: Partial<Task>): Promise<Task> {
-    return apiFetch<Task>(`/tasks/${taskId}`, { method: "PATCH", body: JSON.stringify(patch) });
+  async update(taskId: string, task: Partial<Task>): Promise<Task> {
+    const res = await api.patch<Task>(`/tasks/${taskId}`, task);
+    return res.data;
   },
 
-  delete(taskId: string): Promise<void> {
-    return apiFetch<void>(`/tasks/${taskId}`, { method: "DELETE" });
-  },
-
-  // Module-scoped
-  listForModule(courseId: string, moduleId: string): Promise<Task[]> {
-    return apiFetch<Task[]>(`/courses/${courseId}/modules/${moduleId}/tasks`);
-  },
-
-  createForModule(courseId: string, moduleId: string, task: Task): Promise<Task> {
-    return apiFetch<Task>(`/courses/${courseId}/modules/${moduleId}/tasks`, {
-      method: "POST",
-      body: JSON.stringify(task),
-    });
-  },
-
-  // Completion
-  complete(taskId: string, body: CompleteTaskRequest = {}): Promise<TaskCompletionResult> {
-    return apiFetch<TaskCompletionResult>(`/tasks/${taskId}/complete`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
+  async delete(taskId: string): Promise<void> {
+    await api.delete(`/tasks/${taskId}`);
   },
 };

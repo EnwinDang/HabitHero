@@ -12,19 +12,33 @@ export default defineConfig({
   ],
 
   server: {
-    // Nodig voor Google login popup
+    // CORS headers nodig voor Google login popup
     headers: {
       "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
-      "Cross-Origin-Embedder-Policy": "require-corp",
     },
 
     // Proxy naar Firebase Cloud Functions
     proxy: {
       "/api": {
-        // ⚠️ BELANGRIJK: function name MOET hier staan
         target: "https://us-central1-habithero-73d98.cloudfunctions.net",
         changeOrigin: true,
-        secure: true,
+        secure: false,
+        timeout: 120000,
+        rewrite: (path) => {
+          console.log("[Vite Proxy]", path, "→", `${path}`);
+          return path;
+        },
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.error('[Vite Proxy Error]', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log('[Vite Proxy] Sending request:', req.method, req.url);
+          });
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            console.log('[Vite Proxy] Received response:', proxyRes.statusCode, 'for', req.url);
+          });
+        },
       },
     },
   },
