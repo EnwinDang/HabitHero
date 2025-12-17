@@ -1,141 +1,470 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "@/context/AuthContext";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
-
-import type { Task } from "../models/task.model";
+import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 
 export default function HomePage() {
   const navigate = useNavigate();
   const { logout, loading: authLoading } = useAuth();
   const { user, loading: userLoading, error: userError } = useRealtimeUser();
   const { tasks, loading: tasksLoading, error: tasksError } = useRealtimeTasks();
+  const { darkMode, accentColor } = useTheme();
 
   const [error, setError] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Pomodoro State
+  const [timeLeft, setTimeLeft] = useState(25 * 60);
+  const [isRunning, setIsRunning] = useState(false);
+  const [sessions, setSessions] = useState(0);
+  const [focusTime, setFocusTime] = useState(0);
+
+  // Get theme classes
+  const theme = getThemeClasses(darkMode, accentColor);
+
+  // Get current date info
+  const today = new Date();
+  const weekDays = ["Zo", "Ma", "Di", "Wo", "Do", "Vr", "Za"];
+  const currentDayIndex = today.getDay();
+
+  const getWeekDates = () => {
+    const dates = [];
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - currentDayIndex);
+
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(startOfWeek);
+      date.setDate(startOfWeek.getDate() + i);
+      dates.push({
+        day: weekDays[i],
+        date: date.getDate(),
+        isToday: date.toDateString() === today.toDateString()
+      });
+    }
+    return dates;
+  };
+
+  const weekDates = getWeekDates();
+
+  // Pomodoro Timer Effect
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (isRunning && timeLeft > 0) {
+      interval = setInterval(() => {
+        setTimeLeft((prev) => prev - 1);
+        setFocusTime((prev) => prev + 1);
+      }, 1000);
+    } else if (timeLeft === 0 && isRunning) {
+      setIsRunning(false);
+      setSessions((prev) => prev + 1);
+      setTimeLeft(25 * 60);
+    }
+    return () => clearInterval(interval);
+  }, [isRunning, timeLeft]);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const handleStartPause = () => setIsRunning(!isRunning);
+  const handleReset = () => {
+    setIsRunning(false);
+    setTimeLeft(25 * 60);
+  };
 
   async function handleLogout() {
     await logout();
     navigate("/login");
   }
 
-  async function handleRefresh() {
-    setIsRefreshing(true);
-    try {
-      console.log("Refreshing...");
-      setError(null);
-    } catch (err) {
-      console.error("Refresh failed:", err);
-      setError("Failed to refresh data");
-    } finally {
-      setIsRefreshing(false);
-    }
-  }
-
   if (authLoading || userLoading) {
-    return <p className="p-6 text-lg">Dashboard laden...</p>;
+    return (
+      <div className={`min-h-screen ${theme.bg} flex items-center justify-center transition-colors duration-300`}>
+        <div className="text-xl animate-pulse" style={theme.accentText}>Laden...</div>
+      </div>
+    );
   }
 
   if (!user) {
     return null;
   }
 
+  const progress = Math.round(((25 * 60 - timeLeft) / (25 * 60)) * 100);
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-6">
-      {/* HEADER */}
-      <header className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">
-            Welkom, {user.displayName}
+    <div className={`min-h-screen ${theme.bg} flex transition-colors duration-300`}>
+      {/* SIDEBAR */}
+      <aside className={`w-64 ${theme.sidebar} flex flex-col min-h-screen transition-colors duration-300`} style={{ ...theme.borderStyle, borderRightWidth: '1px', borderRightStyle: 'solid' }}>
+        <div className="p-6">
+          <h1 className="text-2xl font-bold" style={theme.gradientText}>
+            HabitHero
           </h1>
-          <p className="text-gray-400">
-            Level {user.stats.level}
-          </p>
+          <p className={`text-xs ${theme.textSubtle} mt-1`}>ARISE</p>
         </div>
 
-        <div className="flex gap-2">
-          <button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded"
-          >
-            {isRefreshing ? "Laden..." : "Vernieuwen"}
-          </button>
+        <nav className="flex-1 px-4">
+          <ul className="space-y-2">
+            <NavItem icon="⚔️" label="Home" active onClick={() => navigate("/dashboard")} darkMode={darkMode} accentColor={accentColor} />
+            <NavItem icon="📜" label="Quests" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+            <NavItem icon="⏱️" label="Focus Mode" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+            <NavItem icon="📊" label="Stats" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+            <NavItem icon="🏆" label="Achievements" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+            <NavItem icon="📅" label="Calendar" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+            <NavItem icon="👤" label="Profile" onClick={() => navigate("/profile")} darkMode={darkMode} accentColor={accentColor} />
+            <NavItem icon="⚙️" label="Settings" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+          </ul>
+        </nav>
+
+        <div className="p-4" style={{ ...theme.borderStyle, borderTopWidth: '1px', borderTopStyle: 'solid' }}>
           <button
             onClick={handleLogout}
-            className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded"
+            className="flex items-center gap-3 text-red-400 hover:text-red-300 w-full px-4 py-2 rounded-lg hover:bg-red-900/20 transition-colors"
           >
-            Uitloggen
+            <span>🚪</span>
+            <span>Logout</span>
           </button>
         </div>
-      </header>
+      </aside>
 
-      {/* ERROR MESSAGE */}
-      {(error || userError || tasksError) && (
-        <div className="bg-yellow-900 border-l-4 border-yellow-500 text-yellow-200 p-4 mb-6 rounded">
-          <p className="font-semibold">⚠️ Waarschuwing</p>
-          <p className="text-sm">{error || userError || tasksError}</p>
+      {/* MAIN CONTENT */}
+      <main className="flex-1 p-8 overflow-y-auto">
+        {/* Welcome Header */}
+        <div className="mb-6">
+          <p className="text-sm tracking-widest uppercase mb-1" style={theme.accentText}>Welcome back, Hunter</p>
+          <h2 className={`text-4xl font-bold ${theme.text}`}>
+            {user.displayName}
+          </h2>
         </div>
-      )}
 
-      {/* STATS */}
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <StatCard label="XP" value={user.stats.xp} />
-        <StatCard label="Gold" value={user.stats.gold} />
-        <StatCard label="Streak" value={user.stats.streak} />
-        <StatCard label="Level" value={user.stats.level} />
-      </section>
+        {/* HERO CARD */}
+        <div className="relative mb-8">
+          {/* Glow Effect */}
+          <div className="absolute -inset-1 rounded-2xl blur-lg opacity-30 animate-pulse" style={{ background: `linear-gradient(to right, ${accentColor}, #a855f7, ${accentColor})` }}></div>
 
-      {/* TASKS */}
-      <section>
-        <h2 className="text-2xl font-semibold mb-4">
-          Taken van vandaag {tasksLoading && "🔄"}
-        </h2>
+          {/* Card */}
+          <div className={`relative bg-gradient-to-br ${theme.cardGradient} rounded-2xl p-6 overflow-hidden transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+            {/* Corner Decorations */}
+            <div className="absolute top-0 left-0 w-16 h-16 border-l-2 border-t-2" style={{ borderColor: `${accentColor}80` }}></div>
+            <div className="absolute top-0 right-0 w-16 h-16 border-r-2 border-t-2" style={{ borderColor: `${accentColor}80` }}></div>
+            <div className="absolute bottom-0 left-0 w-16 h-16 border-l-2 border-b-2" style={{ borderColor: `${accentColor}80` }}></div>
+            <div className="absolute bottom-0 right-0 w-16 h-16 border-r-2 border-b-2" style={{ borderColor: `${accentColor}80` }}></div>
 
-        {tasksLoading && tasks.length === 0 ? (
-          <p className="text-gray-400">Laden...</p>
-        ) : tasks.length === 0 ? (
-          <p className="text-gray-400">Geen taken 🎉</p>
-        ) : (
-          <ul className="space-y-3">
-            {tasks.map(task => (
-              <li
-                key={task.taskId}
-                className="bg-gray-800 p-4 rounded flex justify-between items-center hover:bg-gray-700 transition"
-              >
-                <div>
-                  <strong className="text-lg">{task.title}</strong>
-                  <p className="text-sm text-gray-400">
-                    Moeilijkheid: {task.difficulty}
-                  </p>
+            <div className="flex items-start gap-6">
+              {/* Character Portrait */}
+              <div className="relative">
+                <div className="w-32 h-40 rounded-xl border-2 flex items-center justify-center overflow-hidden" style={{ borderColor: `${accentColor}80`, backgroundColor: darkMode ? 'rgba(88, 28, 135, 0.3)' : 'rgba(219, 234, 254, 0.5)' }}>
+                  <span className="text-6xl">⚔️</span>
+                </div>
+                {/* Rank Badge */}
+                <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold text-white" style={{ background: `linear-gradient(to right, ${accentColor}, #a855f7)`, borderWidth: '1px', borderStyle: 'solid', borderColor: `${accentColor}80` }}>
+                  RANK S
+                </div>
+              </div>
+
+              {/* Stats */}
+              <div className="flex-1">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className={`text-2xl font-bold ${theme.text}`}>{user.displayName}</h3>
+                    <p style={theme.accentText}>Shadow Monarch • Level {user.stats.level}</p>
+                  </div>
+                  <div className="px-4 py-2 rounded-lg" style={{ backgroundColor: 'rgba(234, 179, 8, 0.2)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(234, 179, 8, 0.5)' }}>
+                    <p className="text-yellow-400 font-bold flex items-center gap-1">
+                      <span>💰</span> {user.stats.gold}
+                    </p>
+                  </div>
                 </div>
 
-                <span className="text-yellow-400">
-                  {task.xp} XP • {task.gold} Gold
-                </span>
-              </li>
-            ))}
-          </ul>
+                {/* XP Bar */}
+                <div className="mb-3">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className={theme.textMuted}>Experience</span>
+                    <span style={theme.accentText}>{user.stats.xp % 1200} / 1200</span>
+                  </div>
+                  <div className={`h-3 rounded-full overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${(user.stats.xp % 1200) / 1200 * 100}%`,
+                        background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                        boxShadow: `0 0 10px ${accentColor}80`
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Mana Bar */}
+                <div className="mb-4">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className={theme.textMuted}>Mana</span>
+                    <span className="text-blue-400">0 / 100</span>
+                  </div>
+                  <div className={`h-3 rounded-full overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`} style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(59, 130, 246, 0.3)' }}>
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"
+                      style={{ width: '0%', boxShadow: '0 0 10px rgba(59, 130, 246, 0.5)' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Stats Grid */}
+                <div className="grid grid-cols-3 gap-3">
+                  <StatBox icon="⚔️" label="STR" value={0} color="red" darkMode={darkMode} />
+                  <StatBox icon="🛡️" label="DEF" value={0} color="blue" darkMode={darkMode} />
+                  <StatBox icon="❤️" label="HP" value={0} color="green" darkMode={darkMode} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ERROR MESSAGE */}
+        {(error || userError || tasksError) && (
+          <div className="bg-red-900/20 border border-red-500/50 text-red-400 p-4 mb-6 rounded-xl">
+            <p className="font-semibold">⚠️ Waarschuwing</p>
+            <p className="text-sm">{error || userError || tasksError}</p>
+          </div>
         )}
-      </section>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* LEFT COLUMN */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* POMODORO TIMER */}
+            <div className="relative">
+              <div className="absolute -inset-0.5 rounded-2xl blur opacity-20" style={{ background: `linear-gradient(to right, ${accentColor}, #a855f7)` }}></div>
+              <div className={`relative ${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-2xl">⚡</span>
+                  <h3 className={`text-xl font-bold ${theme.text}`}>Focus Mode</h3>
+                </div>
+                <p className={`${theme.textSubtle} text-sm mb-6`}>Enter the zone. Eliminate distractions.</p>
+
+                <div className="flex flex-col items-center">
+                  {/* Timer Circle */}
+                  <div className="relative w-48 h-48 mb-6">
+                    <svg className="w-full h-full transform -rotate-90">
+                      <circle cx="96" cy="96" r="88" stroke={darkMode ? "#1e1e2e" : "#e5e7eb"} strokeWidth="12" fill="none" />
+                      <circle
+                        cx="96"
+                        cy="96"
+                        r="88"
+                        stroke={`url(#timerGradient-${accentColor.replace('#', '')})`}
+                        strokeWidth="12"
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeDasharray={2 * Math.PI * 88}
+                        strokeDashoffset={2 * Math.PI * 88 * (1 - progress / 100)}
+                        className="transition-all duration-1000"
+                        style={{ filter: `drop-shadow(0 0 10px ${accentColor}80)` }}
+                      />
+                      <defs>
+                        <linearGradient id={`timerGradient-${accentColor.replace('#', '')}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stopColor={accentColor} />
+                          <stop offset="100%" stopColor="#a855f7" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className={`text-4xl font-bold ${theme.text} font-mono`}>{formatTime(timeLeft)}</span>
+                      <span className="text-sm" style={theme.accentText}>{isRunning ? "HUNTING..." : "READY"}</span>
+                    </div>
+                  </div>
+
+                  {/* Controls */}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleStartPause}
+                      className="text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all"
+                      style={{
+                        background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                        boxShadow: `0 0 20px ${accentColor}50`
+                      }}
+                    >
+                      {isRunning ? "⏸️ PAUSE" : "▶️ ARISE"}
+                    </button>
+                    <button
+                      onClick={handleReset}
+                      className={`${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'} px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors`}
+                    >
+                      🔄 RESET
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* WEEKLY CALENDAR */}
+            <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className={`text-xl font-bold ${theme.text} flex items-center gap-2`}>
+                  <span>📅</span> This Week
+                </h3>
+                <button className="text-sm" style={theme.accentText}>Full Calendar →</button>
+              </div>
+
+              <div className="grid grid-cols-7 gap-2">
+                {weekDates.map((d, i) => (
+                  <div
+                    key={i}
+                    className={`text-center py-3 rounded-xl cursor-pointer transition-all`}
+                    style={d.isToday ? {
+                      background: `linear-gradient(to bottom, ${accentColor}, #a855f7)`,
+                      color: 'white',
+                      boxShadow: `0 0 15px ${accentColor}50`
+                    } : {
+                      backgroundColor: darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)',
+                      color: darkMode ? '#9ca3af' : '#6b7280'
+                    }}
+                  >
+                    <p className="text-xs font-medium">{d.day}</p>
+                    <p className="text-lg font-bold">{d.date}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* DAILY QUEST */}
+            <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(to br, ${accentColor}, #a855f7)` }}>
+                    <span className="text-xl">📚</span>
+                  </div>
+                  <div>
+                    <h3 className={`text-xl font-bold ${theme.text}`}>Programming Essentials 1</h3>
+                    <p className={`${theme.textSubtle} text-sm`}>Daily Quests</p>
+                  </div>
+                </div>
+                <button className="text-sm" style={theme.accentText}>View All →</button>
+              </div>
+
+              <div className="text-center py-8">
+                <div className={`w-16 h-16 mx-auto ${darkMode ? 'bg-gray-800/50' : 'bg-gray-100'} rounded-full flex items-center justify-center mb-3`}>
+                  <span className="text-3xl">📝</span>
+                </div>
+                <p className={theme.textMuted}>No active quests</p>
+                <p className={`${theme.textSubtle} text-sm`}>Complete quests to earn XP and Gold</p>
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN */}
+          <div className="space-y-6">
+            {/* STREAK */}
+            <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(249, 115, 22, 0.3)' }}>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(to br, #ea580c, #dc2626)', boxShadow: '0 0 15px rgba(249, 115, 22, 0.3)' }}>
+                  <span className="text-2xl">🔥</span>
+                </div>
+                <div>
+                  <p className={`${theme.textMuted} text-sm`}>Current Streak</p>
+                  <p className="text-3xl font-bold text-orange-400">{user.stats.streak} days</p>
+                </div>
+              </div>
+              <p className={`${theme.textSubtle} text-sm`}>Keep hunting to maintain your streak!</p>
+            </div>
+
+            {/* TODAY'S PROGRESS */}
+            <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+              <h3 className={`text-lg font-bold ${theme.text} mb-4`}>Today's Hunt</h3>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className={theme.textMuted}>Sessions</span>
+                  <span className="font-bold" style={theme.accentText}>{sessions}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className={theme.textMuted}>Focus Time</span>
+                  <span className="text-purple-400 font-bold">{Math.floor(focusTime / 60)} min</span>
+                </div>
+                <div className={`h-2 ${darkMode ? 'bg-gray-800' : 'bg-gray-200'} rounded-full overflow-hidden`}>
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${Math.min(focusTime / 60 / 60 * 100, 100)}%`,
+                      background: `linear-gradient(to right, ${accentColor}, #a855f7)`
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* DAILY REWARDS */}
+            <div className="relative">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-yellow-600 to-orange-600 rounded-2xl blur opacity-20"></div>
+              <div className={`relative ${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(234, 179, 8, 0.3)' }}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className={`text-lg font-bold ${theme.text}`}>Daily Reward</h3>
+                  <span className="text-yellow-400 text-2xl">🎁</span>
+                </div>
+                <button className="w-full bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-white py-3 rounded-xl font-bold transition-all" style={{ boxShadow: '0 0 15px rgba(234, 179, 8, 0.3)' }}>
+                  CLAIM REWARD
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }
 
-/* Kleine herbruikbare component */
-function StatCard({
+/* Navigation Item Component */
+function NavItem({
+  icon,
   label,
-  value
+  active = false,
+  onClick,
+  darkMode,
+  accentColor
 }: {
+  icon: string;
   label: string;
-  value: number | string;
+  active?: boolean;
+  onClick: () => void;
+  darkMode: boolean;
+  accentColor: string;
 }) {
   return (
-    <div className="bg-gray-800 rounded p-4 text-center">
-      <p className="text-gray-400 text-sm">{label}</p>
-      <p className="text-2xl font-bold">{value}</p>
+    <li>
+      <button
+        onClick={onClick}
+        className="flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-all"
+        style={active ? {
+          background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
+          color: accentColor,
+          borderWidth: '1px',
+          borderStyle: 'solid',
+          borderColor: `${accentColor}50`
+        } : {
+          color: darkMode ? '#9ca3af' : '#6b7280'
+        }}
+      >
+        <span>{icon}</span>
+        <span className="font-medium">{label}</span>
+      </button>
+    </li>
+  );
+}
+
+/* Stat Box Component */
+function StatBox({ icon, label, value, color, darkMode }: { icon: string; label: string; value: number; color: string; darkMode: boolean }) {
+  const colorMap = {
+    red: { border: 'rgba(239, 68, 68, 0.3)', text: '#f87171', bg: darkMode ? 'rgba(127, 29, 29, 0.3)' : 'rgba(254, 226, 226, 1)' },
+    blue: { border: 'rgba(59, 130, 246, 0.3)', text: '#60a5fa', bg: darkMode ? 'rgba(30, 58, 138, 0.3)' : 'rgba(219, 234, 254, 1)' },
+    green: { border: 'rgba(34, 197, 94, 0.3)', text: '#4ade80', bg: darkMode ? 'rgba(20, 83, 45, 0.3)' : 'rgba(220, 252, 231, 1)' }
+  };
+
+  const colors = colorMap[color as keyof typeof colorMap];
+
+  return (
+    <div className="rounded-xl p-3 text-center" style={{ backgroundColor: colors.bg, borderWidth: '1px', borderStyle: 'solid', borderColor: colors.border }}>
+      <span className="text-xl">{icon}</span>
+      <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'} mt-1`}>{label}</p>
+      <p className="text-xl font-bold" style={{ color: colors.text }}>{value}</p>
     </div>
   );
 }
