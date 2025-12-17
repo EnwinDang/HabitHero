@@ -5,3 +5,5 @@ export * from "./inventory.service";
 export * from "./combat.service";
 export * from "./notification.service";
 export * from "./course.service";
+export * from "./teacherDashboard.service";
+export * from "./leaderboard.service";
