@@ -1,6 +1,18 @@
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 export default function Profile() {
+  const navigate = useNavigate();
+  const { logout, user } = useAuth();
+
+  async function handleLogout() {
+    try {
+      await logout();
+      navigate('/login', { replace: true });
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  }
 
   return (
     <div className="hh-page" style={{ display: 'grid', gap: 18 }}>
@@ -17,13 +29,18 @@ export default function Profile() {
           <div style={{ marginTop: 14, display: 'grid', gap: 14 }}>
             <div>
               <div className="hh-label">Name</div>
-              <input defaultValue="Teacher" className="hh-input" style={{ marginTop: 8 }} />
+              <input 
+                defaultValue={user?.displayName || ''} 
+                className="hh-input" 
+                style={{ marginTop: 8 }} 
+                readOnly
+              />
             </div>
             <div>
-              <div className="hh-label">School email</div>
+              <div className="hh-label">Email</div>
               <input
                 readOnly
-                value="teacher@school.be"
+                value={user?.email || ''}
                 className="hh-input"
                 style={{ marginTop: 8, background: 'rgba(244,244,248,0.9)', cursor: 'not-allowed' }}
               />
@@ -56,9 +73,13 @@ export default function Profile() {
         </div>
 
         <div className="hh-card" style={{ padding: 22, gridColumn: '1 / -1' }}>
-          <Link to="/login" className="hh-btn hh-btn-danger">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="hh-btn hh-btn-danger"
+          >
             Log out
-          </Link>
+          </button>
         </div>
       </div>
     </div>

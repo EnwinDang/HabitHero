@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   LayoutDashboard, 
@@ -8,6 +8,7 @@ import {
   User, 
   LogOut 
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 function NavItem({ to, label, icon: Icon, delay = 0 }) {
   return (
@@ -38,6 +39,18 @@ function NavItem({ to, label, icon: Icon, delay = 0 }) {
 }
 
 export default function Sidebar() {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+
+  async function handleLogout() {
+    try {
+      await logout();
+      navigate('/login', { replace: true });
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  }
+
   return (
     <aside className="hh-sidebar">
       <motion.div 
@@ -100,12 +113,27 @@ export default function Sidebar() {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
         />
-        <NavItem 
-          to="/login" 
-          label="Logout" 
-          icon={LogOut}
-          delay={0.45}
-        />
+        <motion.div
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.45 }}
+        >
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="hh-nav__item"
+            style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none', cursor: 'pointer' }}
+          >
+            <LogOut 
+              style={{ 
+                width: 16, 
+                height: 16,
+                flexShrink: 0
+              }} 
+            />
+            <span className="hh-nav__label">Logout</span>
+          </button>
+        </motion.div>
       </nav>
     </aside>
   );
