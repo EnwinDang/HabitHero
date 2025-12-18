@@ -73,7 +73,7 @@ const AdminDashboard = () => {
   ];
 
   return (
-    <div className="p-8 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+    <div className="p-8 bg-violet-50 min-h-screen">
       {/* Header */}
       <div className="flex justify-between items-start mb-10">
         <div>
