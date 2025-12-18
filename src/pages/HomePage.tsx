@@ -110,8 +110,8 @@ export default function HomePage() {
           <ul className="space-y-2">
             <NavItem icon="⚔️" label="Home" active onClick={() => navigate("/dashboard")} darkMode={darkMode} accentColor={accentColor} />
             <NavItem icon="📜" label="Quests" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
-            <NavItem icon="⏱️" label="Focus Mode" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
-            <NavItem icon="📊" label="Stats" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+            <NavItem icon="⏱️" label="Focus Mode" onClick={() => navigate("/focus")} darkMode={darkMode} accentColor={accentColor} />
+            <NavItem icon="📊" label="Stats" onClick={() => navigate("/stats")} darkMode={darkMode} accentColor={accentColor} />
             <NavItem icon="🏆" label="Achievements" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
             <NavItem icon="📅" label="Calendar" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
             <NavItem icon="👤" label="Profile" onClick={() => navigate("/profile")} darkMode={darkMode} accentColor={accentColor} />
@@ -135,7 +135,7 @@ export default function HomePage() {
         {/* Welcome Header */}
         <div className="mb-6">
           <p className="text-3xl font-bold tracking-widest uppercase mb-1" style={theme.accentText}>Welcome back, {user.displayName}</p>
-          
+
         </div>
 
         {/* HERO CARD */}
@@ -157,7 +157,7 @@ export default function HomePage() {
                 <div className="w-32 h-40 rounded-xl border-2 flex items-center justify-center overflow-hidden" style={{ borderColor: `${accentColor}80`, backgroundColor: darkMode ? 'rgba(88, 28, 135, 0.3)' : 'rgba(219, 234, 254, 0.5)' }}>
                   <span className="text-6xl">⚔️</span>
                 </div>
-               
+
               </div>
 
               {/* Stats */}
@@ -349,7 +349,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            
+
           </div>
 
           {/* RIGHT COLUMN */}
@@ -373,7 +373,7 @@ export default function HomePage() {
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(to br, #ea580c, #dc2626)', boxShadow: '0 0 15px rgba(249, 115, 22, 0.3)' }}>
                   <span className="text-2xl">🔥</span>
                 </div>
-                
+
                 <div>
                   <p className={`${theme.textMuted} text-sm`}>Current Streak</p>
                   <p className="text-3xl font-bold text-orange-400">{user.stats.streak} days</p>
@@ -406,7 +406,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            
+
           </div>
         </div>
       </main>
