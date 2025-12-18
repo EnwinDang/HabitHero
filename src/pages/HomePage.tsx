@@ -103,7 +103,7 @@ export default function HomePage() {
             <NavItem icon="🏆" label="Achievements" onClick={() => navigate("/achievements")} darkMode={darkMode} accentColor={accentColor} />
             <NavItem icon="📅" label="Calendar" onClick={() => navigate("/calendar")} darkMode={darkMode} accentColor={accentColor} />
             <NavItem icon="👤" label="Profile" onClick={() => navigate("/profile")} darkMode={darkMode} accentColor={accentColor} />
-            <NavItem icon="⚙️" label="Settings" onClick={() => navigate("/settings")} darkMode={darkMode} accentColor={accentColor} />
+            <NavItem icon="⚙️" label="Settings" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
           </ul>
         </nav>
 

@@ -81,7 +81,7 @@ export default function FocusModePage() {
                         <SidebarItem icon="🏆" label="Achievements" onClick={() => navigate("/achievements")} />
                         <SidebarItem icon="📅" label="Calendar" onClick={() => navigate("/calendar")} />
                         <SidebarItem icon="👤" label="Profile" onClick={() => navigate("/profile")} />
-                        <SidebarItem icon="⚙️" label="Settings" onClick={() => navigate("/settings")} />
+                        <SidebarItem icon="⚙️" label="Settings" onClick={() => { }} />
                     </ul>
                 </nav>
 

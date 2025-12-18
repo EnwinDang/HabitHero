@@ -128,7 +128,7 @@ export default function ProfilePage() {
                         <NavItem
                             icon="⚙️"
                             label="Settings"
-                            onClick={() => navigate("/settings")}
+                            onClick={() => { }}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
@@ -357,6 +357,95 @@ export default function ProfilePage() {
                                         {avatar}
                                     </button>
                                 ))}
+                            </div>
+                        </div>
+
+                        {/* Theme + Accent */}
+                        <div className="space-y-6">
+                            {/* Theme Settings */}
+                            <div
+                                className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
+                                style={{
+                                    ...theme.borderStyle,
+                                    borderWidth: "1px",
+                                    borderStyle: "solid",
+                                }}
+                            >
+                                <h3
+                                    className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
+                                >
+                                    <span>🌙</span> Theme Settings
+                                </h3>
+                                <div
+                                    className={`flex justify-between items-center p-4 ${theme.inputBg} rounded-xl`}
+                                >
+                                    <div>
+                                        <p className="font-medium" style={theme.accentText}>
+                                            Dark Mode
+                                        </p>
+                                        <p className={`${theme.textSubtle} text-sm`}>
+                                            {darkMode
+                                                ? "Shadow realm activated"
+                                                : "Light mode active"}
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={() => setDarkMode(!darkMode)}
+                                        className="w-14 h-8 rounded-full p-1 transition-all"
+                                        style={{
+                                            backgroundColor: darkMode ? accentColor : "#d1d5db",
+                                            boxShadow: darkMode
+                                                ? `0 0 10px ${accentColor}50`
+                                                : "none",
+                                        }}
+                                    >
+                                        <div
+                                            className={`w-6 h-6 rounded-full bg-white shadow transition-transform ${darkMode ? "translate-x-6" : "translate-x-0"
+                                                }`}
+                                        />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Accent Color */}
+                            <div
+                                className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
+                                style={{
+                                    ...theme.borderStyle,
+                                    borderWidth: "1px",
+                                    borderStyle: "solid",
+                                }}
+                            >
+                                <h3
+                                    className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
+                                >
+                                    <span>🎨</span> Accent Color
+                                </h3>
+                                <div className="flex flex-wrap gap-3">
+                                    {accentColors.map((colorOption, i) => (
+                                        <button
+                                            key={i}
+                                            onClick={() => setAccentColor(colorOption.color)}
+                                            className="w-12 h-12 rounded-xl transition-all"
+                                            style={{
+                                                backgroundColor: colorOption.color,
+                                                boxShadow:
+                                                    accentColor === colorOption.color
+                                                        ? `0 0 20px ${colorOption.color}`
+                                                        : `0 0 10px ${colorOption.color}40`,
+                                                transform:
+                                                    accentColor === colorOption.color
+                                                        ? "scale(1.1)"
+                                                        : "scale(1)",
+                                                borderWidth:
+                                                    accentColor === colorOption.color ? "2px" : "0",
+                                                borderStyle: "solid",
+                                                borderColor: "white",
+                                            }}
+                                            title={colorOption.name}
+                                        />
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </div>
