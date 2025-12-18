@@ -2,6 +2,24 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
+import {
+    Sword,
+    Scroll,
+    Timer,
+    BarChart3,
+    Trophy,
+    Calendar,
+    User,
+    Settings,
+    LogOut,
+    Sparkles,
+    Palette,
+    Bell,
+    Volume2,
+    AlertTriangle,
+    Info,
+    Moon
+} from "lucide-react";
 
 // Accent colors
 const accentColors = [
@@ -67,56 +85,56 @@ export default function SettingsPage() {
                 <nav className="flex-1 px-4">
                     <ul className="space-y-2">
                         <NavItem
-                            icon="⚔️"
+                            icon={<Sword size={20} />}
                             label="Home"
                             onClick={() => navigate("/dashboard")}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
                         <NavItem
-                            icon="📜"
+                            icon={<Scroll size={20} />}
                             label="Quests"
                             onClick={() => { }}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
                         <NavItem
-                            icon="⏱️"
+                            icon={<Timer size={20} />}
                             label="Focus Mode"
                             onClick={() => navigate("/focus")}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
                         <NavItem
-                            icon="📊"
+                            icon={<BarChart3 size={20} />}
                             label="Stats"
                             onClick={() => navigate("/stats")}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
                         <NavItem
-                            icon="🏆"
+                            icon={<Trophy size={20} />}
                             label="Achievements"
                             onClick={() => navigate("/achievements")}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
                         <NavItem
-                            icon="📅"
+                            icon={<Calendar size={20} />}
                             label="Calendar"
                             onClick={() => navigate("/calendar")}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
                         <NavItem
-                            icon="👤"
+                            icon={<User size={20} />}
                             label="Profile"
                             onClick={() => navigate("/profile")}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
                         <NavItem
-                            icon="⚙️"
+                            icon={<Settings size={20} />}
                             label="Settings"
                             active
                             onClick={() => navigate("/settings")}
@@ -138,7 +156,7 @@ export default function SettingsPage() {
                         onClick={handleLogout}
                         className="flex items-center gap-3 text-red-400 hover:text-red-300 w-full px-4 py-2 rounded-lg hover:bg-red-900/20 transition-colors"
                     >
-                        <span>🚪</span>
+                        <LogOut size={20} />
                         <span>Logout</span>
                     </button>
                 </div>
@@ -169,12 +187,12 @@ export default function SettingsPage() {
                         <h3
                             className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
                         >
-                            <span>✨</span> Appearance
+                            <Sparkles size={24} /> Appearance
                         </h3>
 
                         {/* Dark Mode Toggle */}
                         <SettingRow
-                            icon="🌙"
+                            icon={<Moon size={20} />}
                             title="Dark Mode"
                             description="Switch to dark theme"
                             darkMode={darkMode}
@@ -200,7 +218,7 @@ export default function SettingsPage() {
                         <h3
                             className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
                         >
-                            <span>🎨</span> Accent Color
+                            <Palette size={24} /> Accent Color
                         </h3>
                         <p className={`${theme.textSubtle} text-sm mb-4`}>
                             Choose your power color
@@ -244,12 +262,12 @@ export default function SettingsPage() {
                         <h3
                             className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
                         >
-                            <span>🔔</span> Notifications
+                            <Bell size={24} /> Notifications
                         </h3>
 
                         <div className="space-y-4">
                             <SettingRow
-                                icon=""
+                                icon={null}
                                 title="Enable Notifications"
                                 description="Receive all app notifications"
                                 darkMode={darkMode}
@@ -259,7 +277,7 @@ export default function SettingsPage() {
                             </SettingRow>
 
                             <SettingRow
-                                icon=""
+                                icon={null}
                                 title="Task Reminders"
                                 description="Get reminded about incomplete tasks"
                                 darkMode={darkMode}
@@ -269,7 +287,7 @@ export default function SettingsPage() {
                             </SettingRow>
 
                             <SettingRow
-                                icon=""
+                                icon={null}
                                 title="Battle Notifications"
                                 description="Battle results and stamina updates"
                                 darkMode={darkMode}
@@ -279,7 +297,7 @@ export default function SettingsPage() {
                             </SettingRow>
 
                             <SettingRow
-                                icon=""
+                                icon={null}
                                 title="Achievement Alerts"
                                 description="Get notified when you unlock achievements"
                                 darkMode={darkMode}
@@ -302,11 +320,11 @@ export default function SettingsPage() {
                         <h3
                             className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
                         >
-                            <span>🔊</span> Audio
+                            <Volume2 size={24} /> Audio
                         </h3>
 
                         <SettingRow
-                            icon=""
+                            icon={null}
                             title="Sound Effects"
                             description="Battle sounds and UI feedback"
                             darkMode={darkMode}
@@ -327,7 +345,7 @@ export default function SettingsPage() {
                         }}
                     >
                         <h3 className="text-xl font-bold text-red-500 mb-4 flex items-center gap-2">
-                            <span>⚠️</span> Danger Zone
+                            <AlertTriangle size={24} /> Danger Zone
                         </h3>
 
                         <div className="mb-4">
@@ -354,8 +372,8 @@ export default function SettingsPage() {
                             background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
                         }}
                     >
-                        <h3 className="text-xl font-bold text-white mb-1">
-                            App Version
+                        <h3 className="text-xl font-bold text-white mb-1 flex items-center gap-2">
+                            <Info size={24} /> App Version
                         </h3>
                         <p className="text-white/80">
                             HabitHero v1.0.0
@@ -393,7 +411,7 @@ function SettingRow({
     children,
     darkMode
 }: {
-    icon: string;
+    icon: React.ReactNode;
     title: string;
     description: string;
     children: React.ReactNode;
@@ -432,7 +450,7 @@ function NavItem({
     darkMode,
     accentColor,
 }: {
-    icon: string;
+    icon: React.ReactNode;
     label: string;
     active?: boolean;
     onClick: () => void;
@@ -458,7 +476,7 @@ function NavItem({
                         }
                 }
             >
-                <span>{icon}</span>
+                {icon}
                 <span className="font-medium">{label}</span>
             </button>
         </li>

@@ -7,6 +7,19 @@ import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { db, auth } from "@/firebase";
 import { collection, addDoc, deleteDoc, doc } from "firebase/firestore";
 import type { Task } from "@/models/task.model";
+import {
+    Sword,
+    Scroll,
+    Timer,
+    BarChart3,
+    Trophy,
+    Calendar,
+    User,
+    Settings,
+    LogOut,
+    Trash2,
+    Check
+} from "lucide-react";
 
 export default function CalendarPage() {
     const navigate = useNavigate();
@@ -187,14 +200,14 @@ export default function CalendarPage() {
 
                 <nav className="flex-1 px-4">
                     <ul className="space-y-2">
-                        <NavItem icon="⚔️" label="Home" onClick={() => navigate("/dashboard")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="📜" label="Quests" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="⏱️" label="Focus Mode" onClick={() => navigate("/focus")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="📊" label="Stats" onClick={() => navigate("/stats")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="🏆" label="Achievements" onClick={() => navigate("/achievements")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="📅" label="Calendar" active onClick={() => navigate("/calendar")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="👤" label="Profile" onClick={() => navigate("/profile")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="⚙️" label="Settings" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Sword size={20} />} label="Home" onClick={() => navigate("/dashboard")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Scroll size={20} />} label="Quests" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Timer size={20} />} label="Focus Mode" onClick={() => navigate("/focus")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<BarChart3 size={20} />} label="Stats" onClick={() => navigate("/stats")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Trophy size={20} />} label="Achievements" onClick={() => navigate("/achievements")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Calendar size={20} />} label="Calendar" active onClick={() => navigate("/calendar")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<User size={20} />} label="Profile" onClick={() => navigate("/profile")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Settings size={20} />} label="Settings" onClick={() => navigate("/settings")} darkMode={darkMode} accentColor={accentColor} />
                     </ul>
                 </nav>
 
@@ -203,7 +216,7 @@ export default function CalendarPage() {
                         onClick={handleLogout}
                         className="flex items-center gap-3 text-red-400 hover:text-red-300 w-full px-4 py-2 rounded-lg hover:bg-red-900/20 transition-colors"
                     >
-                        <span>🚪</span>
+                        <LogOut size={20} />
                         <span>Logout</span>
                     </button>
                 </div>
@@ -347,7 +360,7 @@ export default function CalendarPage() {
 
                                 {selectedDayTasks.length === 0 ? (
                                     <div className="text-center py-8">
-                                        <span className="text-4xl mb-4 block">📅</span>
+                                        <Calendar size={40} className={`mb-4 mx-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
                                         <p className={theme.textMuted}>No tasks for this day</p>
                                         <button
                                             onClick={() => setShowAddTask(true)}
@@ -408,7 +421,7 @@ export default function CalendarPage() {
                             </>
                         ) : (
                             <div className="text-center py-8">
-                                <span className="text-4xl mb-4 block">📆</span>
+                                <Calendar size={40} className={`mb-4 mx-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
                                 <p className={theme.textMuted}>Select a day to view tasks</p>
                             </div>
                         )}
@@ -465,7 +478,7 @@ function TaskCard({
                 </div>
                 <div className="flex items-center gap-2">
                     {!task.isActive && (
-                        <span className="text-green-500 text-lg">✓</span>
+                        <Check size={18} className="text-green-500" />
                     )}
                     {showConfirm ? (
                         <div className="flex gap-1">
@@ -491,7 +504,7 @@ function TaskCard({
                             className="text-red-400 hover:text-red-500 p-1 rounded transition-colors"
                             title="Delete task"
                         >
-                            🗑️
+                            <Trash2 size={16} />
                         </button>
                     )}
                 </div>
@@ -509,7 +522,7 @@ function NavItem({
     darkMode,
     accentColor
 }: {
-    icon: string;
+    icon: React.ReactNode;
     label: string;
     active?: boolean;
     onClick: () => void;
@@ -531,7 +544,7 @@ function NavItem({
                     color: darkMode ? '#9ca3af' : '#6b7280'
                 }}
             >
-                <span>{icon}</span>
+                {icon}
                 <span className="font-medium">{label}</span>
             </button>
         </li>

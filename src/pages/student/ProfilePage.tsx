@@ -3,6 +3,23 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
+import {
+    Sword,
+    Scroll,
+    Timer,
+    BarChart3,
+    Trophy,
+    Calendar,
+    User,
+    Settings,
+    LogOut,
+    ClipboardList,
+    Gamepad2,
+    Mail,
+    CalendarDays,
+    Moon,
+    UserCircle
+} from "lucide-react";
 
 // Avatar options - Game themed
 const avatars = ["⚔️", "🛡️", "🗡️", "🏹", "🔮", "🐉", "👑", "💀"];
@@ -66,49 +83,49 @@ export default function ProfilePage() {
                 <nav className="flex-1 px-4">
                     <ul className="space-y-2">
                         <NavItem
-                            icon="⚔️"
+                            icon={<Sword size={20} />}
                             label="Home"
                             onClick={() => navigate("/dashboard")}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
                         <NavItem
-                            icon="📜"
+                            icon={<Scroll size={20} />}
                             label="Quests"
                             onClick={() => { }}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
                         <NavItem
-                            icon="⏱️"
+                            icon={<Timer size={20} />}
                             label="Focus Mode"
                             onClick={() => navigate("/focus")}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
                         <NavItem
-                            icon="📊"
+                            icon={<BarChart3 size={20} />}
                             label="Stats"
                             onClick={() => navigate("/stats")}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
                         <NavItem
-                            icon="🏆"
+                            icon={<Trophy size={20} />}
                             label="Achievements"
                             onClick={() => navigate("/achievements")}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
                         <NavItem
-                            icon="📅"
+                            icon={<Calendar size={20} />}
                             label="Calendar"
                             onClick={() => navigate("/calendar")}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
                         <NavItem
-                            icon="👤"
+                            icon={<User size={20} />}
                             label="Profile"
                             active
                             onClick={() => navigate("/profile")}
@@ -116,7 +133,7 @@ export default function ProfilePage() {
                             accentColor={accentColor}
                         />
                         <NavItem
-                            icon="⚙️"
+                            icon={<Settings size={20} />}
                             label="Settings"
                             onClick={() => navigate("/settings")}
                             darkMode={darkMode}
@@ -137,7 +154,7 @@ export default function ProfilePage() {
                         onClick={handleLogout}
                         className="flex items-center gap-3 text-red-400 hover:text-red-300 w-full px-4 py-2 rounded-lg hover:bg-red-900/20 transition-colors"
                     >
-                        <span>🚪</span>
+                        <LogOut size={20} />
                         <span>Logout</span>
                     </button>
                 </div>
@@ -266,7 +283,7 @@ export default function ProfilePage() {
                                     <h3
                                         className={`text-xl font-bold ${theme.text} flex items-center gap-2`}
                                     >
-                                        <span>📋</span> My Information
+                                        <ClipboardList size={20} style={{ color: accentColor }} /> My Information
                                     </h3>
                                     <button
                                         className="px-4 py-1.5 rounded-lg text-sm transition-colors"
@@ -283,19 +300,19 @@ export default function ProfilePage() {
 
                                 <div className="space-y-4">
                                     <InfoRow
-                                        icon="👤"
+                                        icon={<UserCircle size={20} />}
                                         label=""
                                         value={user.displayName || "Hero"}
                                         darkMode={darkMode}
                                     />
                                     <InfoRow
-                                        icon="📧"
+                                        icon={<Mail size={20} />}
                                         label=""
                                         value={user.email || "hunter@shadow.com"}
                                         darkMode={darkMode}
                                     />
                                     <InfoRow
-                                        icon="📅"
+                                        icon={<CalendarDays size={20} />}
                                         label=""
                                         value={memberSince}
                                         darkMode={darkMode}
@@ -413,7 +430,7 @@ function NavItem({
     darkMode,
     accentColor,
 }: {
-    icon: string;
+    icon: React.ReactNode;
     label: string;
     active?: boolean;
     onClick: () => void;
@@ -439,7 +456,7 @@ function NavItem({
                         }
                 }
             >
-                <span>{icon}</span>
+                {icon}
                 <span className="font-medium">{label}</span>
             </button>
         </li>
@@ -453,7 +470,7 @@ function InfoRow({
     value,
     darkMode,
 }: {
-    icon: string;
+    icon: React.ReactNode;
     label: string;
     value: string;
     darkMode: boolean;

@@ -2,6 +2,19 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { usePomodoro } from "@/context/pomodoro";
+import {
+    Sword,
+    Scroll,
+    Timer,
+    BarChart3,
+    Trophy,
+    Calendar,
+    User,
+    Settings,
+    LogOut,
+    Star,
+    Flame
+} from "lucide-react";
 
 export default function FocusModePage() {
     const navigate = useNavigate();
@@ -74,14 +87,14 @@ export default function FocusModePage() {
 
                 <nav className="flex-1 px-4">
                     <ul className="space-y-2">
-                        <SidebarItem icon="⚔️" label="Home" onClick={() => navigate("/dashboard")} />
-                        <SidebarItem icon="📜" label="Quests" onClick={() => { }} />
-                        <SidebarItem icon="⏱️" label="Focus Mode" active onClick={() => navigate("/focus")} />
-                        <SidebarItem icon="📊" label="Stats" onClick={() => navigate("/stats")} />
-                        <SidebarItem icon="🏆" label="Achievements" onClick={() => navigate("/achievements")} />
-                        <SidebarItem icon="📅" label="Calendar" onClick={() => navigate("/calendar")} />
-                        <SidebarItem icon="👤" label="Profile" onClick={() => navigate("/profile")} />
-                        <SidebarItem icon="⚙️" label="Settings" onClick={() => { }} />
+                        <SidebarItem icon={<Sword size={20} />} label="Home" onClick={() => navigate("/dashboard")} />
+                        <SidebarItem icon={<Scroll size={20} />} label="Quests" onClick={() => { }} />
+                        <SidebarItem icon={<Timer size={20} />} label="Focus Mode" active onClick={() => navigate("/focus")} />
+                        <SidebarItem icon={<BarChart3 size={20} />} label="Stats" onClick={() => navigate("/stats")} />
+                        <SidebarItem icon={<Trophy size={20} />} label="Achievements" onClick={() => navigate("/achievements")} />
+                        <SidebarItem icon={<Calendar size={20} />} label="Calendar" onClick={() => navigate("/calendar")} />
+                        <SidebarItem icon={<User size={20} />} label="Profile" onClick={() => navigate("/profile")} />
+                        <SidebarItem icon={<Settings size={20} />} label="Settings" onClick={() => navigate("/settings")} />
                     </ul>
                 </nav>
 
@@ -90,7 +103,7 @@ export default function FocusModePage() {
                         onClick={handleLogout}
                         className="flex items-center gap-3 text-red-500 hover:text-red-600 w-full px-4 py-2 rounded-lg hover:bg-red-50 transition-colors"
                     >
-                        <span>🚪</span>
+                        <LogOut size={20} />
                         <span>Logout</span>
                     </button>
                 </div>
@@ -184,7 +197,7 @@ export default function FocusModePage() {
                         {user && (
                             <div className="bg-white rounded-2xl p-6 shadow-sm">
                                 <div className="flex items-center gap-2 mb-3">
-                                    <span className="text-xl">⭐</span>
+                                    <Star size={20} className="text-purple-600" />
                                     <h3 className="text-lg font-bold text-gray-800">Your XP</h3>
                                 </div>
                                 <p className="text-3xl font-bold text-purple-600">{user.stats.xp || 0} XP</p>
@@ -195,10 +208,10 @@ export default function FocusModePage() {
                         {/* Focus Streak */}
                         <div className="bg-white rounded-2xl p-6 shadow-sm">
                             <div className="flex items-center gap-2 mb-3">
-                                <span className="text-xl">🔥</span>
+                                <Flame size={20} className="text-orange-500" />
                                 <h3 className="text-lg font-bold text-gray-800">Focus Streak</h3>
                             </div>
-                                <p className="text-3xl font-bold text-gray-800">{user?.stats?.streak || 0} days</p>
+                            <p className="text-3xl font-bold text-gray-800">{user?.stats?.streak || 0} days</p>
                             <p className="text-gray-500 text-sm">Keep it up!</p>
                         </div>
 
@@ -215,12 +228,12 @@ export default function FocusModePage() {
                                     <span className="font-bold text-purple-600">{Math.floor(totalFocusSeconds / 60)} min</span>
                                 </div>
                             </div>
-                        </div>  
+                        </div>
 
                         {/* Timer Settings */}
                         <div className="bg-white rounded-2xl p-6 shadow-sm">
                             <div className="flex items-center gap-2 mb-4">
-                                <span>⚙️</span>
+                                <Settings size={20} className="text-gray-600" />
                                 <h3 className="text-lg font-bold text-gray-800">Timer Settings</h3>
                             </div>
                             <div className="space-y-4">
@@ -280,7 +293,7 @@ function SidebarItem({
     active = false,
     onClick,
 }: {
-    icon: string;
+    icon: React.ReactNode;
     label: string;
     active?: boolean;
     onClick: () => void;
@@ -294,7 +307,7 @@ function SidebarItem({
                     : "text-gray-600 hover:bg-gray-50"
                     }`}
             >
-                <span>{icon}</span>
+                {icon}
                 <span className="font-medium">{label}</span>
             </button>
         </li>

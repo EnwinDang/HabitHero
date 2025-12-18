@@ -3,6 +3,23 @@ import { useAuth } from "@/context/AuthContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
+import {
+    Sword,
+    Scroll,
+    Timer,
+    BarChart3,
+    Trophy,
+    Calendar,
+    User,
+    Settings,
+    LogOut,
+    TrendingUp,
+    Star,
+    Coins,
+    Flame,
+    ClipboardList,
+    FileText
+} from "lucide-react";
 
 export default function StatsPage() {
     const navigate = useNavigate();
@@ -68,14 +85,14 @@ export default function StatsPage() {
 
                 <nav className="flex-1 px-4">
                     <ul className="space-y-2">
-                        <NavItem icon="⚔️" label="Home" onClick={() => navigate("/dashboard")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="📜" label="Quests" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="⏱️" label="Focus Mode" onClick={() => navigate("/focus")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="📊" label="Stats" active onClick={() => navigate("/stats")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="🏆" label="Achievements" onClick={() => navigate("/achievements")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="📅" label="Calendar" onClick={() => navigate("/calendar")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="👤" label="Profile" onClick={() => navigate("/profile")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="⚙️" label="Settings" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Sword size={20} />} label="Home" onClick={() => navigate("/dashboard")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Scroll size={20} />} label="Quests" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Timer size={20} />} label="Focus Mode" onClick={() => navigate("/focus")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<BarChart3 size={20} />} label="Stats" active onClick={() => navigate("/stats")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Trophy size={20} />} label="Achievements" onClick={() => navigate("/achievements")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Calendar size={20} />} label="Calendar" onClick={() => navigate("/calendar")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<User size={20} />} label="Profile" onClick={() => navigate("/profile")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Settings size={20} />} label="Settings" onClick={() => navigate("/settings")} darkMode={darkMode} accentColor={accentColor} />
                     </ul>
                 </nav>
 
@@ -84,7 +101,7 @@ export default function StatsPage() {
                         onClick={handleLogout}
                         className="flex items-center gap-3 text-red-400 hover:text-red-300 w-full px-4 py-2 rounded-lg hover:bg-red-900/20 transition-colors"
                     >
-                        <span>🚪</span>
+                        <LogOut size={20} />
                         <span>Logout</span>
                     </button>
                 </div>
@@ -103,7 +120,7 @@ export default function StatsPage() {
                     {/* Level Card */}
                     <div className="bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl p-5 text-white">
                         <div className="flex items-center gap-2 mb-2">
-                            <span className="text-lg">📈</span>
+                            <TrendingUp size={18} />
                             <span className="font-medium">Level</span>
                         </div>
                         <p className="text-3xl font-bold">{level}</p>
@@ -113,7 +130,7 @@ export default function StatsPage() {
                     {/* XP Progress Card */}
                     <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-5 text-white">
                         <div className="flex items-center gap-2 mb-2">
-                            <span className="text-lg">⭐</span>
+                            <Star size={18} />
                             <span className="font-medium">XP Progress</span>
                         </div>
                         <p className="text-3xl font-bold">{xpProgress}%</p>
@@ -123,7 +140,7 @@ export default function StatsPage() {
                     {/* Gold Card */}
                     <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-5 text-white">
                         <div className="flex items-center gap-2 mb-2">
-                            <span className="text-lg">💰</span>
+                            <Coins size={18} />
                             <span className="font-medium">Gold</span>
                         </div>
                         <p className="text-3xl font-bold">{gold}</p>
@@ -133,7 +150,7 @@ export default function StatsPage() {
                     {/* Streak Card */}
                     <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-5 text-white">
                         <div className="flex items-center gap-2 mb-2">
-                            <span className="text-lg">🔥</span>
+                            <Flame size={18} />
                             <span className="font-medium">Streak</span>
                         </div>
                         <p className="text-3xl font-bold">{streak}</p>
@@ -145,11 +162,11 @@ export default function StatsPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                     {/* Task Overview */}
                     <div className={`${theme.card} rounded-2xl p-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
-                        <h3 className={`text-xl font-bold ${theme.text} mb-4`}>📋 Task Overview</h3>
+                        <h3 className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}><ClipboardList size={20} /> Task Overview</h3>
 
                         {totalTasks === 0 ? (
                             <div className="text-center py-8">
-                                <span className="text-4xl mb-4 block">📝</span>
+                                <FileText size={40} className={`mb-4 mx-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
                                 <p className={theme.textMuted}>No tasks yet</p>
                                 <p className={`${theme.textSubtle} text-sm`}>Create your first task to see statistics!</p>
                             </div>
@@ -192,11 +209,11 @@ export default function StatsPage() {
 
                     {/* Tasks by Difficulty - REAL DATA */}
                     <div className={`${theme.card} rounded-2xl p-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
-                        <h3 className={`text-xl font-bold ${theme.text} mb-4`}>⚔️ Tasks by Difficulty</h3>
+                        <h3 className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}><Sword size={20} /> Tasks by Difficulty</h3>
 
                         {totalTasks === 0 ? (
                             <div className="text-center py-8">
-                                <span className="text-4xl mb-4 block">📊</span>
+                                <BarChart3 size={40} className={`mb-4 mx-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
                                 <p className={theme.textMuted}>No data yet</p>
                                 <p className={`${theme.textSubtle} text-sm`}>Complete tasks to see difficulty breakdown!</p>
                             </div>
@@ -241,7 +258,7 @@ export default function StatsPage() {
 
                 {/* Total XP Info */}
                 <div className={`${theme.card} rounded-2xl p-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
-                    <h3 className={`text-xl font-bold ${theme.text} mb-4`}>📈 Experience Progress</h3>
+                    <h3 className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}><TrendingUp size={20} /> Experience Progress</h3>
                     <div className="flex items-center gap-6">
                         <div className="flex-1">
                             <div className="flex justify-between text-sm mb-2">
@@ -319,7 +336,7 @@ function NavItem({
     darkMode,
     accentColor
 }: {
-    icon: string;
+    icon: React.ReactNode;
     label: string;
     active?: boolean;
     onClick: () => void;
@@ -341,7 +358,7 @@ function NavItem({
                     color: darkMode ? '#9ca3af' : '#6b7280'
                 }}
             >
-                <span>{icon}</span>
+                {icon}
                 <span className="font-medium">{label}</span>
             </button>
         </li>

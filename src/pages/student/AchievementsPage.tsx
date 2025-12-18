@@ -6,6 +6,22 @@ import { useRealtimeAchievements } from "@/hooks/useRealtimeAchievements";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { onStreakUpdated, onLevelUp, onTaskCompleted } from "@/services/achievement.service";
+import {
+    Sword,
+    Scroll,
+    Timer,
+    BarChart3,
+    Trophy,
+    Calendar,
+    User,
+    Settings,
+    LogOut,
+    Star,
+    TrendingUp,
+    Coins,
+    Lock,
+    Check
+} from "lucide-react";
 
 export default function AchievementsPage() {
     const navigate = useNavigate();
@@ -88,14 +104,14 @@ export default function AchievementsPage() {
 
                 <nav className="flex-1 px-4">
                     <ul className="space-y-2">
-                        <NavItem icon="⚔️" label="Home" onClick={() => navigate("/dashboard")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="📜" label="Quests" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="⏱️" label="Focus Mode" onClick={() => navigate("/focus")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="📊" label="Stats" onClick={() => navigate("/stats")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="🏆" label="Achievements" active onClick={() => navigate("/achievements")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="📅" label="Calendar" onClick={() => navigate("/calendar")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="👤" label="Profile" onClick={() => navigate("/profile")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="⚙️" label="Settings" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Sword size={20} />} label="Home" onClick={() => navigate("/dashboard")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Scroll size={20} />} label="Quests" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Timer size={20} />} label="Focus Mode" onClick={() => navigate("/focus")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<BarChart3 size={20} />} label="Stats" onClick={() => navigate("/stats")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Trophy size={20} />} label="Achievements" active onClick={() => navigate("/achievements")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Calendar size={20} />} label="Calendar" onClick={() => navigate("/calendar")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<User size={20} />} label="Profile" onClick={() => navigate("/profile")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon={<Settings size={20} />} label="Settings" onClick={() => navigate("/settings")} darkMode={darkMode} accentColor={accentColor} />
                     </ul>
                 </nav>
 
@@ -104,7 +120,7 @@ export default function AchievementsPage() {
                         onClick={handleLogout}
                         className="flex items-center gap-3 text-red-400 hover:text-red-300 w-full px-4 py-2 rounded-lg hover:bg-red-900/20 transition-colors"
                     >
-                        <span>🚪</span>
+                        <LogOut size={20} />
                         <span>Logout</span>
                     </button>
                 </div>
@@ -122,7 +138,7 @@ export default function AchievementsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-5 text-white">
                         <div className="flex items-center gap-2 mb-2">
-                            <span className="text-lg">🏆</span>
+                            <Trophy size={18} />
                             <span className="font-medium">Unlocked</span>
                         </div>
                         <p className="text-3xl font-bold">{unlockedAchievements}/{totalAchievements}</p>
@@ -131,7 +147,7 @@ export default function AchievementsPage() {
 
                     <div className="bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl p-5 text-white">
                         <div className="flex items-center gap-2 mb-2">
-                            <span className="text-lg">⭐</span>
+                            <Star size={18} />
                             <span className="font-medium">XP Earned</span>
                         </div>
                         <p className="text-3xl font-bold">{totalXPReward}</p>
@@ -140,7 +156,7 @@ export default function AchievementsPage() {
 
                     <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-5 text-white">
                         <div className="flex items-center gap-2 mb-2">
-                            <span className="text-lg">📈</span>
+                            <TrendingUp size={18} />
                             <span className="font-medium">Your Level</span>
                         </div>
                         <p className="text-3xl font-bold">{user.stats.level}</p>
@@ -183,7 +199,7 @@ export default function AchievementsPage() {
 
                 {filteredAchievements.length === 0 && (
                     <div className="text-center py-12">
-                        <span className="text-4xl mb-4 block">🏆</span>
+                        <Trophy size={40} className={`mb-4 mx-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
                         <p className={theme.textMuted}>No achievements in this category</p>
                     </div>
                 )}
@@ -239,14 +255,14 @@ function AchievementCard({
                         borderColor: achievement.isUnlocked ? accentColor : 'transparent'
                     }}
                 >
-                    {achievement.isUnlocked ? achievement.icon : '🔒'}
+                    {achievement.isUnlocked ? achievement.icon : <Lock size={20} />}
                 </div>
                 <div className="flex-1">
                     <h3 className={`font-bold ${theme.text}`}>{achievement.title}</h3>
                     <p className={`text-sm ${theme.textMuted}`}>{achievement.description}</p>
                 </div>
                 {achievement.isUnlocked && (
-                    <span className="text-green-500 text-xl">✓</span>
+                    <Check size={20} className="text-green-500" />
                 )}
             </div>
 
@@ -276,13 +292,13 @@ function AchievementCard({
                 <div className="flex gap-3 pt-3" style={{ borderTopWidth: '1px', borderTopStyle: 'solid', ...theme.borderStyle }}>
                     {achievement.reward.xp && (
                         <div className="flex items-center gap-1 text-sm">
-                            <span>⭐</span>
+                            <Star size={14} style={theme.accentText} />
                             <span style={theme.accentText}>+{achievement.reward.xp} XP</span>
                         </div>
                     )}
                     {achievement.reward.gold && (
                         <div className="flex items-center gap-1 text-sm">
-                            <span>💰</span>
+                            <Coins size={14} className="text-yellow-500" />
                             <span className="text-yellow-500">+{achievement.reward.gold}</span>
                         </div>
                     )}
@@ -301,7 +317,7 @@ function NavItem({
     darkMode,
     accentColor
 }: {
-    icon: string;
+    icon: React.ReactNode;
     label: string;
     active?: boolean;
     onClick: () => void;
@@ -323,7 +339,7 @@ function NavItem({
                     color: darkMode ? '#9ca3af' : '#6b7280'
                 }}
             >
-                <span>{icon}</span>
+                {icon}
                 <span className="font-medium">{label}</span>
             </button>
         </li>
