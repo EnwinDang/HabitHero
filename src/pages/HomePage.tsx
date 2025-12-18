@@ -354,12 +354,26 @@ export default function HomePage() {
 
           {/* RIGHT COLUMN */}
           <div className="space-y-6">
+            {/* DAILY REWARDS */}
+            <div className="relative">
+              <div className="absolute -inset-0.5 bg-gradient-to-r from-yellow-600 to-orange-600 rounded-2xl blur opacity-20"></div>
+              <div className={`relative ${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(234, 179, 8, 0.3)' }}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className={`text-lg font-bold ${theme.text}`}>Daily Reward</h3>
+                  <span className="text-yellow-400 text-2xl">🎁</span>
+                </div>
+                <button className="w-full bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-white py-3 rounded-xl font-bold transition-all" style={{ boxShadow: '0 0 15px rgba(234, 179, 8, 0.3)' }}>
+                  CLAIM REWARD
+                </button>
+              </div>
+            </div>
             {/* STREAK */}
             <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(249, 115, 22, 0.3)' }}>
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(to br, #ea580c, #dc2626)', boxShadow: '0 0 15px rgba(249, 115, 22, 0.3)' }}>
                   <span className="text-2xl">🔥</span>
                 </div>
+                
                 <div>
                   <p className={`${theme.textMuted} text-sm`}>Current Streak</p>
                   <p className="text-3xl font-bold text-orange-400">{user.stats.streak} days</p>
@@ -370,7 +384,7 @@ export default function HomePage() {
 
             {/* TODAY'S PROGRESS */}
             <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
-              <h3 className={`text-lg font-bold ${theme.text} mb-4`}>Today's Hunt</h3>
+              <h3 className={`text-lg font-bold ${theme.text} mb-4`}> Today's Hunt</h3>
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className={theme.textMuted}>Sessions</span>
@@ -392,19 +406,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* DAILY REWARDS */}
-            <div className="relative">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-yellow-600 to-orange-600 rounded-2xl blur opacity-20"></div>
-              <div className={`relative ${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(234, 179, 8, 0.3)' }}>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className={`text-lg font-bold ${theme.text}`}>Daily Reward</h3>
-                  <span className="text-yellow-400 text-2xl">🎁</span>
-                </div>
-                <button className="w-full bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-white py-3 rounded-xl font-bold transition-all" style={{ boxShadow: '0 0 15px rgba(234, 179, 8, 0.3)' }}>
-                  CLAIM REWARD
-                </button>
-              </div>
-            </div>
+            
           </div>
         </div>
       </main>
