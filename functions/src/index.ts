@@ -2,6 +2,7 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import express from "express";
 import cors from "cors";
+import { z } from "zod";
 
 // Initialize Admin SDK
 admin.initializeApp();
@@ -45,6 +46,90 @@ async function requireAuth(
     return res.status(401).json({ error: "Invalid token" });
   }
 }
+
+// Request validation schemas
+const taskCreateSchema = z
+  .object({
+    title: z.string().min(1),
+    description: z.string().min(1).optional().nullable(),
+    difficulty: z.enum(["easy", "medium", "hard", "extreme"]),
+    xp: z.number().int().nonnegative(),
+    gold: z.number().int().nonnegative(),
+    date: z.string().optional(),
+    dueAt: z.number().int().optional(),
+    achievementTag: z.string().optional().nullable(),
+    isRepeatable: z.boolean().optional().default(false),
+    isActive: z.boolean().optional().default(true),
+  })
+  .catchall(z.any());
+
+const taskUpdateSchema = taskCreateSchema.partial();
+
+const itemsQuerySchema = z
+  .object({
+    type: z.string().optional(),
+    rarity: z.string().optional(),
+    activeOnly: z.enum(["true", "false"]).optional(),
+  })
+  .catchall(z.any());
+
+const statsSchema = z
+  .object({
+    hp: z.number().optional(),
+    attack: z.number().optional(),
+    defense: z.number().optional(),
+    crit: z.number().optional(),
+    speed: z.number().optional(),
+  })
+  .partial();
+
+const itemSchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().optional().nullable(),
+    type: z.string().min(1),
+    rarity: z.string().min(1),
+    element: z.string().optional().nullable(),
+    icon: z.string().optional().nullable(),
+    stats: statsSchema.optional(),
+    valueGold: z.number().nonnegative().optional(),
+    isActive: z.boolean().optional().default(true),
+  })
+  .catchall(z.any());
+
+const itemUpdateSchema = itemSchema.partial();
+
+const courseSchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().optional().nullable(),
+    courseCode: z.string().min(1),
+    startDate: z.string().optional(),
+    endDate: z.string().optional(),
+    isActive: z.boolean().optional().default(true),
+  })
+  .catchall(z.any());
+
+const courseUpdateSchema = courseSchema.partial();
+
+const courseEnrollmentSchema = z
+  .object({
+    uid: z.string().min(1),
+  })
+  .catchall(z.any());
+
+const moduleSchema = z
+  .object({
+    courseId: z.string().optional(),
+    title: z.string().min(1),
+    description: z.string().optional().nullable(),
+    order: z.number().int().nonnegative(),
+    achievementId: z.string().optional().nullable(),
+    isActive: z.boolean().optional().default(true),
+  })
+  .catchall(z.any());
+
+const moduleUpdateSchema = moduleSchema.partial();
 
 // ============ AUTH ============
 
@@ -129,20 +214,22 @@ app.get("/tasks", requireAuth, async (req, res) => {
 app.post("/tasks", requireAuth, async (req, res) => {
   try {
     const uid = (req as any).user.uid;
-    const { title, description, difficulty, xp, gold, dueAt, isRepeatable } = req.body;
+    const parsed = taskCreateSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid task payload", issues: parsed.error.issues });
+    }
+
+    const data = parsed.data;
 
     const tasksRef = db.collection("users").doc(uid).collection("tasks");
     const newTaskRef = tasksRef.doc();
 
     const task = {
-      title,
-      description,
-      difficulty,
-      xp,
-      gold,
-      dueAt: dueAt || null,
-      isRepeatable: isRepeatable || false,
-      isActive: true,
+      ...data,
+      dueAt: data.dueAt ?? null,
+      isRepeatable: data.isRepeatable ?? false,
+      isActive: data.isActive ?? true,
       createdAt: Date.now(),
       completedAt: null,
     };
@@ -196,6 +283,11 @@ app.patch("/tasks/:taskId", requireAuth, async (req, res) => {
     const uid = (req as any).user.uid;
     const { taskId } = req.params;
 
+    const parsed = taskUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid task update", issues: parsed.error.issues });
+    }
+
     const taskRef = db
       .collection("users")
       .doc(uid)
@@ -203,7 +295,7 @@ app.patch("/tasks/:taskId", requireAuth, async (req, res) => {
       .doc(taskId);
 
     await taskRef.update({
-      ...req.body,
+      ...parsed.data,
       updatedAt: Date.now(),
     });
 
@@ -597,9 +689,16 @@ app.get("/courses", async (req, res) => {
  */
 app.post("/courses", requireAuth, async (req, res) => {
   try {
+    const parsed = courseSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid course payload", issues: parsed.error.issues });
+    }
+
     const newCourseRef = db.collection("courses").doc();
     const course = {
-      ...req.body,
+      ...parsed.data,
+      isActive: parsed.data.isActive ?? true,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -643,9 +742,15 @@ app.get("/courses/:courseId", async (req, res) => {
 app.put("/courses/:courseId", requireAuth, async (req, res) => {
   try {
     const { courseId } = req.params;
+
+    const parsed = courseSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid course payload", issues: parsed.error.issues });
+    }
     const courseRef = db.collection("courses").doc(courseId);
     const course = {
-      ...req.body,
+      ...parsed.data,
+      isActive: parsed.data.isActive ?? true,
       updatedAt: Date.now(),
     };
     await courseRef.set(course, { merge: false });
@@ -666,9 +771,14 @@ app.put("/courses/:courseId", requireAuth, async (req, res) => {
 app.patch("/courses/:courseId", requireAuth, async (req, res) => {
   try {
     const { courseId } = req.params;
+
+    const parsed = courseUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid course update", issues: parsed.error.issues });
+    }
     const courseRef = db.collection("courses").doc(courseId);
     await courseRef.update({
-      ...req.body,
+      ...parsed.data,
       updatedAt: Date.now(),
     });
 
@@ -727,14 +837,21 @@ app.get("/courses/:courseId/students", requireAuth, async (req, res) => {
 app.post("/courses/:courseId/students", requireAuth, async (req, res) => {
   try {
     const { courseId } = req.params;
-    const { uid } = req.body;
+
+    const parsed = courseEnrollmentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid student payload", issues: parsed.error.issues });
+    }
+
+    const { uid, ...rest } = parsed.data;
     await db
       .collection("courses")
       .doc(courseId)
       .collection("students")
       .doc(uid)
       .set({
-        ...req.body,
+        ...rest,
+        uid,
         enrolledAt: Date.now(),
       });
 
@@ -751,7 +868,13 @@ app.post("/courses/:courseId/students", requireAuth, async (req, res) => {
 app.delete("/courses/:courseId/students", requireAuth, async (req, res) => {
   try {
     const { courseId } = req.params;
-    const { uid } = req.body;
+
+    const parsed = courseEnrollmentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid student payload", issues: parsed.error.issues });
+    }
+
+    const { uid } = parsed.data;
     await db
       .collection("courses")
       .doc(courseId)
@@ -796,6 +919,12 @@ app.get("/courses/:courseId/modules", async (req, res) => {
 app.post("/courses/:courseId/modules", requireAuth, async (req, res) => {
   try {
     const { courseId } = req.params;
+
+    const parsed = moduleSchema.safeParse({ ...req.body, courseId });
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid module payload", issues: parsed.error.issues });
+    }
+
     const newModuleRef = db
       .collection("courses")
       .doc(courseId)
@@ -803,7 +932,8 @@ app.post("/courses/:courseId/modules", requireAuth, async (req, res) => {
       .doc();
 
     const module = {
-      ...req.body,
+      ...parsed.data,
+      courseId,
       createdAt: Date.now(),
     };
     await newModuleRef.set(module);
@@ -851,13 +981,19 @@ app.put("/modules/:moduleId", requireAuth, async (req, res) => {
   try {
     const { moduleId } = req.params;
     const coursesSnap = await db.collection("courses").get();
+
+    const parsed = moduleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid module payload", issues: parsed.error.issues });
+    }
     
     for (const courseDoc of coursesSnap.docs) {
       const moduleRef = courseDoc.ref.collection("modules").doc(moduleId);
       const moduleSnap = await moduleRef.get();
       if (moduleSnap.exists) {
         const module = {
-          ...req.body,
+          ...parsed.data,
+          isActive: parsed.data.isActive ?? true,
           updatedAt: Date.now(),
         };
         await moduleRef.set(module, { merge: false });
@@ -882,13 +1018,18 @@ app.patch("/modules/:moduleId", requireAuth, async (req, res) => {
   try {
     const { moduleId } = req.params;
     const coursesSnap = await db.collection("courses").get();
+
+    const parsed = moduleUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid module update", issues: parsed.error.issues });
+    }
     
     for (const courseDoc of coursesSnap.docs) {
       const moduleRef = courseDoc.ref.collection("modules").doc(moduleId);
       const moduleSnap = await moduleRef.get();
       if (moduleSnap.exists) {
         await moduleRef.update({
-          ...req.body,
+          ...parsed.data,
           updatedAt: Date.now(),
         });
         const updated = await moduleRef.get();
@@ -1603,15 +1744,23 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
  */
 app.get("/items", async (req, res) => {
   try {
+    const parsedQuery = itemsQuerySchema.safeParse(req.query);
+
+    if (!parsedQuery.success) {
+      return res.status(400).json({ error: "Invalid query", issues: parsedQuery.error.issues });
+    }
+
+    const { type, rarity, activeOnly } = parsedQuery.data;
+
     let query = db.collection("items");
     
-    if (req.query.type) {
-      query = query.where("type", "==", req.query.type) as any;
+    if (type) {
+      query = query.where("type", "==", type) as any;
     }
-    if (req.query.rarity) {
-      query = query.where("rarity", "==", req.query.rarity) as any;
+    if (rarity) {
+      query = query.where("rarity", "==", rarity) as any;
     }
-    if (req.query.activeOnly === "true") {
+    if (activeOnly === "true") {
       query = query.where("isActive", "==", true) as any;
     }
 
@@ -1633,9 +1782,16 @@ app.get("/items", async (req, res) => {
  */
 app.post("/items", requireAuth, async (req, res) => {
   try {
+    const parsed = itemSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid item payload", issues: parsed.error.issues });
+    }
+
     const itemRef = db.collection("items").doc();
     const item = {
-      ...req.body,
+      ...parsed.data,
+      isActive: parsed.data.isActive ?? true,
       createdAt: Date.now(),
     };
     await itemRef.set(item);
@@ -1678,9 +1834,16 @@ app.get("/items/:itemId", async (req, res) => {
 app.put("/items/:itemId", requireAuth, async (req, res) => {
   try {
     const { itemId } = req.params;
+
+    const parsed = itemSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid item payload", issues: parsed.error.issues });
+    }
+
     const itemRef = db.collection("items").doc(itemId);
     const item = {
-      ...req.body,
+      ...parsed.data,
+      isActive: parsed.data.isActive ?? true,
       updatedAt: Date.now(),
     };
     await itemRef.set(item, { merge: false });
@@ -1701,9 +1864,15 @@ app.put("/items/:itemId", requireAuth, async (req, res) => {
 app.patch("/items/:itemId", requireAuth, async (req, res) => {
   try {
     const { itemId } = req.params;
+
+    const parsed = itemUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid item update", issues: parsed.error.issues });
+    }
+
     const itemRef = db.collection("items").doc(itemId);
     await itemRef.update({
-      ...req.body,
+      ...parsed.data,
       updatedAt: Date.now(),
     });
 
