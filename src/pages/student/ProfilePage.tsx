@@ -7,21 +7,11 @@ import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 // Avatar options - Game themed
 const avatars = ["⚔️", "🛡️", "🗡️", "🏹", "🔮", "🐉", "👑", "💀"];
 
-// Accent colors
-const accentColors = [
-    { color: "#06b6d4", name: "Cyan" },
-    { color: "#a855f7", name: "Purple" },
-    { color: "#f97316", name: "Orange" },
-    { color: "#22c55e", name: "Green" },
-    { color: "#3b82f6", name: "Blue" },
-    { color: "#ef4444", name: "Red" },
-];
-
 export default function ProfilePage() {
     const navigate = useNavigate();
     const { logout, loading: authLoading } = useAuth();
     const { user, loading: userLoading } = useRealtimeUser();
-    const { darkMode, setDarkMode, accentColor, setAccentColor } = useTheme();
+    const { darkMode, setDarkMode, accentColor } = useTheme();
 
     const [selectedAvatar, setSelectedAvatar] = useState(0);
 
@@ -128,7 +118,7 @@ export default function ProfilePage() {
                         <NavItem
                             icon="⚙️"
                             label="Settings"
-                            onClick={() => { }}
+                            onClick={() => navigate("/settings")}
                             darkMode={darkMode}
                             accentColor={accentColor}
                         />
@@ -404,47 +394,6 @@ export default function ProfilePage() {
                                                 }`}
                                         />
                                     </button>
-                                </div>
-                            </div>
-
-                            {/* Accent Color */}
-                            <div
-                                className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
-                                style={{
-                                    ...theme.borderStyle,
-                                    borderWidth: "1px",
-                                    borderStyle: "solid",
-                                }}
-                            >
-                                <h3
-                                    className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
-                                >
-                                    <span>🎨</span> Accent Color
-                                </h3>
-                                <div className="flex flex-wrap gap-3">
-                                    {accentColors.map((colorOption, i) => (
-                                        <button
-                                            key={i}
-                                            onClick={() => setAccentColor(colorOption.color)}
-                                            className="w-12 h-12 rounded-xl transition-all"
-                                            style={{
-                                                backgroundColor: colorOption.color,
-                                                boxShadow:
-                                                    accentColor === colorOption.color
-                                                        ? `0 0 20px ${colorOption.color}`
-                                                        : `0 0 10px ${colorOption.color}40`,
-                                                transform:
-                                                    accentColor === colorOption.color
-                                                        ? "scale(1.1)"
-                                                        : "scale(1)",
-                                                borderWidth:
-                                                    accentColor === colorOption.color ? "2px" : "0",
-                                                borderStyle: "solid",
-                                                borderColor: "white",
-                                            }}
-                                            title={colorOption.name}
-                                        />
-                                    ))}
                                 </div>
                             </div>
                         </div>
