@@ -10,6 +10,10 @@ import TeacherManagement from "../pages/admin/TeacherManagement";
 import AdminDashboard from "../pages/admin/AdminDashboard";
 import CourseManagement from "../pages/admin/CourseManagement";
 import WorldManagement from "../pages/admin/WorldManagement";
+import WorldList from "@/pages/admin/worldlist";
+import MonsterManagement from "@/pages/admin/MonsterManagement";
+import GlobalSettings from "../pages/admin/GlobalSettings";
+import ItemManagement from "../pages/admin/ItemManagement";
 
 export const AppRoutes = () => {
   return (
@@ -43,7 +47,10 @@ export const AppRoutes = () => {
         <Route path="students" element={<StudentManagement />} />
         <Route path="teachers" element={<TeacherManagement />} />
         <Route path="courses" element={<CourseManagement />} />
-        <Route path="worlds" element={<WorldManagement />} />
+        <Route path="worlds" element={<WorldList />} />
+        <Route path="monsters" element={<MonsterManagement/>} />
+        <Route path="items" element={<ItemManagement />} />
+        <Route path="settings" element={<GlobalSettings />} />
       </Route>
     </Routes>
   );

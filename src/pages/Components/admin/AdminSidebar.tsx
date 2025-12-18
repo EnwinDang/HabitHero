@@ -16,9 +16,9 @@ const AdminSidebar = () => {
       children: [
         { name: 'World List', path: '/admin/worlds', icon: <Globe size={20} /> },
         { name: 'Monsters', path: '/admin/monsters', icon: <Ghost size={20} /> },
-        { name: 'Items', path: '/admin/items', icon: <Sword size={20} /> },
       ]
     },
+    { name: 'Items', path: '/admin/items', icon: <Sword size={20} /> },
     { name: 'Settings', path: '/admin/settings', icon: <Settings size={20} /> },
   ];
 

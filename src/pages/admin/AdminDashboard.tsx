@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { Users, GraduationCap, BookOpen, TrendingUp } from 'lucide-react';
-import { api } from '../../api/axios-instance';
+import { UsersAPI, CoursesAPI } from '../../api';
+import { NavLink } from 'react-router-dom';
 
 interface DashboardStats {
   totalUsers?: number;
@@ -17,22 +18,40 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     const fetchStats = async () => {
+      setLoading(true);
+      const newStats: DashboardStats = {};
+
       try {
-        setLoading(true);
-        // Fetch dashboard statistics from API
-        // For now, we'll use placeholder data
-        // Replace with actual API calls when endpoints are available
-        setStats({
-          totalUsers: 156,
-          totalTeachers: 24,
-          totalStudents: 132,
-          totalCourses: 8,
-        });
+        const usersRes = await UsersAPI.list();
+        newStats.totalUsers = usersRes.pagination.total;
       } catch (err) {
-        console.error("Kon statistieken niet laden", err);
-      } finally {
-        setLoading(false);
+        console.error("Failed to load users:", err);
       }
+
+      try {
+        const teachersRes = await UsersAPI.list({ role: 'teacher' });
+        newStats.totalTeachers = teachersRes.pagination.total;
+      } catch (err) {
+        console.error("Failed to load teachers:", err);
+      }
+
+      try {
+        const studentsRes = await UsersAPI.list({ role: 'student' });
+        newStats.totalStudents = studentsRes.pagination.total;
+      } catch (err) {
+        console.error("Failed to load students:", err);
+      }
+
+      try {
+        const courses = await CoursesAPI.list();
+        newStats.totalCourses = courses.filter(c => c.isActive).length;
+        console.log('Courses loaded:', courses);
+      } catch (err) {
+        console.error("Failed to load courses:", err);
+      }
+
+      setStats(newStats);
+      setLoading(false);
     };
     fetchStats();
   }, []);
@@ -53,6 +72,7 @@ const AdminDashboard = () => {
       iconColor: 'text-purple-600',
       bgColor: 'bg-purple-50',
       borderColor: 'border-purple-200',
+      path: '/admin/teachers',
     },
     {
       title: 'Students',
@@ -61,6 +81,7 @@ const AdminDashboard = () => {
       iconColor: 'text-green-600',
       bgColor: 'bg-green-50',
       borderColor: 'border-green-200',
+      path: '/admin/students',
     },
     {
       title: 'Courses',
@@ -69,6 +90,7 @@ const AdminDashboard = () => {
       iconColor: 'text-orange-600',
       bgColor: 'bg-orange-50',
       borderColor: 'border-orange-200',
+      path: '/admin/courses',
     },
   ];
 
@@ -91,9 +113,8 @@ const AdminDashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {statCards.map((card, index) => {
           const Icon = card.icon;
-          return (
+          const CardContent = (
             <div
-              key={index}
               className="bg-white rounded-xl shadow-lg p-6 border-2 border-gray-100 hover:shadow-xl hover:border-indigo-300 transition-all duration-200"
             >
               <div className="flex items-center justify-between">
@@ -109,6 +130,15 @@ const AdminDashboard = () => {
                   <Icon className={`w-8 h-8 ${card.iconColor}`} />
                 </div>
               </div>
+            </div>
+          );
+          return card.path ? (
+            <NavLink key={index} to={card.path}>
+              {CardContent}
+            </NavLink>
+          ) : (
+            <div key={index}>
+              {CardContent}
             </div>
           );
         })}
