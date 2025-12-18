@@ -65,8 +65,8 @@ export default function ProfilePage() {
                     <ul className="space-y-2">
                         <NavItem icon="⚔️" label="Home" onClick={() => navigate("/dashboard")} darkMode={darkMode} accentColor={accentColor} />
                         <NavItem icon="📜" label="Quests" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="⏱️" label="Focus Mode" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="📊" label="Stats" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon="⏱️" label="Focus Mode" onClick={() => navigate("/focus")} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon="📊" label="Stats" onClick={() => navigate("/stats")} darkMode={darkMode} accentColor={accentColor} />
                         <NavItem icon="🏆" label="Achievements" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
                         <NavItem icon="📅" label="Calendar" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
                         <NavItem icon="👤" label="Profile" active onClick={() => navigate("/profile")} darkMode={darkMode} accentColor={accentColor} />

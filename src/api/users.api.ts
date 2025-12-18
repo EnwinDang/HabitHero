@@ -107,4 +107,12 @@ export const UsersAPI = {
   removePet(uid: string, petId: string): Promise<void> {
     return apiFetch<void>(`/users/${uid}/pets`, { method: "DELETE", body: JSON.stringify({ petId }) });
   },
+
+  // Focus Session - complete a focus session and get XP reward from backend
+  completeFocusSession(uid: string, durationMinutes: number): Promise<{ xpGained: number; newXp: number; newLevel: number; leveledUp: boolean }> {
+    return apiFetch<{ xpGained: number; newXp: number; newLevel: number; leveledUp: boolean }>(`/users/${uid}/focus-session`, {
+      method: "POST",
+      body: JSON.stringify({ durationMinutes }),
+    });
+  },
 };
