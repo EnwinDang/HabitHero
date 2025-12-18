@@ -2,11 +2,11 @@ import { useMemo, useState, cloneElement, Children, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Plus, MoreVertical, Pencil, Trash2, Calendar, Link as LinkIcon, ArrowLeft } from 'lucide-react';
-import { useCourses } from '../../store/courseStore.jsx';
+import { useCourses } from '../../store/courseStore';
 import { loadTasks, createTask, updateTask, deleteTask } from '../../services/task.service';
 
 // Helper functions to map between API format and UI format
-function mapTaskFromAPI(apiTask) {
+function mapTaskFromAPI(apiTask: any) {
   return {
     id: apiTask.taskId,
     title: apiTask.title,
@@ -20,9 +20,10 @@ function mapTaskFromAPI(apiTask) {
   };
 }
 
-function mapTaskToAPI(uiTask, moduleId) {
+function mapTaskToAPI(uiTask: any, moduleId: string, courseId?: string) {
   return {
     taskId: uiTask.id || undefined,
+    courseId: courseId,
     moduleId: moduleId,
     title: uiTask.title,
     description: uiTask.description || null,
@@ -35,7 +36,11 @@ function mapTaskToAPI(uiTask, moduleId) {
   };
 }
 
-function DifficultyBadge({ value }) {
+interface DifficultyBadgeProps {
+  value: string;
+}
+
+function DifficultyBadge({ value }: DifficultyBadgeProps) {
   const difficultyMap = {
     Easy: { className: 'hh-pill hh-pill--easy', dotColor: 'var(--hh-green)' },
     Medium: { className: 'hh-pill hh-pill--medium', dotColor: 'var(--hh-gold)' },
@@ -43,9 +48,9 @@ function DifficultyBadge({ value }) {
     easy: { className: 'hh-pill hh-pill--easy', dotColor: 'var(--hh-green)' },
     medium: { className: 'hh-pill hh-pill--medium', dotColor: 'var(--hh-gold)' },
     hard: { className: 'hh-pill hh-pill--hard', dotColor: 'rgb(239, 68, 68)' },
-  };
+  } as const;
 
-  const config = difficultyMap[value] || difficultyMap.Easy;
+  const config = difficultyMap[value as keyof typeof difficultyMap] || difficultyMap.Easy;
   const displayValue = value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 
   return (
@@ -56,11 +61,16 @@ function DifficultyBadge({ value }) {
   );
 }
 
-function DropdownMenu({ children, trigger }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [triggerRect, setTriggerRect] = useState(null);
+interface DropdownMenuProps {
+  children: React.ReactNode;
+  trigger: React.ReactElement;
+}
 
-  const handleToggle = (e) => {
+function DropdownMenu({ children, trigger }: DropdownMenuProps) {
+  const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [triggerRect, setTriggerRect] = useState<{ top: number; right: number } | null>(null);
+
+  const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isOpen) {
       // Get trigger button position for fixed positioning
@@ -80,19 +90,22 @@ function DropdownMenu({ children, trigger }) {
 
   // Clone trigger to add click handler
   const triggerWithClick = cloneElement(trigger, {
-    onClick: (e) => {
+    onClick: (e: React.MouseEvent) => {
       handleToggle(e);
       // Call original onClick if it exists
-      if (trigger.props.onClick) {
-        trigger.props.onClick(e);
+      if (trigger.props && typeof trigger.props === 'object' && 'onClick' in trigger.props) {
+        const onClick = (trigger.props as any).onClick;
+        if (typeof onClick === 'function') {
+          onClick(e);
+        }
       }
     },
-  });
+  } as any);
 
   // Clone children to add close handler
   const childrenWithClose = Children.map(children, (child) => {
     if (child && typeof child === 'object' && 'type' in child) {
-      return cloneElement(child, { onItemClick: handleClose });
+      return cloneElement(child as React.ReactElement, { onItemClick: handleClose } as any);
     }
     return child;
   });
@@ -133,8 +146,16 @@ function DropdownMenu({ children, trigger }) {
   );
 }
 
-function DropdownMenuItem({ children, onClick, disabled = false, style: customStyle = {}, onItemClick }) {
-  const handleClick = (e) => {
+interface DropdownMenuItemProps {
+  children: React.ReactNode;
+  onClick?: (e: React.MouseEvent) => void;
+  disabled?: boolean;
+  style?: React.CSSProperties;
+  onItemClick?: () => void;
+}
+
+function DropdownMenuItem({ children, onClick, disabled = false, style: customStyle = {}, onItemClick }: DropdownMenuItemProps) {
+  const handleClick = (e: React.MouseEvent) => {
     if (disabled) return;
     e.stopPropagation();
     if (onClick) onClick(e);
@@ -177,7 +198,13 @@ function DropdownMenuItem({ children, onClick, disabled = false, style: customSt
   );
 }
 
-function Modal({ title, children, onClose }) {
+interface ModalProps {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}
+
+function Modal({ title, children, onClose }: ModalProps) {
   return (
     <div className="hh-modal-overlay">
       <div className="hh-modal" style={{ maxWidth: 760 }}>
@@ -199,7 +226,7 @@ function Modal({ title, children, onClose }) {
 }
 
 export default function ModuleDetail() {
-  const { moduleId } = useParams();
+  const { moduleId } = useParams<{ moduleId: string }>();
   const navigate = useNavigate();
   const { courses, selectedCourse } = useCourses();
 
@@ -215,11 +242,11 @@ export default function ModuleDetail() {
 
   const currentCourse = selectedCourse || courses.find(c => c.active !== false) || courses[0];
 
-  const [exercises, setExercises] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  const [exercises, setExercises] = useState<any[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState<boolean>(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Load exercises (tasks) from API
   useEffect(() => {
@@ -232,12 +259,21 @@ export default function ModuleDetail() {
     try {
       setLoading(true);
       setError(null);
-      const tasks = await loadTasks(undefined, moduleId);
+      
+      // Get courseId from currentCourse
+      const courseId = currentCourse?.id;
+      if (!courseId) {
+        setError('Course not found');
+        setLoading(false);
+        return;
+      }
+      
+      const tasks = await loadTasks(courseId, moduleId);
       const mapped = tasks.map(mapTaskFromAPI);
       setExercises(mapped);
     } catch (err) {
       console.error('Error loading exercises:', err);
-      setError(err.message || 'Failed to load exercises');
+      setError(err instanceof Error ? err.message : 'Failed to load exercises');
     } finally {
       setLoading(false);
     }
@@ -248,11 +284,11 @@ export default function ModuleDetail() {
     [exercises, editingId]
   );
 
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [difficulty, setDifficulty] = useState('Easy');
-  const [date, setDate] = useState('');
-  const [canvasUrl, setCanvasUrl] = useState('');
+  const [title, setTitle] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
+  const [difficulty, setDifficulty] = useState<string>('Easy');
+  const [date, setDate] = useState<string>('');
+  const [canvasUrl, setCanvasUrl] = useState<string>('');
 
   function resetForm() {
     setEditingId(null);
@@ -268,7 +304,7 @@ export default function ModuleDetail() {
     setModalOpen(true);
   }
 
-  function openEdit(ex) {
+  function openEdit(ex: any) {
     setEditingId(ex.id);
     setTitle(ex.title || '');
     setDescription(ex.description || '');
@@ -305,9 +341,15 @@ export default function ModuleDetail() {
         canvasUrl: canvasUrl.trim(),
       };
 
+      const courseId = currentCourse?.id;
+      if (!courseId) {
+        setError('Course not found');
+        return;
+      }
+
       if (editingId) {
         // Update existing task
-        const apiTask = mapTaskToAPI(exerciseData, moduleId);
+        const apiTask = mapTaskToAPI(exerciseData, moduleId, courseId);
         const updated = await updateTask(editingId, apiTask);
         const mapped = mapTaskFromAPI(updated);
         setExercises((prev) =>
@@ -315,7 +357,7 @@ export default function ModuleDetail() {
         );
       } else {
         // Create new task
-        const apiTask = mapTaskToAPI(exerciseData, moduleId);
+        const apiTask = mapTaskToAPI(exerciseData, moduleId, courseId);
         const created = await createTask(apiTask);
         const mapped = mapTaskFromAPI(created);
         setExercises((prev) => [mapped, ...prev]);
@@ -324,18 +366,18 @@ export default function ModuleDetail() {
       handleCloseModal();
     } catch (err) {
       console.error('Error saving exercise:', err);
-      setError(err.message || 'Failed to save exercise');
+      setError(err instanceof Error ? err.message : 'Failed to save exercise');
     }
   }
 
-  async function remove(id) {
+  async function remove(id: string) {
     try {
       setError(null);
       await deleteTask(id);
       setExercises((prev) => prev.filter((e) => e.id !== id));
     } catch (err) {
       console.error('Error deleting exercise:', err);
-      setError(err.message || 'Failed to delete exercise');
+      setError(err instanceof Error ? err.message : 'Failed to delete exercise');
     }
   }
 

@@ -17,12 +17,12 @@ function NavItem({ to, label, icon: Icon, delay = 0 }) {
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay }}
     >
-      <NavLink
-        to={to}
-        className={({ isActive }) =>
-          ['hh-nav__item', isActive ? 'hh-nav__item--active' : ''].join(' ')
-        }
-      >
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        ['hh-nav__item', isActive ? 'hh-nav__item--active' : ''].join(' ')
+      }
+    >
         {Icon && (
           <Icon 
             style={{ 
@@ -32,8 +32,8 @@ function NavItem({ to, label, icon: Icon, delay = 0 }) {
             }} 
           />
         )}
-        <span className="hh-nav__label">{label}</span>
-      </NavLink>
+      <span className="hh-nav__label">{label}</span>
+    </NavLink>
     </motion.div>
   );
 }

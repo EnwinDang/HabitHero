@@ -1,46 +1,34 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Users, Zap, BarChart3, CheckCircle2, ArrowRight, BookOpen, GraduationCap } from 'lucide-react';
-import { useCourses } from '../../store/courseStore.jsx';
+import { useCourses } from '../../store/courseStore';
 import { useAuth } from '../../context/AuthContext';
 import { useEffect, useState, useMemo } from 'react';
 import { loadTeacherDashboard } from '../../services/teacherDashboard.service';
+import { cache, cacheKeys } from '../../utils/cache';
 
-const activities = [
-  {
-    type: 'completed',
-    title: 'CodeWizard completed Exercise 5',
-    description: 'Loops & Iteration module',
-    timestamp: '2 min ago',
-  },
-  {
-    type: 'created',
-    title: 'New module created',
-    description: 'Arrays & Lists',
-    timestamp: '1 hour ago',
-  },
-  {
-    type: 'completed',
-    title: 'ByteRunner finished Module 2',
-    description: 'Variables & Data Types',
-    timestamp: '3 hours ago',
-  },
-  {
-    type: 'achievement',
-    title: 'LoopNinja earned Level 5',
-    description: 'Reached 500 XP milestone',
-    timestamp: '5 hours ago',
-  },
-  {
-    type: 'module',
-    title: 'Module 3 unlocked',
-    description: 'For 8 students',
-    timestamp: 'Yesterday',
-  },
-];
+// Activities will be fetched from backend in the future
+interface Activity {
+  type: string;
+  title: string;
+  description: string;
+  timestamp: string;
+}
+
+const activities: Activity[] = [];
 
 // KPI Card Component
-function KPICard({ title, value, subtitle, icon: Icon, trend, variant = 'primary', delay = 0 }) {
+interface KPICardProps {
+  title: string;
+  value: string | number;
+  subtitle: string;
+  icon: React.ComponentType<{ style?: React.CSSProperties }>;
+  trend?: { isPositive: boolean; value: number };
+  variant?: 'primary' | 'gold' | 'success';
+  delay?: number;
+}
+
+function KPICard({ title, value, subtitle, icon: Icon, trend, variant = 'primary', delay = 0 }: KPICardProps) {
   const variantColors = {
     primary: { bg: 'rgba(75, 74, 239, 0.10)', icon: 'var(--hh-indigo)', text: 'var(--hh-indigo)' },
     gold: { bg: 'rgba(255, 183, 77, 0.14)', icon: 'var(--hh-gold)', text: 'rgb(161, 98, 7)' },
@@ -86,7 +74,15 @@ function KPICard({ title, value, subtitle, icon: Icon, trend, variant = 'primary
 }
 
 // Activity Item Component
-function ActivityItem({ type, title, description, timestamp, delay = 0 }) {
+interface ActivityItemProps {
+  type: string;
+  title: string;
+  description: string;
+  timestamp: string;
+  delay?: number;
+}
+
+function ActivityItem({ type, title, description, timestamp, delay = 0 }: ActivityItemProps) {
   const typeColors = {
     completed: { dot: 'var(--hh-green)', bg: 'rgba(74, 222, 128, 0.10)' },
     created: { dot: 'var(--hh-indigo)', bg: 'rgba(75, 74, 239, 0.10)' },
@@ -129,7 +125,13 @@ function ActivityItem({ type, title, description, timestamp, delay = 0 }) {
 }
 
 // Progress Bar Component
-function ProgressBar({ value, label, size = 'md' }) {
+interface ProgressBarProps {
+  value: number;
+  label?: string;
+  size?: 'md' | 'lg';
+}
+
+function ProgressBar({ value, label, size = 'md' }: ProgressBarProps) {
   const height = size === 'lg' ? 12 : 10;
   return (
     <div>
@@ -147,7 +149,15 @@ function ProgressBar({ value, label, size = 'md' }) {
 }
 
 // Course Overview Card Component
-function CourseOverviewCard({ courseId, courseData, courseInfo, delay = 0, onViewModules }) {
+interface CourseOverviewCardProps {
+  courseId: string;
+  courseData: any;
+  courseInfo: any;
+  delay?: number;
+  onViewModules: () => void;
+}
+
+function CourseOverviewCard({ courseId, courseData, courseInfo, delay = 0, onViewModules }: CourseOverviewCardProps) {
   const overview = courseData?.overview || {};
   const modules = courseData?.modules || {};
   const students = courseData?.students || {};
@@ -158,8 +168,8 @@ function CourseOverviewCard({ courseId, courseData, courseInfo, delay = 0, onVie
     ? Math.round(Object.values(modules).reduce((sum, m) => sum + (m.completionRate || 0), 0) / totalModules)
     : 0;
   
-  // Calculate student status distribution (simplified - would need more data for accurate calculation)
-  const totalStudents = overview.totalStudents || Object.keys(students).length || 0;
+  // Get student count from overview (updated by API) or count students object as fallback
+  const totalStudents = overview?.totalStudents ?? (students ? Object.keys(students).length : 0);
   
   return (
     <motion.div
@@ -498,13 +508,19 @@ export default function Dashboard() {
           </h2>
           
           <div style={{ display: 'grid', gap: 4 }}>
-            {activities.map((activity, index) => (
-              <ActivityItem
-                key={index}
-                {...activity}
-                delay={0.6 + index * 0.05}
-              />
-            ))}
+            {activities.length > 0 ? (
+              activities.map((activity, index) => (
+                <ActivityItem
+                  key={index}
+                  {...activity}
+                  delay={0.6 + index * 0.05}
+                />
+              ))
+            ) : (
+              <p style={{ fontSize: 14, color: 'var(--hh-muted)', textAlign: 'center', padding: 16 }}>
+                No recent activity
+              </p>
+            )}
           </div>
 
           <button

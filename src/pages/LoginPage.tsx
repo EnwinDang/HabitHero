@@ -92,10 +92,10 @@ export default function LoginPage() {
         <div style={{ marginTop: 18, display: 'grid', gap: 14 }}>
           <div>
             <div className="hh-label">Email</div>
-            <input
+        <input
               ref={emailRef}
-              type="email"
-              value={email}
+          type="email"
+          value={email}
               onChange={(e) => setEmail(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -113,10 +113,10 @@ export default function LoginPage() {
 
           <div>
             <div className="hh-label">Password</div>
-            <input
+        <input
               ref={passwordRef}
-              type="password"
-              value={password}
+          type="password"
+          value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !loading) {
@@ -128,7 +128,7 @@ export default function LoginPage() {
               className="hh-input"
               style={{ marginTop: 8 }}
               disabled={loading}
-            />
+        />
           </div>
 
           <button
@@ -139,11 +139,11 @@ export default function LoginPage() {
             style={{ width: '100%', paddingTop: 12, paddingBottom: 12 }}
           >
             {loading ? "Bezig..." : "Log in"}
-          </button>
+        </button>
 
           <div className="hh-hint" style={{ textAlign: 'center' }}>
             of
-          </div>
+      </div>
 
           <button
             type="button"
@@ -153,7 +153,7 @@ export default function LoginPage() {
             style={{ width: '100%', paddingTop: 12, paddingBottom: 12 }}
           >
             {loading ? "Bezig..." : "Login met Google"}
-          </button>
+      </button>
 
           <div className="hh-hint" style={{ textAlign: 'center' }}>
             No account? <Link to="/register">Create account</Link>

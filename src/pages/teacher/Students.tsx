@@ -1,11 +1,16 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useCourses } from '../../store/courseStore.jsx';
+import { useCourses } from '../../store/courseStore';
 import { useAuth } from '../../context/AuthContext';
 import { loadCourseStudents } from '../../services/teacherDashboard.service';
+import { cache, cacheKeys } from '../../utils/cache';
 
-function StatusPill({ value }) {
+interface StatusPillProps {
+  value: string;
+}
+
+function StatusPill({ value }: StatusPillProps) {
   const cls =
     value === 'Ahead'
       ? 'hh-pill hh-pill--ahead'
@@ -21,23 +26,125 @@ function StatusPill({ value }) {
   );
 }
 
+interface Student {
+  id: string;
+  name: string;
+  level: number;
+  completed: number;
+  total: number;
+  status: string;
+  totalXP: number;
+  currentModule?: string;
+  lastActive?: string;
+}
+
 export default function Students() {
   const navigate = useNavigate();
-  const { selectedCourse, courses } = useCourses();
+  const { selectedCourse, courses, loading: coursesLoading } = useCourses();
   const { firebaseUser } = useAuth();
-  const currentCourse = selectedCourse || courses.find(c => c.active !== false) || courses[0];
-  const [status, setStatus] = useState('All');
-  const [sort, setSort] = useState('name');
-  const [students, setStudents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  // Fetch students from database
+  
+  // Local state for course selection on this page
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+  
+  // Memoize currentCourse - use local selection first, then global, then default
+  const currentCourse = useMemo(() => {
+    if (selectedCourseId) {
+      return courses.find(c => c.id === selectedCourseId) || null;
+    }
+    return selectedCourse || courses.find(c => c.active !== false) || courses[0] || null;
+  }, [selectedCourseId, selectedCourse, courses]);
+  
+  // Update local selection when courses load or global selection changes
   useEffect(() => {
+    if (!selectedCourseId && courses.length > 0) {
+      const defaultCourse = selectedCourse || courses.find(c => c.active !== false) || courses[0];
+      if (defaultCourse) {
+        setSelectedCourseId(defaultCourse.id);
+      }
+    }
+  }, [courses, selectedCourse, selectedCourseId]);
+  
+  // Memoize total tasks calculation to avoid recalculating on every render
+  const totalTasks = useMemo(() => {
+    return currentCourse?.modules?.reduce((sum, m) => sum + (m.exercises || 0), 0) || 0;
+  }, [currentCourse?.modules]);
+  
+  const [status, setStatus] = useState<string>('All');
+  const [sort, setSort] = useState<string>('name');
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch students from database - optimized to only run when courseId or userId changes
+  const fetchStudents = useCallback(async () => {
+    if (!firebaseUser?.uid || !currentCourse?.id) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('Fetching students for:', { teacherId: firebaseUser.uid, courseId: currentCourse.id });
+      const studentsData = await loadCourseStudents(firebaseUser.uid, currentCourse.id);
+      console.log('Students data received:', studentsData);
+      
+      if (studentsData) {
+        // Convert students object to array and calculate status
+        const studentsArray = Object.entries(studentsData).map(([studentId, studentInfo]: [string, any]) => {
+          // Calculate completion percentage based on tasks completed
+          const completion = totalTasks > 0 ? Math.round((studentInfo.tasksCompleted / totalTasks) * 100) : 0;
+          
+          // Determine status based on completion
+          let studentStatus = 'On track';
+          if (completion >= 80) {
+            studentStatus = 'Ahead';
+          } else if (completion < 50) {
+            studentStatus = 'Behind';
+          }
+          
+          // Calculate level from XP (assuming 100 XP per level for simplicity)
+          const level = Math.floor(studentInfo.totalXP / 100) + 1;
+          
+          return {
+            id: studentId,
+            name: studentInfo.displayName,
+            level: level,
+            completed: studentInfo.tasksCompleted,
+            total: totalTasks,
+            status: studentStatus,
+            totalXP: studentInfo.totalXP,
+            currentModule: studentInfo.currentModule,
+            lastActive: studentInfo.lastActive,
+          };
+        });
+        
+        console.log('Processed students array:', studentsArray);
+        setStudents(studentsArray);
+      } else {
+        console.log('No students data found');
+        setStudents([]);
+      }
+    } catch (err) {
+      console.error('Error loading students:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load students');
+      setStudents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [firebaseUser?.uid, currentCourse?.id, totalTasks]);
+
+  useEffect(() => {
+    // Wait for courses to finish loading
+    if (coursesLoading) {
+      setLoading(true);
+      return;
+    }
+
     if (!firebaseUser?.uid) {
       console.log('Students: No firebaseUser.uid');
       setLoading(false);
       setError('Not authenticated');
+      setStudents([]);
       return;
     }
 
@@ -49,63 +156,8 @@ export default function Students() {
       return;
     }
 
-    async function fetchStudents() {
-      try {
-        setLoading(true);
-        setError(null);
-        console.log('Fetching students for:', { teacherId: firebaseUser.uid, courseId: currentCourse.id });
-        const studentsData = await loadCourseStudents(firebaseUser.uid, currentCourse.id);
-        console.log('Students data received:', studentsData);
-        
-        if (studentsData) {
-          // Convert students object to array and calculate status
-          const studentsArray = Object.entries(studentsData).map(([studentId, studentInfo]) => {
-            // Calculate completion percentage based on tasks completed
-            // We'll need to get total tasks from course data or calculate it
-            const totalTasks = currentCourse.modules?.reduce((sum, m) => sum + (m.exercises || 0), 0) || 0;
-            const completion = totalTasks > 0 ? Math.round((studentInfo.tasksCompleted / totalTasks) * 100) : 0;
-            
-            // Determine status based on completion
-            let studentStatus = 'On track';
-            if (completion >= 80) {
-              studentStatus = 'Ahead';
-            } else if (completion < 50) {
-              studentStatus = 'Behind';
-            }
-            
-            // Calculate level from XP (assuming 100 XP per level for simplicity)
-            const level = Math.floor(studentInfo.totalXP / 100) + 1;
-            
-            return {
-              id: studentId,
-              name: studentInfo.displayName,
-              level: level,
-              completed: studentInfo.tasksCompleted,
-              total: totalTasks,
-              status: studentStatus,
-              totalXP: studentInfo.totalXP,
-              currentModule: studentInfo.currentModule,
-              lastActive: studentInfo.lastActive,
-            };
-          });
-          
-          console.log('Processed students array:', studentsArray);
-          setStudents(studentsArray);
-        } else {
-          console.log('No students data found');
-          setStudents([]);
-        }
-      } catch (err) {
-        console.error('Error loading students:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load students');
-        setStudents([]);
-      } finally {
-        setLoading(false);
-      }
-    }
-
     fetchStudents();
-  }, [firebaseUser?.uid, currentCourse?.id, currentCourse, courses]);
+  }, [firebaseUser?.uid, currentCourse?.id, coursesLoading, fetchStudents]);
 
   const rows = useMemo(() => {
     let filtered = students;
@@ -181,11 +233,33 @@ export default function Students() {
         <div>
           <div className="hh-label">Student Progress</div>
           <div className="hh-title" style={{ marginTop: 8 }}>
-            Student Progress – {currentCourse?.name || 'No course selected'}
+            Student Progress
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div className="hh-label">Course</div>
+            <select
+              value={selectedCourseId || ''}
+              onChange={(e) => setSelectedCourseId(e.target.value || null)}
+              className="hh-select"
+              style={{ marginTop: 8, width: 240 }}
+              disabled={coursesLoading || courses.length === 0}
+            >
+              {coursesLoading ? (
+                <option>Loading courses...</option>
+              ) : courses.length === 0 ? (
+                <option>No courses available</option>
+              ) : (
+                courses.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
           <div>
             <div className="hh-label">Status</div>
             <select
@@ -280,4 +354,3 @@ export default function Students() {
     </motion.div>
   );
 }
-

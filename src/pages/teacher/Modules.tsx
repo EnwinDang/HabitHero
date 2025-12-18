@@ -1,10 +1,16 @@
 import { useMemo, useState, cloneElement, Children } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Plus, BookOpen, MoreVertical, Pencil, Trash2 } from 'lucide-react';
-import { useCourses } from '../../store/courseStore.jsx';
+import { useCourses } from '../../store/courseStore';
 
-function Modal({ title, children, onClose }) {
+interface ModalProps {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}
+
+function Modal({ title, children, onClose }: ModalProps) {
   return (
     <div className="hh-modal-overlay">
       <div className="hh-modal" style={{ maxWidth: 640 }}>
@@ -25,11 +31,16 @@ function Modal({ title, children, onClose }) {
   );
 }
 
-function DropdownMenu({ children, trigger }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [triggerRect, setTriggerRect] = useState(null);
+interface DropdownMenuProps {
+  children: React.ReactNode;
+  trigger: React.ReactElement;
+}
 
-  const handleToggle = (e) => {
+function DropdownMenu({ children, trigger }: DropdownMenuProps) {
+  const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [triggerRect, setTriggerRect] = useState<{ top: number; right: number } | null>(null);
+
+  const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isOpen) {
       // Get trigger button position for fixed positioning
@@ -49,19 +60,22 @@ function DropdownMenu({ children, trigger }) {
 
   // Clone trigger to add click handler
   const triggerWithClick = cloneElement(trigger, {
-    onClick: (e) => {
+    onClick: (e: React.MouseEvent) => {
       handleToggle(e);
       // Call original onClick if it exists
-      if (trigger.props.onClick) {
-        trigger.props.onClick(e);
+      if (trigger.props && typeof trigger.props === 'object' && 'onClick' in trigger.props) {
+        const onClick = (trigger.props as any).onClick;
+        if (typeof onClick === 'function') {
+          onClick(e);
+        }
       }
     },
-  });
+  } as any);
 
   // Clone children to add close handler
   const childrenWithClose = Children.map(children, (child) => {
     if (child && typeof child === 'object' && 'type' in child) {
-      return cloneElement(child, { onItemClick: handleClose });
+      return cloneElement(child as React.ReactElement, { onItemClick: handleClose } as any);
     }
     return child;
   });
@@ -102,8 +116,16 @@ function DropdownMenu({ children, trigger }) {
   );
 }
 
-function DropdownMenuItem({ children, onClick, disabled = false, style: customStyle = {}, onItemClick }) {
-  const handleClick = (e) => {
+interface DropdownMenuItemProps {
+  children: React.ReactNode;
+  onClick?: (e: React.MouseEvent) => void;
+  disabled?: boolean;
+  style?: React.CSSProperties;
+  onItemClick?: () => void;
+}
+
+function DropdownMenuItem({ children, onClick, disabled = false, style: customStyle = {}, onItemClick }: DropdownMenuItemProps) {
+  const handleClick = (e: React.MouseEvent) => {
     if (disabled) return;
     e.stopPropagation();
     if (onClick) onClick(e);
@@ -158,9 +180,9 @@ export default function Modules() {
     deleteModule,
   } = useCourses();
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [editingCourseId, setEditingCourseId] = useState(null);
+  const [modalOpen, setModalOpen] = useState<boolean>(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   
   // Find the module being edited across all courses
   const editing = useMemo(() => {
@@ -169,10 +191,10 @@ export default function Modules() {
     return course?.modules?.find((m) => m.id === editingId) || null;
   }, [courses, editingId, editingCourseId]);
 
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+  const [name, setName] = useState<string>('');
+  const [description, setDescription] = useState<string>('');
 
-  function openCreate(courseId) {
+  function openCreate(courseId: string) {
     setEditingId(null);
     setEditingCourseId(courseId);
     setName('');
@@ -180,7 +202,7 @@ export default function Modules() {
     setModalOpen(true);
   }
 
-  function openEdit(module, courseId) {
+  function openEdit(module: { id: string; name: string; description: string }, courseId: string) {
     setEditingId(module.id);
     setEditingCourseId(courseId);
     setName(module.name);
@@ -211,7 +233,7 @@ export default function Modules() {
     }
   }
 
-  async function remove(courseId, moduleId) {
+  async function remove(courseId: string, moduleId: string) {
     if (!courseId) return;
     try {
       await deleteModule(courseId, moduleId);

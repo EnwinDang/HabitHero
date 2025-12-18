@@ -1,9 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useCourses } from '../../store/courseStore.jsx';
+import { useCourses } from '../../store/courseStore';
 
-function Modal({ title, children, onClose }) {
+interface ModalProps {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}
+
+function Modal({ title, children, onClose }: ModalProps) {
   return (
     <div className="hh-modal-overlay">
       <div className="hh-modal" style={{ maxWidth: 720 }}>
@@ -36,14 +42,14 @@ export default function Courses() {
     deleteCourse,
   } = useCourses();
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null);
+  const [modalOpen, setModalOpen] = useState<boolean>(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const editing = useMemo(() => courses.find((c) => c.id === editingId) || null, [courses, editingId]);
 
-  const [name, setName] = useState('');
-  const [year, setYear] = useState('');
-  const [program, setProgram] = useState('');
+  const [name, setName] = useState<string>('');
+  const [year, setYear] = useState<string>('');
+  const [program, setProgram] = useState<string>('');
 
   function openCreate() {
     setEditingId(null);
@@ -53,7 +59,7 @@ export default function Courses() {
     setModalOpen(true);
   }
 
-  function openEdit(course) {
+  function openEdit(course: { id: string; name?: string; year?: string; program?: string }) {
     setEditingId(course.id);
     setName(course.name || '');
     setYear(course.year || '');
