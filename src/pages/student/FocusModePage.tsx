@@ -4,6 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { UsersAPI } from "@/api/users.api";
+import { onFocusSessionCompleted, onLevelUp } from "@/services/achievement.service";
 
 export default function FocusModePage() {
     const navigate = useNavigate();
@@ -56,6 +57,14 @@ export default function FocusModePage() {
             // Show XP notification with the amount from the backend
             setXpGained(result.xpGained);
             setTimeout(() => setXpGained(null), 3000);
+
+            // Update achievements - use sessions + 1 because state hasn't updated yet
+            await onFocusSessionCompleted(sessions + 1);
+
+            // Check for level up achievements
+            if (result.leveledUp) {
+                await onLevelUp(result.newLevel);
+            }
         } catch (error) {
             console.error("Failed to complete focus session:", error);
         }
@@ -117,7 +126,7 @@ export default function FocusModePage() {
                         <SidebarItem icon="📜" label="Quests" onClick={() => { }} />
                         <SidebarItem icon="⏱️" label="Focus Mode" active onClick={() => navigate("/focus")} />
                         <SidebarItem icon="📊" label="Stats" onClick={() => navigate("/stats")} />
-                        <SidebarItem icon="🏆" label="Achievements" onClick={() => { }} />
+                        <SidebarItem icon="🏆" label="Achievements" onClick={() => navigate("/achievements")} />
                         <SidebarItem icon="📅" label="Calendar" onClick={() => navigate("/calendar")} />
                         <SidebarItem icon="👤" label="Profile" onClick={() => navigate("/profile")} />
                         <SidebarItem icon="⚙️" label="Settings" onClick={() => { }} />
@@ -191,7 +200,7 @@ export default function FocusModePage() {
                                     onClick={handleStart}
                                     className="flex flex-col items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-xl font-medium transition-colors"
                                 >
-                                   
+
                                     <span>Start</span>
                                 </button>
                             ) : (
@@ -199,7 +208,7 @@ export default function FocusModePage() {
                                     onClick={handlePause}
                                     className="flex flex-col items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-xl font-medium transition-colors"
                                 >
-                                   
+
                                     <span>Pause</span>
                                 </button>
                             )}
@@ -207,7 +216,7 @@ export default function FocusModePage() {
                                 onClick={handleReset}
                                 className="flex flex-col items-center gap-1 bg-white border-2 border-purple-200 text-purple-600 hover:bg-purple-50 px-8 py-3 rounded-xl font-medium transition-colors"
                             >
-                                
+
                                 <span>Reset</span>
                             </button>
                         </div>
