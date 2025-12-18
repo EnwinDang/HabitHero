@@ -103,7 +103,7 @@ export default function HomePage() {
           <h1 className="text-2xl font-bold" style={theme.gradientText}>
             HabitHero
           </h1>
-          <p className={`text-xs ${theme.textSubtle} mt-1`}>ARISE</p>
+          {/* <p className={`text-xs ${theme.textSubtle} mt-1`}>ARISE</p> */}
         </div>
 
         <nav className="flex-1 px-4">
@@ -134,10 +134,8 @@ export default function HomePage() {
       <main className="flex-1 p-8 overflow-y-auto">
         {/* Welcome Header */}
         <div className="mb-6">
-          <p className="text-sm tracking-widest uppercase mb-1" style={theme.accentText}>Welcome back, Hunter</p>
-          <h2 className={`text-4xl font-bold ${theme.text}`}>
-            {user.displayName}
-          </h2>
+          <p className="text-3xl font-bold tracking-widest uppercase mb-1" style={theme.accentText}>Welcome back, {user.displayName}</p>
+          
         </div>
 
         {/* HERO CARD */}
@@ -159,10 +157,7 @@ export default function HomePage() {
                 <div className="w-32 h-40 rounded-xl border-2 flex items-center justify-center overflow-hidden" style={{ borderColor: `${accentColor}80`, backgroundColor: darkMode ? 'rgba(88, 28, 135, 0.3)' : 'rgba(219, 234, 254, 0.5)' }}>
                   <span className="text-6xl">⚔️</span>
                 </div>
-                {/* Rank Badge */}
-                <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 px-3 py-1 rounded-full text-xs font-bold text-white" style={{ background: `linear-gradient(to right, ${accentColor}, #a855f7)`, borderWidth: '1px', borderStyle: 'solid', borderColor: `${accentColor}80` }}>
-                  RANK S
-                </div>
+               
               </div>
 
               {/* Stats */}
@@ -170,7 +165,7 @@ export default function HomePage() {
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <h3 className={`text-2xl font-bold ${theme.text}`}>{user.displayName}</h3>
-                    <p style={theme.accentText}>Shadow Monarch • Level {user.stats.level}</p>
+                    <p style={theme.accentText}> Level {user.stats.level}</p>
                   </div>
                   <div className="px-4 py-2 rounded-lg" style={{ backgroundColor: 'rgba(234, 179, 8, 0.2)', borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(234, 179, 8, 0.5)' }}>
                     <p className="text-yellow-400 font-bold flex items-center gap-1">
@@ -233,65 +228,92 @@ export default function HomePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* LEFT COLUMN */}
           <div className="lg:col-span-2 space-y-6">
-            {/* POMODORO TIMER */}
-            <div className="relative">
-              <div className="absolute -inset-0.5 rounded-2xl blur opacity-20" style={{ background: `linear-gradient(to right, ${accentColor}, #a855f7)` }}></div>
-              <div className={`relative ${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl">⚡</span>
-                  <h3 className={`text-xl font-bold ${theme.text}`}>Focus Mode</h3>
-                </div>
-                <p className={`${theme.textSubtle} text-sm mb-6`}>Enter the zone. Eliminate distractions.</p>
-
-                <div className="flex flex-col items-center">
-                  {/* Timer Circle */}
-                  <div className="relative w-48 h-48 mb-6">
-                    <svg className="w-full h-full transform -rotate-90">
-                      <circle cx="96" cy="96" r="88" stroke={darkMode ? "#1e1e2e" : "#e5e7eb"} strokeWidth="12" fill="none" />
-                      <circle
-                        cx="96"
-                        cy="96"
-                        r="88"
-                        stroke={`url(#timerGradient-${accentColor.replace('#', '')})`}
-                        strokeWidth="12"
-                        fill="none"
-                        strokeLinecap="round"
-                        strokeDasharray={2 * Math.PI * 88}
-                        strokeDashoffset={2 * Math.PI * 88 * (1 - progress / 100)}
-                        className="transition-all duration-1000"
-                        style={{ filter: `drop-shadow(0 0 10px ${accentColor}80)` }}
-                      />
-                      <defs>
-                        <linearGradient id={`timerGradient-${accentColor.replace('#', '')}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%" stopColor={accentColor} />
-                          <stop offset="100%" stopColor="#a855f7" />
-                        </linearGradient>
-                      </defs>
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className={`text-4xl font-bold ${theme.text} font-mono`}>{formatTime(timeLeft)}</span>
-                      <span className="text-sm" style={theme.accentText}>{isRunning ? "HUNTING..." : "READY"}</span>
+            {/* DAILY QUEST + POMODORO (50/50) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* DAILY QUEST */}
+              <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+                <div className="flex justify-between items-center mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(to br, ${accentColor}, #a855f7)` }}>
+                      <span className="text-xl">📚</span>
+                    </div>
+                    <div>
+                      <h3 className={`text-xl font-bold ${theme.text}`}>Daily tasks</h3>
+                      {/* <p className={`${theme.textSubtle} text-sm`}>Daily tasks</p> */}
                     </div>
                   </div>
+                  <button className="text-sm" style={theme.accentText}>View All →</button>
+                </div>
 
-                  {/* Controls */}
-                  <div className="flex gap-3">
-                    <button
-                      onClick={handleStartPause}
-                      className="text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all"
-                      style={{
-                        background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
-                        boxShadow: `0 0 20px ${accentColor}50`
-                      }}
-                    >
-                      {isRunning ? "⏸️ PAUSE" : "▶️ ARISE"}
-                    </button>
-                    <button
-                      onClick={handleReset}
-                      className={`${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'} px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors`}
-                    >
-                      🔄 RESET
-                    </button>
+                <div className="py-12 text-center flex flex-col items-center justify-center">
+                  <div className={`w-16 h-16 ${darkMode ? 'bg-gray-800/50' : 'bg-gray-100'} rounded-full flex items-center justify-center mb-4`}>
+                    <span className="text-3xl">📝</span>
+                  </div>
+                  <p className={theme.textMuted}>No active quests</p>
+                  <p className={`${theme.textSubtle} text-sm`}>Complete quests to earn XP and Gold</p>
+                </div>
+              </div>
+
+              {/* POMODORO TIMER */}
+              <div className="relative">
+                <div className="absolute -inset-0.5 rounded-2xl blur opacity-20" style={{ background: `linear-gradient(to right, ${accentColor}, #a855f7)` }}></div>
+                <div className={`relative ${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-2xl">⚡</span>
+                    <h3 className={`text-xl font-bold ${theme.text}`}>Focus Mode</h3>
+                  </div>
+                  <p className={`${theme.textSubtle} text-sm mb-6`}>Enter the zone. Eliminate distractions.</p>
+
+                  <div className="flex flex-col items-center">
+                    {/* Timer Circle */}
+                    <div className="relative w-48 h-48 mb-6">
+                      <svg className="w-full h-full transform -rotate-90">
+                        <circle cx="96" cy="96" r="88" stroke={darkMode ? "#1e1e2e" : "#e5e7eb"} strokeWidth="12" fill="none" />
+                        <circle
+                          cx="96"
+                          cy="96"
+                          r="88"
+                          stroke={`url(#timerGradient-${accentColor.replace('#', '')})`}
+                          strokeWidth="12"
+                          fill="none"
+                          strokeLinecap="round"
+                          strokeDasharray={2 * Math.PI * 88}
+                          strokeDashoffset={2 * Math.PI * 88 * (1 - progress / 100)}
+                          className="transition-all duration-1000"
+                          style={{ filter: `drop-shadow(0 0 10px ${accentColor}80)` }}
+                        />
+                        <defs>
+                          <linearGradient id={`timerGradient-${accentColor.replace('#', '')}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor={accentColor} />
+                            <stop offset="100%" stopColor="#a855f7" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className={`text-4xl font-bold ${theme.text} font-mono`}>{formatTime(timeLeft)}</span>
+                        <span className="text-sm" style={theme.accentText}>{isRunning ? "FOCUS" : "READY"}</span>
+                      </div>
+                    </div>
+
+                    {/* Controls */}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={handleStartPause}
+                        className="text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all"
+                        style={{
+                          background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                          boxShadow: `0 0 20px ${accentColor}50`
+                        }}
+                      >
+                        {isRunning ? "PAUSE" : "START"}
+                      </button>
+                      <button
+                        onClick={handleReset}
+                        className={`${darkMode ? 'bg-gray-800 hover:bg-gray-700 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'} px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors`}
+                      >
+                        RESET
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -327,29 +349,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* DAILY QUEST */}
-            <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: `linear-gradient(to br, ${accentColor}, #a855f7)` }}>
-                    <span className="text-xl">📚</span>
-                  </div>
-                  <div>
-                    <h3 className={`text-xl font-bold ${theme.text}`}>Programming Essentials 1</h3>
-                    <p className={`${theme.textSubtle} text-sm`}>Daily Quests</p>
-                  </div>
-                </div>
-                <button className="text-sm" style={theme.accentText}>View All →</button>
-              </div>
-
-              <div className="text-center py-8">
-                <div className={`w-16 h-16 mx-auto ${darkMode ? 'bg-gray-800/50' : 'bg-gray-100'} rounded-full flex items-center justify-center mb-3`}>
-                  <span className="text-3xl">📝</span>
-                </div>
-                <p className={theme.textMuted}>No active quests</p>
-                <p className={`${theme.textSubtle} text-sm`}>Complete quests to earn XP and Gold</p>
-              </div>
-            </div>
+            
           </div>
 
           {/* RIGHT COLUMN */}
@@ -379,7 +379,7 @@ export default function HomePage() {
                   <p className="text-3xl font-bold text-orange-400">{user.stats.streak} days</p>
                 </div>
               </div>
-              <p className={`${theme.textSubtle} text-sm`}>Keep hunting to maintain your streak!</p>
+              {/* <p className={`${theme.textSubtle} text-sm`}>Keep hunting to maintain your streak!</p> */}
             </div>
 
             {/* TODAY'S PROGRESS */}
