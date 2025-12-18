@@ -1,25 +1,30 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "@/context/AuthContext";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
+import { usePomodoro } from "@/context/pomodoro";
 
 export default function HomePage() {
   const navigate = useNavigate();
   const { logout, loading: authLoading } = useAuth();
   const { user, loading: userLoading, error: userError } = useRealtimeUser();
-  const { tasks, loading: tasksLoading, error: tasksError } = useRealtimeTasks();
+  const { error: tasksError } = useRealtimeTasks();
   const { darkMode, accentColor } = useTheme();
+  const {
+    focusDuration,
+    setFocusDuration,
+    status,
+    timeLeftSeconds,
+    toggle,
+    reset,
+    sessionsCompleted,
+    totalFocusSeconds,
+  } = usePomodoro();
 
-  const [error, setError] = useState<string | null>(null);
-
-  // Pomodoro State
-  const [timeLeft, setTimeLeft] = useState(25 * 60);
-  const [isRunning, setIsRunning] = useState(false);
-  const [sessions, setSessions] = useState(0);
-  const [focusTime, setFocusTime] = useState(0);
+  const [error] = useState<string | null>(null);
 
   // Get theme classes
   const theme = getThemeClasses(darkMode, accentColor);
@@ -48,33 +53,14 @@ export default function HomePage() {
 
   const weekDates = getWeekDates();
 
-  // Pomodoro Timer Effect
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (isRunning && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-        setFocusTime((prev) => prev + 1);
-      }, 1000);
-    } else if (timeLeft === 0 && isRunning) {
-      setIsRunning(false);
-      setSessions((prev) => prev + 1);
-      setTimeLeft(25 * 60);
-    }
-    return () => clearInterval(interval);
-  }, [isRunning, timeLeft]);
-
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const handleStartPause = () => setIsRunning(!isRunning);
-  const handleReset = () => {
-    setIsRunning(false);
-    setTimeLeft(25 * 60);
-  };
+  const handleStartPause = () => toggle();
+  const handleReset = () => reset();
 
   async function handleLogout() {
     await logout();
@@ -93,7 +79,9 @@ export default function HomePage() {
     return null;
   }
 
-  const progress = Math.round(((25 * 60 - timeLeft) / (25 * 60)) * 100);
+  const totalSeconds = focusDuration * 60;
+  const safeTimeLeft = Math.min(Math.max(timeLeftSeconds, 0), totalSeconds);
+  const progress = Math.round(((totalSeconds - safeTimeLeft) / totalSeconds) * 100);
 
   return (
     <div className={`min-h-screen ${theme.bg} flex transition-colors duration-300`}>
@@ -264,10 +252,28 @@ export default function HomePage() {
                   </div>
                   <p className={`${theme.textSubtle} text-sm mb-6`}>Enter the zone. Eliminate distractions.</p>
 
+                  <div className="mb-4">
+                    <label className={`${theme.textSubtle} text-xs block mb-1`}>Minutes</label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={180}
+                      step={1}
+                      value={focusDuration}
+                      onChange={(e) => {
+                        const raw = e.currentTarget.valueAsNumber;
+                        if (Number.isNaN(raw)) return;
+                        setFocusDuration(raw);
+                      }}
+                      className={`${darkMode ? 'bg-gray-800/50 text-gray-200 border-gray-700' : 'bg-gray-100 text-gray-800 border-gray-200'} w-full p-2 rounded-lg border`}
+                    />
+                  </div>
+
                   <div className="flex flex-col items-center">
                     {/* Timer Circle */}
                     <div className="relative w-48 h-48 mb-6">
-                      <svg className="w-full h-full transform -rotate-90">
+                      <svg viewBox="0 0 192 192" preserveAspectRatio="xMidYMid meet" className="w-full h-full transform -rotate-90">
                         <circle cx="96" cy="96" r="88" stroke={darkMode ? "#1e1e2e" : "#e5e7eb"} strokeWidth="12" fill="none" />
                         <circle
                           cx="96"
@@ -290,8 +296,8 @@ export default function HomePage() {
                         </defs>
                       </svg>
                       <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className={`text-4xl font-bold ${theme.text} font-mono`}>{formatTime(timeLeft)}</span>
-                        <span className="text-sm" style={theme.accentText}>{isRunning ? "FOCUS" : "READY"}</span>
+                        <span className={`text-4xl font-bold ${theme.text} font-mono`}>{formatTime(safeTimeLeft)}</span>
+                        <span className="text-sm" style={theme.accentText}>{status === "running" ? "FOCUS" : "READY"}</span>
                       </div>
                     </div>
 
@@ -305,7 +311,7 @@ export default function HomePage() {
                           boxShadow: `0 0 20px ${accentColor}50`
                         }}
                       >
-                        {isRunning ? "PAUSE" : "START"}
+                        {status === "running" ? "PAUSE" : "START"}
                       </button>
                       <button
                         onClick={handleReset}
@@ -388,17 +394,17 @@ export default function HomePage() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className={theme.textMuted}>Sessions</span>
-                  <span className="font-bold" style={theme.accentText}>{sessions}</span>
+                  <span className="font-bold" style={theme.accentText}>{sessionsCompleted}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className={theme.textMuted}>Focus Time</span>
-                  <span className="text-purple-400 font-bold">{Math.floor(focusTime / 60)} min</span>
+                  <span className="text-purple-400 font-bold">{Math.floor(totalFocusSeconds / 60)} min</span>
                 </div>
                 <div className={`h-2 ${darkMode ? 'bg-gray-800' : 'bg-gray-200'} rounded-full overflow-hidden`}>
                   <div
                     className="h-full rounded-full"
                     style={{
-                      width: `${Math.min(focusTime / 60 / 60 * 100, 100)}%`,
+                      width: `${Math.min(totalFocusSeconds / 60 / 60 * 100, 100)}%`,
                       background: `linear-gradient(to right, ${accentColor}, #a855f7)`
                     }}
                   />
