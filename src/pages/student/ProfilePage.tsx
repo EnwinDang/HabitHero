@@ -58,7 +58,7 @@ export default function ProfilePage() {
                     <h1 className="text-2xl font-bold" style={theme.gradientText}>
                         HabitHero
                     </h1>
-                    <p className={`text-xs ${theme.textSubtle} mt-1`}>ARISE</p>
+                    {/* <p className={`text-xs ${theme.textSubtle} mt-1`}>ARISE</p> */}
                 </div>
 
                 <nav className="flex-1 px-4">
@@ -89,7 +89,7 @@ export default function ProfilePage() {
             <main className="flex-1 p-8 overflow-y-auto">
                 {/* Header */}
                 <div className="mb-8">
-                    <p className="text-sm tracking-widest uppercase mb-1" style={theme.accentText}>Hunter Profile</p>
+                
                     <h2 className={`text-4xl font-bold ${theme.text}`}>Profile Settings</h2>
                 </div>
 
@@ -108,10 +108,10 @@ export default function ProfilePage() {
                                 <div className="absolute bottom-0 left-0 w-12 h-12 border-l-2 border-b-2" style={{ borderColor: `${accentColor}80` }}></div>
                                 <div className="absolute bottom-0 right-0 w-12 h-12 border-r-2 border-b-2" style={{ borderColor: `${accentColor}80` }}></div>
 
-                                {/* Rank Badge */}
+                                {/* Rank Badge
                                 <div className="absolute top-4 right-4 px-3 py-1 rounded text-xs font-bold text-white" style={{ background: `linear-gradient(to right, ${accentColor}, #a855f7)` }}>
                                     RANK S
-                                </div>
+                                </div> */}
 
                                 {/* Avatar */}
                                 <div className="w-28 h-28 mx-auto rounded-xl border-2 flex items-center justify-center mb-4" style={{ borderColor: `${accentColor}80`, backgroundColor: darkMode ? 'rgba(88, 28, 135, 0.3)' : 'rgba(219, 234, 254, 0.5)', boxShadow: `0 0 30px ${accentColor}30` }}>
@@ -119,13 +119,13 @@ export default function ProfilePage() {
                                 </div>
 
                                 <h3 className={`text-2xl font-bold ${theme.text}`}>{user.displayName}</h3>
-                                <p style={theme.accentText}>Shadow Monarch</p>
+                                {/* <p style={theme.accentText}>Shadow Monarch</p> */}
 
                                 <div className="mt-6 pt-4" style={{ borderTopWidth: '1px', borderTopStyle: 'solid', borderColor: `${accentColor}30` }}>
                                     <p className="text-4xl font-bold" style={theme.gradientText}>
                                         Level {user.stats.level}
                                     </p>
-                                    <p className={`${theme.textSubtle} text-sm`}>Hunter Level</p>
+                                    {/* <p className={`${theme.textSubtle} text-sm`}>Hunter Level</p> */}
                                 </div>
 
                                 {/* Stats Preview */}
@@ -153,7 +153,7 @@ export default function ProfilePage() {
                         <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className={`text-xl font-bold ${theme.text} flex items-center gap-2`}>
-                                    <span>📋</span> Hunter Information
+                                    <span>📋</span> My Information
                                 </h3>
                                 <button className="px-4 py-1.5 rounded-lg text-sm transition-colors" style={{ ...theme.accentText, borderWidth: '1px', borderStyle: 'solid', borderColor: `${accentColor}80` }}>
                                     Edit
@@ -168,79 +168,85 @@ export default function ProfilePage() {
                             </div>
                         </div>
 
-                        {/* Choose Avatar */}
-                        <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
-                            <h3 className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}>
-                                <span>🎭</span> Choose Avatar
-                            </h3>
-                            <div className="grid grid-cols-4 gap-3">
-                                {avatars.map((avatar, index) => (
-                                    <button
-                                        key={index}
-                                        onClick={() => setSelectedAvatar(index)}
-                                        className="p-4 rounded-xl text-3xl transition-all border-2"
-                                        style={{
-                                            backgroundColor: selectedAvatar === index
-                                                ? (darkMode ? `${accentColor}20` : `${accentColor}10`)
-                                                : (darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)'),
-                                            borderColor: selectedAvatar === index ? accentColor : 'transparent',
-                                            boxShadow: selectedAvatar === index ? `0 0 15px ${accentColor}40` : 'none'
-                                        }}
-                                    >
-                                        {avatar}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Theme Settings */}
-                        <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
-                            <h3 className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}>
-                                <span>🌙</span> Theme Settings
-                            </h3>
-                            <div className={`flex justify-between items-center p-4 ${theme.inputBg} rounded-xl`}>
-                                <div>
-                                    <p className="font-medium" style={theme.accentText}>Dark Mode</p>
-                                    <p className={`${theme.textSubtle} text-sm`}>{darkMode ? 'Shadow realm activated' : 'Light mode active'}</p>
+                        {/* Avatar + Theme + Accent (structured) */}
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                            {/* Choose Avatar */}
+                            <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+                                <h3 className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}>
+                                    <span>🎭</span> Choose Avatar
+                                </h3>
+                                <div className="grid grid-cols-4 gap-3">
+                                    {avatars.map((avatar, index) => (
+                                        <button
+                                            key={index}
+                                            onClick={() => setSelectedAvatar(index)}
+                                            className="p-4 rounded-xl text-3xl transition-all border-2"
+                                            style={{
+                                                backgroundColor: selectedAvatar === index
+                                                    ? (darkMode ? `${accentColor}20` : `${accentColor}10`)
+                                                    : (darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)'),
+                                                borderColor: selectedAvatar === index ? accentColor : 'transparent',
+                                                boxShadow: selectedAvatar === index ? `0 0 15px ${accentColor}40` : 'none'
+                                            }}
+                                        >
+                                            {avatar}
+                                        </button>
+                                    ))}
                                 </div>
-                                <button
-                                    onClick={() => setDarkMode(!darkMode)}
-                                    className="w-14 h-8 rounded-full p-1 transition-all"
-                                    style={{
-                                        backgroundColor: darkMode ? accentColor : '#d1d5db',
-                                        boxShadow: darkMode ? `0 0 10px ${accentColor}50` : 'none'
-                                    }}
-                                >
-                                    <div
-                                        className={`w-6 h-6 rounded-full bg-white shadow transition-transform ${darkMode ? "translate-x-6" : "translate-x-0"
-                                            }`}
-                                    />
-                                </button>
                             </div>
-                        </div>
 
-                        {/* Accent Color */}
-                        <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
-                            <h3 className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}>
-                                <span>🎨</span> Accent Color
-                            </h3>
-                            <div className="flex gap-3">
-                                {accentColors.map((colorOption, i) => (
-                                    <button
-                                        key={i}
-                                        onClick={() => setAccentColor(colorOption.color)}
-                                        className="w-12 h-12 rounded-xl transition-all"
-                                        style={{
-                                            backgroundColor: colorOption.color,
-                                            boxShadow: accentColor === colorOption.color ? `0 0 20px ${colorOption.color}` : `0 0 10px ${colorOption.color}40`,
-                                            transform: accentColor === colorOption.color ? 'scale(1.1)' : 'scale(1)',
-                                            borderWidth: accentColor === colorOption.color ? '2px' : '0',
-                                            borderStyle: 'solid',
-                                            borderColor: 'white'
-                                        }}
-                                        title={colorOption.name}
-                                    />
-                                ))}
+                            {/* Theme + Accent */}
+                            <div className="space-y-6">
+                                {/* Theme Settings */}
+                                <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+                                    <h3 className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}>
+                                        <span>🌙</span> Theme Settings
+                                    </h3>
+                                    <div className={`flex justify-between items-center p-4 ${theme.inputBg} rounded-xl`}>
+                                        <div>
+                                            <p className="font-medium" style={theme.accentText}>Dark Mode</p>
+                                            <p className={`${theme.textSubtle} text-sm`}>{darkMode ? 'Shadow realm activated' : 'Light mode active'}</p>
+                                        </div>
+                                        <button
+                                            onClick={() => setDarkMode(!darkMode)}
+                                            className="w-14 h-8 rounded-full p-1 transition-all"
+                                            style={{
+                                                backgroundColor: darkMode ? accentColor : '#d1d5db',
+                                                boxShadow: darkMode ? `0 0 10px ${accentColor}50` : 'none'
+                                            }}
+                                        >
+                                            <div
+                                                className={`w-6 h-6 rounded-full bg-white shadow transition-transform ${darkMode ? "translate-x-6" : "translate-x-0"
+                                                    }`}
+                                            />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Accent Color */}
+                                <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+                                    <h3 className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}>
+                                        <span>🎨</span> Accent Color
+                                    </h3>
+                                    <div className="flex flex-wrap gap-3">
+                                        {accentColors.map((colorOption, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => setAccentColor(colorOption.color)}
+                                                className="w-12 h-12 rounded-xl transition-all"
+                                                style={{
+                                                    backgroundColor: colorOption.color,
+                                                    boxShadow: accentColor === colorOption.color ? `0 0 20px ${colorOption.color}` : `0 0 10px ${colorOption.color}40`,
+                                                    transform: accentColor === colorOption.color ? 'scale(1.1)' : 'scale(1)',
+                                                    borderWidth: accentColor === colorOption.color ? '2px' : '0',
+                                                    borderStyle: 'solid',
+                                                    borderColor: 'white'
+                                                }}
+                                                title={colorOption.name}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
