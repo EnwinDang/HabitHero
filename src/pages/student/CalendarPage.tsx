@@ -4,7 +4,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
-import { TasksAPI } from "@/api/tasks.api";
+import { db, auth } from "@/firebase";
+import { collection, addDoc, deleteDoc, doc } from "firebase/firestore";
 import type { Task } from "@/models/task.model";
 
 export default function CalendarPage() {
@@ -107,16 +108,23 @@ export default function CalendarPage() {
         setSelectedDate(new Date(year, month, day));
     };
 
-    // Add new task
+    // Add new task - writes directly to Firestore
     const handleAddTask = async () => {
         if (!newTaskTitle.trim() || !selectedDate) return;
+
+        const firebaseUser = auth.currentUser;
+        if (!firebaseUser) {
+            console.error("No authenticated user");
+            return;
+        }
 
         setIsSubmitting(true);
         try {
             const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
 
-            await TasksAPI.create({
-                taskId: "", // Will be set by backend
+            // Write directly to Firestore
+            const tasksRef = collection(db, "users", firebaseUser.uid, "tasks");
+            await addDoc(tasksRef, {
                 title: newTaskTitle,
                 difficulty: newTaskDifficulty,
                 xp: newTaskDifficulty === "easy" ? 25 : newTaskDifficulty === "medium" ? 50 : newTaskDifficulty === "hard" ? 100 : 200,
@@ -125,14 +133,33 @@ export default function CalendarPage() {
                 dueAt: selectedDate.getTime(),
                 isRepeatable: false,
                 isActive: true,
+                createdAt: Date.now(),
             });
 
+            console.log("✅ Task created successfully!");
             setNewTaskTitle("");
             setShowAddTask(false);
         } catch (error) {
             console.error("Failed to create task:", error);
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    // Delete task from Firestore
+    const handleDeleteTask = async (taskId: string) => {
+        const firebaseUser = auth.currentUser;
+        if (!firebaseUser) {
+            console.error("No authenticated user");
+            return;
+        }
+
+        try {
+            const taskRef = doc(db, "users", firebaseUser.uid, "tasks", taskId);
+            await deleteDoc(taskRef);
+            console.log("🗑️ Task deleted successfully!");
+        } catch (error) {
+            console.error("Failed to delete task:", error);
         }
     };
 
@@ -164,7 +191,7 @@ export default function CalendarPage() {
                         <NavItem icon="📜" label="Quests" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
                         <NavItem icon="⏱️" label="Focus Mode" onClick={() => navigate("/focus")} darkMode={darkMode} accentColor={accentColor} />
                         <NavItem icon="📊" label="Stats" onClick={() => navigate("/stats")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon="🏆" label="Achievements" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
+                        <NavItem icon="🏆" label="Achievements" onClick={() => navigate("/achievements")} darkMode={darkMode} accentColor={accentColor} />
                         <NavItem icon="📅" label="Calendar" active onClick={() => navigate("/calendar")} darkMode={darkMode} accentColor={accentColor} />
                         <NavItem icon="👤" label="Profile" onClick={() => navigate("/profile")} darkMode={darkMode} accentColor={accentColor} />
                         <NavItem icon="⚙️" label="Settings" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
@@ -333,7 +360,7 @@ export default function CalendarPage() {
                                 ) : (
                                     <div className="space-y-3">
                                         {selectedDayTasks.map(task => (
-                                            <TaskCard key={task.taskId} task={task} darkMode={darkMode} accentColor={accentColor} theme={theme} />
+                                            <TaskCard key={task.taskId} task={task} darkMode={darkMode} accentColor={accentColor} theme={theme} onDelete={() => handleDeleteTask(task.taskId)} />
                                         ))}
                                     </div>
                                 )}
@@ -397,13 +424,17 @@ function TaskCard({
     task,
     darkMode,
     accentColor,
-    theme
+    theme,
+    onDelete
 }: {
     task: Task;
     darkMode: boolean;
     accentColor: string;
     theme: ReturnType<typeof getThemeClasses>;
+    onDelete: () => void;
 }) {
+    const [showConfirm, setShowConfirm] = useState(false);
+
     const difficultyColors = {
         easy: '#22c55e',
         medium: '#f59e0b',
@@ -432,9 +463,38 @@ function TaskCard({
                         </span>
                     </div>
                 </div>
-                {!task.isActive && (
-                    <span className="text-green-500 text-lg">✓</span>
-                )}
+                <div className="flex items-center gap-2">
+                    {!task.isActive && (
+                        <span className="text-green-500 text-lg">✓</span>
+                    )}
+                    {showConfirm ? (
+                        <div className="flex gap-1">
+                            <button
+                                onClick={() => {
+                                    onDelete();
+                                    setShowConfirm(false);
+                                }}
+                                className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                            >
+                                Delete
+                            </button>
+                            <button
+                                onClick={() => setShowConfirm(false)}
+                                className="text-xs px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => setShowConfirm(true)}
+                            className="text-red-400 hover:text-red-500 p-1 rounded transition-colors"
+                            title="Delete task"
+                        >
+                            🗑️
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
     );
