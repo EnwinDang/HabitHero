@@ -2,3 +2,4 @@
 export { default as ProfilePage } from './ProfilePage';
 export { default as FocusModePage } from './FocusModePage';
 export { default as StatsPage } from './StatsPage';
+export { default as CalendarPage } from './CalendarPage';

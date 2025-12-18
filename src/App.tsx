@@ -2,7 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
-import { ProfilePage, FocusModePage, StatsPage } from "./pages/student";
+import { ProfilePage, FocusModePage, StatsPage, CalendarPage } from "./pages/student";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
@@ -47,9 +47,18 @@ export default function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/calendar"
+            element={
+              <ProtectedRoute>
+                <CalendarPage />
+              </ProtectedRoute>
+            }
+          />
         </Routes>
       </ThemeProvider>
     </AuthProvider>
   );
 }
+
 
