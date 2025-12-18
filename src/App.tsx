@@ -6,56 +6,59 @@ import { ProfilePage, FocusModePage, StatsPage, CalendarPage } from "./pages/stu
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { PomodoroProvider } from "./context/PomodoroProvider";
 
 export default function App() {
   return (
     <AuthProvider>
       <ThemeProvider>
-        <Routes>
-          <Route path="/" element={<LoginPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <HomePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
-                <ProfilePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/focus"
-            element={
-              <ProtectedRoute>
-                <FocusModePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/stats"
-            element={
-              <ProtectedRoute>
-                <StatsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/calendar"
-            element={
-              <ProtectedRoute>
-                <CalendarPage />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
+        <PomodoroProvider>
+          <Routes>
+            <Route path="/" element={<LoginPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <HomePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <ProfilePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/focus"
+              element={
+                <ProtectedRoute>
+                  <FocusModePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/stats"
+              element={
+                <ProtectedRoute>
+                  <StatsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/calendar"
+              element={
+                <ProtectedRoute>
+                  <CalendarPage />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </PomodoroProvider>
       </ThemeProvider>
     </AuthProvider>
   );

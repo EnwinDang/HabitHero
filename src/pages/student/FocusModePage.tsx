@@ -1,65 +1,28 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
-import { useTheme, getThemeClasses } from "@/context/ThemeContext";
-import { UsersAPI } from "@/api/users.api";
+import { usePomodoro } from "@/context/pomodoro";
 
 export default function FocusModePage() {
     const navigate = useNavigate();
-    const { user: authUser, logout } = useAuth();
+    const { logout } = useAuth();
     const { user, loading } = useRealtimeUser();
-    const { darkMode, accentColor } = useTheme();
-    const theme = getThemeClasses(darkMode, accentColor);
 
-    // Timer State
-    const [timeLeft, setTimeLeft] = useState(25 * 60);
-    const [isRunning, setIsRunning] = useState(false);
-    const [sessions, setSessions] = useState(0);
-    const [totalFocusTime, setTotalFocusTime] = useState(0);
-
-    // Timer Settings
-    const [focusDuration, setFocusDuration] = useState(25);
-    const [breakDuration, setBreakDuration] = useState(5);
-
-    // XP notification
-    const [xpGained, setXpGained] = useState<number | null>(null);
-
-    // Timer Effect with XP reward
-    useEffect(() => {
-        let interval: ReturnType<typeof setInterval>;
-        if (isRunning && timeLeft > 0) {
-            interval = setInterval(() => {
-                setTimeLeft((prev) => prev - 1);
-                setTotalFocusTime((prev) => prev + 1);
-            }, 1000);
-        } else if (timeLeft === 0 && isRunning) {
-            setIsRunning(false);
-            setSessions((prev) => prev + 1);
-
-            // Award XP when timer completes!
-            awardXP();
-
-            setTimeLeft(focusDuration * 60);
-        }
-        return () => clearInterval(interval);
-    }, [isRunning, timeLeft, focusDuration]);
-
-    // Award XP function - XP is calculated by the backend
-    const awardXP = async () => {
-        if (!authUser?.uid) return;
-
-        try {
-            // Call backend to complete focus session and get XP reward
-            const result = await UsersAPI.completeFocusSession(authUser.uid, focusDuration);
-
-            // Show XP notification with the amount from the backend
-            setXpGained(result.xpGained);
-            setTimeout(() => setXpGained(null), 3000);
-        } catch (error) {
-            console.error("Failed to complete focus session:", error);
-        }
-    };
+    const {
+        focusDuration,
+        breakDuration,
+        setFocusDuration,
+        setBreakDuration,
+        status,
+        timeLeftSeconds,
+        start,
+        pause,
+        reset,
+        sessionsCompleted,
+        totalFocusSeconds,
+        xpGained,
+    } = usePomodoro();
 
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
@@ -68,17 +31,16 @@ export default function FocusModePage() {
     };
 
     const getMinutesLeft = () => {
-        return Math.ceil(timeLeft / 60);
+        return Math.ceil(timeLeftSeconds / 60);
     };
 
-    const handleStart = () => setIsRunning(true);
-    const handlePause = () => setIsRunning(false);
-    const handleReset = () => {
-        setIsRunning(false);
-        setTimeLeft(focusDuration * 60);
-    };
+    const handleStart = () => start();
+    const handlePause = () => pause();
+    const handleReset = () => reset();
 
-    const progress = ((focusDuration * 60 - timeLeft) / (focusDuration * 60)) * 100;
+    const totalSeconds = focusDuration * 60;
+    const safeTimeLeft = Math.min(Math.max(timeLeftSeconds, 0), totalSeconds);
+    const progress = ((totalSeconds - safeTimeLeft) / totalSeconds) * 100;
 
     async function handleLogout() {
         await logout();
@@ -155,7 +117,11 @@ export default function FocusModePage() {
                         {/* Timer Circle */}
                         <div className="flex justify-center mb-8">
                             <div className="relative w-64 h-64">
-                                <svg className="w-full h-full transform -rotate-90">
+                                <svg
+                                    viewBox="0 0 256 256"
+                                    preserveAspectRatio="xMidYMid meet"
+                                    className="w-full h-full transform -rotate-90"
+                                >
                                     <circle
                                         cx="128"
                                         cy="128"
@@ -177,8 +143,8 @@ export default function FocusModePage() {
                                         className="transition-all duration-1000"
                                     />
                                 </svg>
-                                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                    <span className="text-4xl font-bold text-gray-800">{formatTime(timeLeft)}</span>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                                    <span className="text-4xl font-bold text-gray-800">{formatTime(safeTimeLeft)}</span>
                                     <span className="text-gray-500">{getMinutesLeft()} minutes left</span>
                                 </div>
                             </div>
@@ -186,7 +152,7 @@ export default function FocusModePage() {
 
                         {/* Controls */}
                         <div className="flex justify-center gap-4">
-                            {!isRunning ? (
+                            {status !== "running" ? (
                                 <button
                                     onClick={handleStart}
                                     className="flex flex-col items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-xl font-medium transition-colors"
@@ -233,7 +199,7 @@ export default function FocusModePage() {
                                 <span className="text-xl">🔥</span>
                                 <h3 className="text-lg font-bold text-gray-800">Focus Streak</h3>
                             </div>
-                            <p className="text-3xl font-bold text-gray-800">{user?.stats?.streak || 0} days</p>
+                                <p className="text-3xl font-bold text-gray-800">{user?.stats?.streak || 0} days</p>
                             <p className="text-gray-500 text-sm">Keep it up!</p>
                         </div>
 
@@ -243,14 +209,14 @@ export default function FocusModePage() {
                             <div className="space-y-3">
                                 <div className="flex justify-between items-center py-2 border-b border-gray-100">
                                     <span className="text-gray-600">Sessions</span>
-                                    <span className="font-bold text-gray-800">{sessions}</span>
+                                    <span className="font-bold text-gray-800">{sessionsCompleted}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-2">
                                     <span className="text-gray-600">Focus Time</span>
-                                    <span className="font-bold text-purple-600">{Math.floor(totalFocusTime / 60)} min</span>
+                                    <span className="font-bold text-purple-600">{Math.floor(totalFocusSeconds / 60)} min</span>
                                 </div>
                             </div>
-                        </div>
+                        </div>  
 
                         {/* Timer Settings */}
                         <div className="bg-white rounded-2xl p-6 shadow-sm">
@@ -261,65 +227,45 @@ export default function FocusModePage() {
                             <div className="space-y-4">
                                 <div>
                                     <label className="text-sm text-gray-600 block mb-1">Focus Duration</label>
-                                    <select
-                                        value={focusDuration}
-                                        onChange={(e) => {
-                                            const newDuration = parseInt(e.target.value);
-                                            setFocusDuration(newDuration);
-                                            if (!isRunning) setTimeLeft(newDuration * 60);
-                                        }}
-                                        className="w-full p-2 border border-gray-200 rounded-lg text-gray-800 bg-white"
-                                    >
-                                        <option value={15}>15 minutes</option>
-                                        <option value={25}>25 minutes</option>
-                                        <option value={30}>30 minutes</option>
-                                        <option value={45}>45 minutes</option>
-                                        <option value={60}>60 minutes</option>
-                                    </select>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="number"
+                                            inputMode="numeric"
+                                            min={1}
+                                            max={180}
+                                            step={1}
+                                            value={focusDuration}
+                                            onChange={(e) => {
+                                                const raw = e.currentTarget.valueAsNumber;
+                                                if (Number.isNaN(raw)) return;
+                                                setFocusDuration(raw);
+                                            }}
+                                            className="w-full p-2 border border-gray-200 rounded-lg text-gray-800 bg-white"
+                                        />
+                                        <span className="text-sm text-gray-500 whitespace-nowrap">minutes</span>
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="text-sm text-gray-600 block mb-1">Break Duration</label>
-                                    <select
-                                        value={breakDuration}
-                                        onChange={(e) => setBreakDuration(parseInt(e.target.value))}
-                                        className="w-full p-2 border border-gray-200 rounded-lg text-gray-800 bg-white"
-                                    >
-                                        <option value={5}>5 minutes</option>
-                                        <option value={10}>10 minutes</option>
-                                        <option value={15}>15 minutes</option>
-                                    </select>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="number"
+                                            inputMode="numeric"
+                                            min={1}
+                                            max={60}
+                                            step={1}
+                                            value={breakDuration}
+                                            onChange={(e) => {
+                                                const raw = e.currentTarget.valueAsNumber;
+                                                if (Number.isNaN(raw)) return;
+                                                setBreakDuration(raw);
+                                            }}
+                                            className="w-full p-2 border border-gray-200 rounded-lg text-gray-800 bg-white"
+                                        />
+                                        <span className="text-sm text-gray-500 whitespace-nowrap">minutes</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Focus Tips */}
-                <div className="bg-white rounded-2xl p-6 shadow-sm">
-                    <h3 className="text-xl font-bold text-gray-800 mb-6">Focus Tips</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="bg-purple-50 rounded-xl p-4">
-                            <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mb-3">
-                                <span>🎯</span>
-                            </div>
-                            <h4 className="font-bold text-purple-700 mb-1">Stay Focused</h4>
-                            <p className="text-purple-600 text-sm">Eliminate distractions during work sessions</p>
-                        </div>
-
-                        <div className="bg-orange-50 rounded-xl p-4">
-                            <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center mb-3">
-                                <span>☕</span>
-                            </div>
-                            <h4 className="font-bold text-orange-700 mb-1">Take Breaks</h4>
-                            <p className="text-orange-600 text-sm">Rest your mind during break time</p>
-                        </div>
-
-                        <div className="bg-green-50 rounded-xl p-4">
-                            <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mb-3">
-                                <span>📅</span>
-                            </div>
-                            <h4 className="font-bold text-green-700 mb-1">Be Consistent</h4>
-                            <p className="text-green-600 text-sm">Build a daily focus habit</p>
                         </div>
                     </div>
                 </div>
