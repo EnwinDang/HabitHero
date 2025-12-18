@@ -46,6 +46,7 @@ export default function ProfilePage() {
   }
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
                 <nav className="flex-1 px-4">
                     <ul className="space-y-2">
                         <NavItem icon="⚔️" label="Home" onClick={() => navigate("/dashboard")} darkMode={darkMode} accentColor={accentColor} />
@@ -58,6 +59,11 @@ export default function ProfilePage() {
                         <NavItem icon="⚙️" label="Settings" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
                     </ul>
                 </nav>
+=======
+  if (!user) {
+    return null;
+  }
+>>>>>>> Stashed changes
 =======
   if (!user) {
     return null;
