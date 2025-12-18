@@ -384,7 +384,7 @@ export default function HomePage() {
 
             {/* TODAY'S PROGRESS */}
             <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
-              <h3 className={`text-lg font-bold ${theme.text} mb-4`}> Today's Hunt</h3>
+              <h3 className={`text-lg font-bold ${theme.text} mb-4`}> Today's stats</h3>
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className={theme.textMuted}>Sessions</span>

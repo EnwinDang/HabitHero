@@ -191,7 +191,7 @@ export default function FocusModePage() {
                                     onClick={handleStart}
                                     className="flex flex-col items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-xl font-medium transition-colors"
                                 >
-                                    <span>▶️</span>
+                                   
                                     <span>Start</span>
                                 </button>
                             ) : (
@@ -199,7 +199,7 @@ export default function FocusModePage() {
                                     onClick={handlePause}
                                     className="flex flex-col items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-xl font-medium transition-colors"
                                 >
-                                    <span>⏸️</span>
+                                   
                                     <span>Pause</span>
                                 </button>
                             )}
@@ -207,7 +207,7 @@ export default function FocusModePage() {
                                 onClick={handleReset}
                                 className="flex flex-col items-center gap-1 bg-white border-2 border-purple-200 text-purple-600 hover:bg-purple-50 px-8 py-3 rounded-xl font-medium transition-colors"
                             >
-                                <span>🔄</span>
+                                
                                 <span>Reset</span>
                             </button>
                         </div>
