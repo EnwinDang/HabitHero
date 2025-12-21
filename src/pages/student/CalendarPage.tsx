@@ -8,545 +8,760 @@ import { db, auth } from "@/firebase";
 import { collection, addDoc, deleteDoc, doc } from "firebase/firestore";
 import type { Task } from "@/models/task.model";
 import {
-    Sword,
-    Scroll,
-    Timer,
-    BarChart3,
-    Trophy,
-    Calendar,
-    User,
-    Settings,
-    LogOut,
-    Trash2,
-    Check
+  Sword,
+  Scroll,
+  Timer,
+  BarChart3,
+  Trophy,
+  Calendar,
+  User,
+  Settings,
+  LogOut,
+  Trash2,
+  Check,
 } from "lucide-react";
 
 export default function CalendarPage() {
-    const navigate = useNavigate();
-    const { logout, loading: authLoading } = useAuth();
-    const { user, loading: userLoading } = useRealtimeUser();
-    const { tasks } = useRealtimeTasks();
-    const { darkMode, accentColor } = useTheme();
+  const navigate = useNavigate();
+  const { logout, loading: authLoading } = useAuth();
+  const { user, loading: userLoading } = useRealtimeUser();
+  const { tasks } = useRealtimeTasks();
+  const { darkMode, accentColor } = useTheme();
 
-    // Get theme classes
-    const theme = getThemeClasses(darkMode, accentColor);
+  // Get theme classes
+  const theme = getThemeClasses(darkMode, accentColor);
 
-    // Calendar state
-    const [currentDate, setCurrentDate] = useState(new Date());
-    const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  // Calendar state
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-    // Add task modal state
-    const [showAddTask, setShowAddTask] = useState(false);
-    const [newTaskTitle, setNewTaskTitle] = useState("");
-    const [newTaskDifficulty, setNewTaskDifficulty] = useState<"easy" | "medium" | "hard" | "extreme">("medium");
-    const [isSubmitting, setIsSubmitting] = useState(false);
+  // Add task modal state
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskDifficulty, setNewTaskDifficulty] = useState<
+    "easy" | "medium" | "hard" | "extreme"
+  >("medium");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-    async function handleLogout() {
-        await logout();
-        navigate("/login");
-    }
+  async function handleLogout() {
+    await logout();
+    navigate("/login");
+  }
 
-    if (authLoading || userLoading) {
-        return (
-            <div className={`min-h-screen ${theme.bg} flex items-center justify-center transition-colors duration-300`}>
-                <div className="text-xl animate-pulse" style={theme.accentText}>Laden...</div>
-            </div>
-        );
-    }
-
-    if (!user) {
-        return null;
-    }
-
-    // Calendar helpers
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-
-    const monthNames = ["January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"];
-    const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-    const firstDayOfMonth = new Date(year, month, 1);
-    const lastDayOfMonth = new Date(year, month + 1, 0);
-    const daysInMonth = lastDayOfMonth.getDate();
-    const startingDay = firstDayOfMonth.getDay();
-
-    const today = new Date();
-    const isToday = (day: number) => {
-        return today.getFullYear() === year &&
-            today.getMonth() === month &&
-            today.getDate() === day;
-    };
-
-    const isSelected = (day: number) => {
-        if (!selectedDate) return false;
-        return selectedDate.getFullYear() === year &&
-            selectedDate.getMonth() === month &&
-            selectedDate.getDate() === day;
-    };
-
-    // Get tasks for a specific day
-    const getTasksForDay = (day: number): Task[] => {
-        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        return tasks.filter(task => {
-            // Check date field
-            if (task.date === dateStr) return true;
-            // Check dueAt timestamp
-            if (task.dueAt) {
-                const dueDate = new Date(task.dueAt);
-                return dueDate.getFullYear() === year &&
-                    dueDate.getMonth() === month &&
-                    dueDate.getDate() === day;
-            }
-            return false;
-        });
-    };
-
-    // Navigation
-    const prevMonth = () => {
-        setCurrentDate(new Date(year, month - 1, 1));
-    };
-
-    const nextMonth = () => {
-        setCurrentDate(new Date(year, month + 1, 1));
-    };
-
-    const goToToday = () => {
-        setCurrentDate(new Date());
-        setSelectedDate(new Date());
-    };
-
-    // Handle day click
-    const handleDayClick = (day: number) => {
-        setSelectedDate(new Date(year, month, day));
-    };
-
-    // Add new task - writes directly to Firestore
-    const handleAddTask = async () => {
-        if (!newTaskTitle.trim() || !selectedDate) return;
-
-        const firebaseUser = auth.currentUser;
-        if (!firebaseUser) {
-            console.error("No authenticated user");
-            return;
-        }
-
-        setIsSubmitting(true);
-        try {
-            const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
-
-            // Write directly to Firestore
-            const tasksRef = collection(db, "users", firebaseUser.uid, "tasks");
-            await addDoc(tasksRef, {
-                title: newTaskTitle,
-                difficulty: newTaskDifficulty,
-                xp: newTaskDifficulty === "easy" ? 25 : newTaskDifficulty === "medium" ? 50 : newTaskDifficulty === "hard" ? 100 : 200,
-                gold: newTaskDifficulty === "easy" ? 10 : newTaskDifficulty === "medium" ? 25 : newTaskDifficulty === "hard" ? 50 : 100,
-                date: dateStr,
-                dueAt: selectedDate.getTime(),
-                isRepeatable: false,
-                isActive: true,
-                createdAt: Date.now(),
-            });
-
-            console.log("✅ Task created successfully!");
-            setNewTaskTitle("");
-            setShowAddTask(false);
-        } catch (error) {
-            console.error("Failed to create task:", error);
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    // Delete task from Firestore
-    const handleDeleteTask = async (taskId: string) => {
-        const firebaseUser = auth.currentUser;
-        if (!firebaseUser) {
-            console.error("No authenticated user");
-            return;
-        }
-
-        try {
-            const taskRef = doc(db, "users", firebaseUser.uid, "tasks", taskId);
-            await deleteDoc(taskRef);
-            console.log("🗑️ Task deleted successfully!");
-        } catch (error) {
-            console.error("Failed to delete task:", error);
-        }
-    };
-
-    // Get selected day tasks
-    const selectedDayTasks = selectedDate ? getTasksForDay(selectedDate.getDate()) : [];
-
-    // Generate calendar grid
-    const calendarDays = [];
-    for (let i = 0; i < startingDay; i++) {
-        calendarDays.push(null);
-    }
-    for (let day = 1; day <= daysInMonth; day++) {
-        calendarDays.push(day);
-    }
-
+  if (authLoading || userLoading) {
     return (
-        <div className={`min-h-screen ${theme.bg} flex transition-colors duration-300`}>
-            {/* SIDEBAR */}
-            <aside className={`w-64 ${theme.sidebar} flex flex-col min-h-screen transition-colors duration-300`} style={{ ...theme.borderStyle, borderRightWidth: '1px', borderRightStyle: 'solid' }}>
-                <div className="p-6">
-                    <h1 className="text-2xl font-bold" style={theme.gradientText}>
-                        HabitHero
-                    </h1>
-                </div>
-
-                <nav className="flex-1 px-4">
-                    <ul className="space-y-2">
-                        <NavItem icon={<Sword size={20} />} label="Home" onClick={() => navigate("/dashboard")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<Scroll size={20} />} label="Quests" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<Timer size={20} />} label="Focus Mode" onClick={() => navigate("/focus")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<BarChart3 size={20} />} label="Stats" onClick={() => navigate("/stats")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<Trophy size={20} />} label="Achievements" onClick={() => navigate("/achievements")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<Calendar size={20} />} label="Calendar" active onClick={() => navigate("/calendar")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<User size={20} />} label="Profile" onClick={() => navigate("/profile")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<Settings size={20} />} label="Settings" onClick={() => navigate("/settings")} darkMode={darkMode} accentColor={accentColor} />
-                    </ul>
-                </nav>
-
-                <div className="p-4" style={{ ...theme.borderStyle, borderTopWidth: '1px', borderTopStyle: 'solid' }}>
-                    <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-3 text-red-400 hover:text-red-300 w-full px-4 py-2 rounded-lg hover:bg-red-900/20 transition-colors"
-                    >
-                        <LogOut size={20} />
-                        <span>Logout</span>
-                    </button>
-                </div>
-            </aside>
-
-            {/* MAIN CONTENT */}
-            <main className="flex-1 p-8 overflow-y-auto">
-                {/* Header */}
-                <div className="flex justify-between items-center mb-6">
-                    <div>
-                        <h2 className={`text-3xl font-bold ${theme.text}`}>Calendar</h2>
-                        <p className={theme.textMuted}>Plan and track your tasks</p>
-                    </div>
-                    <button
-                        onClick={goToToday}
-                        className="px-4 py-2 rounded-xl font-medium transition-all"
-                        style={{
-                            background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
-                            color: 'white'
-                        }}
-                    >
-                        Today
-                    </button>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Calendar Grid */}
-                    <div className={`lg:col-span-2 ${theme.card} rounded-2xl p-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
-                        {/* Month Navigation */}
-                        <div className="flex justify-between items-center mb-6">
-                            <button
-                                onClick={prevMonth}
-                                className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                            >
-                                <span className="text-xl">←</span>
-                            </button>
-                            <h3 className={`text-2xl font-bold ${theme.text}`}>
-                                {monthNames[month]} {year}
-                            </h3>
-                            <button
-                                onClick={nextMonth}
-                                className={`p-2 rounded-lg transition-colors ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
-                            >
-                                <span className="text-xl">→</span>
-                            </button>
-                        </div>
-
-                        {/* Weekday Headers */}
-                        <div className="grid grid-cols-7 gap-1 mb-2">
-                            {weekDays.map(day => (
-                                <div key={day} className={`text-center py-2 text-sm font-medium ${theme.textMuted}`}>
-                                    {day}
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Calendar Days */}
-                        <div className="grid grid-cols-7 gap-1">
-                            {calendarDays.map((day, index) => {
-                                if (day === null) {
-                                    return <div key={`empty-${index}`} className="aspect-square" />;
-                                }
-
-                                const dayTasks = getTasksForDay(day);
-                                const hasActiveTasks = dayTasks.some(t => t.isActive);
-                                const hasCompletedTasks = dayTasks.some(t => !t.isActive);
-
-                                return (
-                                    <button
-                                        key={day}
-                                        onClick={() => handleDayClick(day)}
-                                        className={`aspect-square rounded-xl flex flex-col items-center justify-center transition-all relative ${isToday(day) ? '' : ''
-                                            } ${isSelected(day) ? '' : ''}`}
-                                        style={{
-                                            backgroundColor: isSelected(day)
-                                                ? `${accentColor}30`
-                                                : isToday(day)
-                                                    ? (darkMode ? 'rgba(88, 28, 135, 0.3)' : 'rgba(243, 232, 255, 1)')
-                                                    : (darkMode ? 'rgba(55, 65, 81, 0.2)' : 'rgba(249, 250, 251, 1)'),
-                                            borderWidth: isSelected(day) || isToday(day) ? '2px' : '1px',
-                                            borderStyle: 'solid',
-                                            borderColor: isSelected(day)
-                                                ? accentColor
-                                                : isToday(day)
-                                                    ? `${accentColor}50`
-                                                    : 'transparent'
-                                        }}
-                                    >
-                                        <span className={`font-medium ${isToday(day) || isSelected(day) ? '' : theme.text}`}
-                                            style={isToday(day) || isSelected(day) ? { color: accentColor } : {}}>
-                                            {day}
-                                        </span>
-                                        {/* Task Indicators */}
-                                        {dayTasks.length > 0 && (
-                                            <div className="flex gap-1 mt-1">
-                                                {hasActiveTasks && (
-                                                    <div className="w-2 h-2 rounded-full bg-blue-500" />
-                                                )}
-                                                {hasCompletedTasks && (
-                                                    <div className="w-2 h-2 rounded-full bg-green-500" />
-                                                )}
-                                            </div>
-                                        )}
-                                    </button>
-                                );
-                            })}
-                        </div>
-
-                        {/* Legend */}
-                        <div className="flex justify-center gap-6 mt-4 pt-4" style={{ borderTopWidth: '1px', borderTopStyle: 'solid', ...theme.borderStyle }}>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full bg-blue-500" />
-                                <span className={`text-sm ${theme.textMuted}`}>Active Tasks</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full bg-green-500" />
-                                <span className={`text-sm ${theme.textMuted}`}>Completed</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Selected Day Details */}
-                    <div className={`${theme.card} rounded-2xl p-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
-                        {selectedDate ? (
-                            <>
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className={`text-xl font-bold ${theme.text}`}>
-                                        {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-                                    </h3>
-                                    <button
-                                        onClick={() => setShowAddTask(true)}
-                                        className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
-                                        style={{
-                                            background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
-                                            color: 'white'
-                                        }}
-                                    >
-                                        +
-                                    </button>
-                                </div>
-
-                                {selectedDayTasks.length === 0 ? (
-                                    <div className="text-center py-8">
-                                        <Calendar size={40} className={`mb-4 mx-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-                                        <p className={theme.textMuted}>No tasks for this day</p>
-                                        <button
-                                            onClick={() => setShowAddTask(true)}
-                                            className="mt-4 text-sm font-medium"
-                                            style={theme.accentText}
-                                        >
-                                            + Add a task
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {selectedDayTasks.map(task => (
-                                            <TaskCard key={task.taskId} task={task} darkMode={darkMode} accentColor={accentColor} theme={theme} onDelete={() => handleDeleteTask(task.taskId)} />
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Add Task Form */}
-                                {showAddTask && (
-                                    <div className="mt-4 p-4 rounded-xl" style={{ backgroundColor: darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)' }}>
-                                        <input
-                                            type="text"
-                                            value={newTaskTitle}
-                                            onChange={(e) => setNewTaskTitle(e.target.value)}
-                                            placeholder="Task title..."
-                                            className={`w-full p-3 rounded-lg mb-3 ${theme.inputBg} ${theme.text}`}
-                                            style={{ borderWidth: '1px', borderStyle: 'solid', ...theme.borderStyle }}
-                                        />
-                                        <select
-                                            value={newTaskDifficulty}
-                                            onChange={(e) => setNewTaskDifficulty(e.target.value as any)}
-                                            className={`w-full p-3 rounded-lg mb-3 ${theme.inputBg} ${theme.text}`}
-                                            style={{ borderWidth: '1px', borderStyle: 'solid', ...theme.borderStyle }}
-                                        >
-                                            <option value="easy">Easy</option>
-                                            <option value="medium">Medium</option>
-                                            <option value="hard">Hard</option>
-                                            <option value="extreme">Extreme</option>
-                                        </select>
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={handleAddTask}
-                                                disabled={isSubmitting || !newTaskTitle.trim()}
-                                                className="flex-1 py-2 rounded-lg font-medium text-white transition-all disabled:opacity-50"
-                                                style={{ background: `linear-gradient(to right, ${accentColor}, #a855f7)` }}
-                                            >
-                                                {isSubmitting ? "Adding..." : "Add Task"}
-                                            </button>
-                                            <button
-                                                onClick={() => setShowAddTask(false)}
-                                                className={`px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`}
-                                            >
-                                                Cancel
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            <div className="text-center py-8">
-                                <Calendar size={40} className={`mb-4 mx-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-                                <p className={theme.textMuted}>Select a day to view tasks</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </main>
+      <div
+        className={`min-h-screen ${theme.bg} flex items-center justify-center transition-colors duration-300`}
+      >
+        <div className="text-xl animate-pulse" style={theme.accentText}>
+          Laden...
         </div>
+      </div>
     );
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  // Calendar helpers
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+
+  const monthNames = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  const firstDayOfMonth = new Date(year, month, 1);
+  const lastDayOfMonth = new Date(year, month + 1, 0);
+  const daysInMonth = lastDayOfMonth.getDate();
+  const startingDay = firstDayOfMonth.getDay();
+
+  const today = new Date();
+  const isToday = (day: number) => {
+    return (
+      today.getFullYear() === year &&
+      today.getMonth() === month &&
+      today.getDate() === day
+    );
+  };
+
+  const isSelected = (day: number) => {
+    if (!selectedDate) return false;
+    return (
+      selectedDate.getFullYear() === year &&
+      selectedDate.getMonth() === month &&
+      selectedDate.getDate() === day
+    );
+  };
+
+  // Get tasks for a specific day
+  const getTasksForDay = (day: number): Task[] => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(
+      day
+    ).padStart(2, "0")}`;
+    return tasks.filter((task) => {
+      // Check date field
+      if (task.date === dateStr) return true;
+      // Check dueAt timestamp
+      if (task.dueAt) {
+        const dueDate = new Date(task.dueAt);
+        return (
+          dueDate.getFullYear() === year &&
+          dueDate.getMonth() === month &&
+          dueDate.getDate() === day
+        );
+      }
+      return false;
+    });
+  };
+
+  // Navigation
+  const prevMonth = () => {
+    setCurrentDate(new Date(year, month - 1, 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentDate(new Date(year, month + 1, 1));
+  };
+
+  const goToToday = () => {
+    setCurrentDate(new Date());
+    setSelectedDate(new Date());
+  };
+
+  // Handle day click
+  const handleDayClick = (day: number) => {
+    setSelectedDate(new Date(year, month, day));
+  };
+
+  // Add new task - writes directly to Firestore
+  const handleAddTask = async () => {
+    if (!newTaskTitle.trim() || !selectedDate) return;
+
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser) {
+      console.error("No authenticated user");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const dateStr = `${selectedDate.getFullYear()}-${String(
+        selectedDate.getMonth() + 1
+      ).padStart(2, "0")}-${String(selectedDate.getDate()).padStart(2, "0")}`;
+
+      // Write directly to Firestore
+      const tasksRef = collection(db, "users", firebaseUser.uid, "tasks");
+      await addDoc(tasksRef, {
+        title: newTaskTitle,
+        difficulty: newTaskDifficulty,
+        xp:
+          newTaskDifficulty === "easy"
+            ? 25
+            : newTaskDifficulty === "medium"
+            ? 50
+            : newTaskDifficulty === "hard"
+            ? 100
+            : 200,
+        gold:
+          newTaskDifficulty === "easy"
+            ? 10
+            : newTaskDifficulty === "medium"
+            ? 25
+            : newTaskDifficulty === "hard"
+            ? 50
+            : 100,
+        date: dateStr,
+        dueAt: selectedDate.getTime(),
+        isRepeatable: false,
+        isActive: true,
+        createdAt: Date.now(),
+      });
+
+      console.log("✅ Task created successfully!");
+      setNewTaskTitle("");
+      setShowAddTask(false);
+    } catch (error) {
+      console.error("Failed to create task:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Delete task from Firestore
+  const handleDeleteTask = async (taskId: string) => {
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser) {
+      console.error("No authenticated user");
+      return;
+    }
+
+    try {
+      const taskRef = doc(db, "users", firebaseUser.uid, "tasks", taskId);
+      await deleteDoc(taskRef);
+      console.log("🗑️ Task deleted successfully!");
+    } catch (error) {
+      console.error("Failed to delete task:", error);
+    }
+  };
+
+  // Get selected day tasks
+  const selectedDayTasks = selectedDate
+    ? getTasksForDay(selectedDate.getDate())
+    : [];
+
+  // Generate calendar grid
+  const calendarDays = [];
+  for (let i = 0; i < startingDay; i++) {
+    calendarDays.push(null);
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    calendarDays.push(day);
+  }
+
+  return (
+    <div
+      className={`min-h-screen ${theme.bg} flex transition-colors duration-300`}
+    >
+      {/* SIDEBAR */}
+      <aside
+        className={`w-64 ${theme.sidebar} flex flex-col min-h-screen transition-colors duration-300`}
+        style={{
+          ...theme.borderStyle,
+          borderRightWidth: "1px",
+          borderRightStyle: "solid",
+        }}
+      >
+        <div className="p-6">
+          <h1 className="text-2xl font-bold" style={theme.gradientText}>
+            HabitHero
+          </h1>
+        </div>
+
+        <nav className="flex-1 px-4">
+          <ul className="space-y-2">
+            <NavItem
+              icon={<Sword size={20} />}
+              label="Home"
+              onClick={() => navigate("/dashboard")}
+              darkMode={darkMode}
+              accentColor={accentColor}
+            />
+            <NavItem
+              icon={<Scroll size={20} />}
+              label="Quests"
+              onClick={() => {}}
+              darkMode={darkMode}
+              accentColor={accentColor}
+            />
+            <NavItem
+              icon={<Timer size={20} />}
+              label="Focus Mode"
+              onClick={() => navigate("/focus")}
+              darkMode={darkMode}
+              accentColor={accentColor}
+            />
+            <NavItem
+              icon={<BarChart3 size={20} />}
+              label="Stats"
+              onClick={() => navigate("/stats")}
+              darkMode={darkMode}
+              accentColor={accentColor}
+            />
+            <NavItem
+              icon={<Trophy size={20} />}
+              label="Achievements"
+              onClick={() => navigate("/achievements")}
+              darkMode={darkMode}
+              accentColor={accentColor}
+            />
+            <NavItem
+              icon={<Calendar size={20} />}
+              label="Calendar"
+              active
+              onClick={() => navigate("/calendar")}
+              darkMode={darkMode}
+              accentColor={accentColor}
+            />
+            <NavItem
+              icon={<User size={20} />}
+              label="Profile"
+              onClick={() => navigate("/profile")}
+              darkMode={darkMode}
+              accentColor={accentColor}
+            />
+            <NavItem
+              icon={<Settings size={20} />}
+              label="Settings"
+              onClick={() => navigate("/settings")}
+              darkMode={darkMode}
+              accentColor={accentColor}
+            />
+          </ul>
+        </nav>
+
+        <div
+          className="p-4"
+          style={{
+            ...theme.borderStyle,
+            borderTopWidth: "1px",
+            borderTopStyle: "solid",
+          }}
+        >
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 text-red-400 hover:text-red-300 w-full px-4 py-2 rounded-lg hover:bg-red-900/20 transition-colors"
+          >
+            <LogOut size={20} />
+            <span>Logout</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* MAIN CONTENT */}
+      <main className="flex-1 p-8 overflow-y-auto">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h2 className={`text-3xl font-bold ${theme.text}`}>Calendar</h2>
+            <p className={theme.textMuted}>Plan and track your tasks</p>
+          </div>
+          <button
+            onClick={goToToday}
+            className="px-4 py-2 rounded-xl font-medium transition-all"
+            style={{
+              background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+              color: "white",
+            }}
+          >
+            Today
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Calendar Grid */}
+          <div
+            className={`lg:col-span-2 ${theme.card} rounded-2xl p-6`}
+            style={{
+              ...theme.borderStyle,
+              borderWidth: "1px",
+              borderStyle: "solid",
+            }}
+          >
+            {/* Month Navigation */}
+            <div className="flex justify-between items-center mb-6">
+              <button
+                onClick={prevMonth}
+                className={`p-2 rounded-lg transition-colors ${
+                  darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"
+                }`}
+              >
+                <span className="text-xl">←</span>
+              </button>
+              <h3 className={`text-2xl font-bold ${theme.text}`}>
+                {monthNames[month]} {year}
+              </h3>
+              <button
+                onClick={nextMonth}
+                className={`p-2 rounded-lg transition-colors ${
+                  darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"
+                }`}
+              >
+                <span className="text-xl">→</span>
+              </button>
+            </div>
+
+            {/* Weekday Headers */}
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {weekDays.map((day) => (
+                <div
+                  key={day}
+                  className={`text-center py-2 text-sm font-medium ${theme.textMuted}`}
+                >
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            {/* Calendar Days */}
+            <div className="grid grid-cols-7 gap-1">
+              {calendarDays.map((day, index) => {
+                if (day === null) {
+                  return (
+                    <div key={`empty-${index}`} className="aspect-square" />
+                  );
+                }
+
+                const dayTasks = getTasksForDay(day);
+                const hasActiveTasks = dayTasks.some((t) => t.isActive);
+                const hasCompletedTasks = dayTasks.some((t) => !t.isActive);
+
+                return (
+                  <button
+                    key={day}
+                    onClick={() => handleDayClick(day)}
+                    className={`aspect-square rounded-xl flex flex-col items-center justify-center transition-all relative ${
+                      isToday(day) ? "" : ""
+                    } ${isSelected(day) ? "" : ""}`}
+                    style={{
+                      backgroundColor: isSelected(day)
+                        ? `${accentColor}30`
+                        : isToday(day)
+                        ? darkMode
+                          ? "rgba(88, 28, 135, 0.3)"
+                          : "rgba(243, 232, 255, 1)"
+                        : darkMode
+                        ? "rgba(55, 65, 81, 0.2)"
+                        : "rgba(249, 250, 251, 1)",
+                      borderWidth:
+                        isSelected(day) || isToday(day) ? "2px" : "1px",
+                      borderStyle: "solid",
+                      borderColor: isSelected(day)
+                        ? accentColor
+                        : isToday(day)
+                        ? `${accentColor}50`
+                        : "transparent",
+                    }}
+                  >
+                    <span
+                      className={`font-medium ${
+                        isToday(day) || isSelected(day) ? "" : theme.text
+                      }`}
+                      style={
+                        isToday(day) || isSelected(day)
+                          ? { color: accentColor }
+                          : {}
+                      }
+                    >
+                      {day}
+                    </span>
+                    {/* Task Indicators */}
+                    {dayTasks.length > 0 && (
+                      <div className="flex gap-1 mt-1">
+                        {hasActiveTasks && (
+                          <div className="w-2 h-2 rounded-full bg-blue-500" />
+                        )}
+                        {hasCompletedTasks && (
+                          <div className="w-2 h-2 rounded-full bg-green-500" />
+                        )}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Legend */}
+            <div
+              className="flex justify-center gap-6 mt-4 pt-4"
+              style={{
+                borderTopWidth: "1px",
+                borderTopStyle: "solid",
+                ...theme.borderStyle,
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-blue-500" />
+                <span className={`text-sm ${theme.textMuted}`}>
+                  Active Tasks
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-green-500" />
+                <span className={`text-sm ${theme.textMuted}`}>Completed</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Selected Day Details */}
+          <div
+            className={`${theme.card} rounded-2xl p-6`}
+            style={{
+              ...theme.borderStyle,
+              borderWidth: "1px",
+              borderStyle: "solid",
+            }}
+          >
+            {selectedDate ? (
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className={`text-xl font-bold ${theme.text}`}>
+                    {selectedDate.toLocaleDateString("en-US", {
+                      weekday: "long",
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </h3>
+                  <button
+                    onClick={() => setShowAddTask(true)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+                    style={{
+                      background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                      color: "white",
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
+
+                {selectedDayTasks.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Calendar
+                      size={40}
+                      className={`mb-4 mx-auto ${
+                        darkMode ? "text-gray-500" : "text-gray-400"
+                      }`}
+                    />
+                    <p className={theme.textMuted}>No tasks for this day</p>
+                    <button
+                      onClick={() => setShowAddTask(true)}
+                      className="mt-4 text-sm font-medium"
+                      style={theme.accentText}
+                    >
+                      + Add a task
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedDayTasks.map((task) => (
+                      <TaskCard
+                        key={task.taskId}
+                        task={task}
+                        darkMode={darkMode}
+                        accentColor={accentColor}
+                        theme={theme}
+                        onDelete={() => handleDeleteTask(task.taskId)}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Add Task Form */}
+                {showAddTask && (
+                  <div
+                    className="mt-4 p-4 rounded-xl"
+                    style={{
+                      backgroundColor: darkMode
+                        ? "rgba(55, 65, 81, 0.3)"
+                        : "rgba(243, 244, 246, 1)",
+                    }}
+                  >
+                    <input
+                      type="text"
+                      value={newTaskTitle}
+                      onChange={(e) => setNewTaskTitle(e.target.value)}
+                      placeholder="Task title..."
+                      className={`w-full p-3 rounded-lg mb-3 ${theme.inputBg} ${theme.text}`}
+                      style={{
+                        borderWidth: "1px",
+                        borderStyle: "solid",
+                        ...theme.borderStyle,
+                      }}
+                    />
+                    <select
+                      value={newTaskDifficulty}
+                      onChange={(e) =>
+                        setNewTaskDifficulty(e.target.value as any)
+                      }
+                      className={`w-full p-3 rounded-lg mb-3 ${theme.inputBg} ${theme.text}`}
+                      style={{
+                        borderWidth: "1px",
+                        borderStyle: "solid",
+                        ...theme.borderStyle,
+                      }}
+                    >
+                      <option value="easy">Easy</option>
+                      <option value="medium">Medium</option>
+                      <option value="hard">Hard</option>
+                      <option value="extreme">Extreme</option>
+                    </select>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleAddTask}
+                        disabled={isSubmitting || !newTaskTitle.trim()}
+                        className="flex-1 py-2 rounded-lg font-medium text-white transition-all disabled:opacity-50"
+                        style={{
+                          background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                        }}
+                      >
+                        {isSubmitting ? "Adding..." : "Add Task"}
+                      </button>
+                      <button
+                        onClick={() => setShowAddTask(false)}
+                        className={`px-4 py-2 rounded-lg ${
+                          darkMode
+                            ? "bg-gray-700 text-gray-300"
+                            : "bg-gray-200 text-gray-700"
+                        }`}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-8">
+                <Calendar
+                  size={40}
+                  className={`mb-4 mx-auto ${
+                    darkMode ? "text-gray-500" : "text-gray-400"
+                  }`}
+                />
+                <p className={theme.textMuted}>Select a day to view tasks</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
 }
 
 /* Task Card Component */
 function TaskCard({
-    task,
-    darkMode,
-    accentColor,
-    theme,
-    onDelete
+  task,
+  darkMode,
+  accentColor,
+  theme,
+  onDelete,
 }: {
-    task: Task;
-    darkMode: boolean;
-    accentColor: string;
-    theme: ReturnType<typeof getThemeClasses>;
-    onDelete: () => void;
+  task: Task;
+  darkMode: boolean;
+  accentColor: string;
+  theme: ReturnType<typeof getThemeClasses>;
+  onDelete: () => void;
 }) {
-    const [showConfirm, setShowConfirm] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
-    const difficultyColors = {
-        easy: '#22c55e',
-        medium: '#f59e0b',
-        hard: '#ef4444',
-        extreme: '#a855f7'
-    };
+  const difficultyColors = {
+    easy: "#22c55e",
+    medium: "#f59e0b",
+    hard: "#ef4444",
+    extreme: "#a855f7",
+  };
 
-    return (
-        <div
-            className={`p-4 rounded-xl transition-all ${task.isActive ? '' : 'opacity-60'}`}
-            style={{
-                backgroundColor: darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(249, 250, 251, 1)',
-                borderLeftWidth: '4px',
-                borderLeftStyle: 'solid',
-                borderLeftColor: difficultyColors[task.difficulty]
-            }}
-        >
-            <div className="flex items-start justify-between">
-                <div className="flex-1">
-                    <p className={`font-medium ${task.isActive ? theme.text : 'line-through ' + theme.textMuted}`}>
-                        {task.title}
-                    </p>
-                    <div className="flex items-center gap-3 mt-2">
-                        <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: `${difficultyColors[task.difficulty]}20`, color: difficultyColors[task.difficulty] }}>
-                            {task.difficulty}
-                        </span>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    {!task.isActive && (
-                        <Check size={18} className="text-green-500" />
-                    )}
-                    {showConfirm ? (
-                        <div className="flex gap-1">
-                            <button
-                                onClick={() => {
-                                    onDelete();
-                                    setShowConfirm(false);
-                                }}
-                                className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-                            >
-                                Delete
-                            </button>
-                            <button
-                                onClick={() => setShowConfirm(false)}
-                                className="text-xs px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
-                            >
-                                Cancel
-                            </button>
-                        </div>
-                    ) : (
-                        <button
-                            onClick={() => setShowConfirm(true)}
-                            className="text-red-400 hover:text-red-500 p-1 rounded transition-colors"
-                            title="Delete task"
-                        >
-                            <Trash2 size={16} />
-                        </button>
-                    )}
-                </div>
-            </div>
+  return (
+    <div
+      className={`p-4 rounded-xl transition-all ${
+        task.isActive ? "" : "opacity-60"
+      }`}
+      style={{
+        backgroundColor: darkMode
+          ? "rgba(55, 65, 81, 0.3)"
+          : "rgba(249, 250, 251, 1)",
+        borderLeftWidth: "4px",
+        borderLeftStyle: "solid",
+        borderLeftColor: difficultyColors[task.difficulty],
+      }}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <p
+            className={`font-medium ${
+              task.isActive ? theme.text : "line-through " + theme.textMuted
+            }`}
+          >
+            {task.title}
+          </p>
+          <div className="flex items-center gap-3 mt-2">
+            <span
+              className="text-xs px-2 py-1 rounded"
+              style={{
+                backgroundColor: `${difficultyColors[task.difficulty]}20`,
+                color: difficultyColors[task.difficulty],
+              }}
+            >
+              {task.difficulty}
+            </span>
+          </div>
         </div>
-    );
+        <div className="flex items-center gap-2">
+          {!task.isActive && <Check size={18} className="text-green-500" />}
+          {showConfirm ? (
+            <div className="flex gap-1">
+              <button
+                onClick={() => {
+                  onDelete();
+                  setShowConfirm(false);
+                }}
+                className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+              >
+                Delete
+              </button>
+              <button
+                onClick={() => setShowConfirm(false)}
+                className="text-xs px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowConfirm(true)}
+              className="text-red-400 hover:text-red-500 p-1 rounded transition-colors"
+              title="Delete task"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* Navigation Item Component */
 function NavItem({
-    icon,
-    label,
-    active = false,
-    onClick,
-    darkMode,
-    accentColor
+  icon,
+  label,
+  active = false,
+  onClick,
+  darkMode,
+  accentColor,
 }: {
-    icon: React.ReactNode;
-    label: string;
-    active?: boolean;
-    onClick: () => void;
-    darkMode: boolean;
-    accentColor: string;
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+  onClick: () => void;
+  darkMode: boolean;
+  accentColor: string;
 }) {
-    return (
-        <li>
-            <button
-                onClick={onClick}
-                className="flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-all"
-                style={active ? {
-                    background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
-                    color: accentColor,
-                    borderWidth: '1px',
-                    borderStyle: 'solid',
-                    borderColor: `${accentColor}50`
-                } : {
-                    color: darkMode ? '#9ca3af' : '#6b7280'
-                }}
-            >
-                {icon}
-                <span className="font-medium">{label}</span>
-            </button>
-        </li>
-    );
+  return (
+    <li>
+      <button
+        onClick={onClick}
+        className="flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-all"
+        style={
+          active
+            ? {
+                background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
+                color: accentColor,
+                borderWidth: "1px",
+                borderStyle: "solid",
+                borderColor: `${accentColor}50`,
+              }
+            : {
+                color: darkMode ? "#9ca3af" : "#6b7280",
+              }
+        }
+      >
+        {icon}
+        <span className="font-medium">{label}</span>
+      </button>
+    </li>
+  );
 }

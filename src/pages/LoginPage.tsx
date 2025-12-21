@@ -55,14 +55,14 @@ export default function LoginPage() {
           type="email"
           placeholder="E-mail"
           value={email}
-          onChange={e => setEmail(e.target.value)}
+          onChange={(e) => setEmail(e.target.value)}
         />
 
         <input
           type="password"
           placeholder="Wachtwoord"
           value={password}
-          onChange={e => setPassword(e.target.value)}
+          onChange={(e) => setPassword(e.target.value)}
         />
 
         <button onClick={handleEmailLogin} disabled={loading}>
@@ -77,8 +77,7 @@ export default function LoginPage() {
       </button>
 
       <p className="auth-footer">
-        Nog geen account?{" "}
-        <Link to="/register">Registreer hier</Link>
+        Nog geen account? <Link to="/register">Registreer hier</Link>
       </p>
     </div>
   );

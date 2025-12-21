@@ -54,14 +54,14 @@ export default function RegisterPage() {
           type="email"
           placeholder="E-mail"
           value={email}
-          onChange={e => setEmail(e.target.value)}
+          onChange={(e) => setEmail(e.target.value)}
         />
 
         <input
           type="password"
           placeholder="Wachtwoord (min. 6 tekens)"
           value={password}
-          onChange={e => setPassword(e.target.value)}
+          onChange={(e) => setPassword(e.target.value)}
         />
 
         <button onClick={handleRegister} disabled={loading}>
@@ -76,8 +76,7 @@ export default function RegisterPage() {
       </button>
 
       <p className="auth-footer">
-        Al een account?{" "}
-        <Link to="/login">Log hier in</Link>
+        Al een account? <Link to="/login">Log hier in</Link>
       </p>
     </div>
   );
