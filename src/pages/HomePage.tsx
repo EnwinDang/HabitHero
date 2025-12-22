@@ -146,7 +146,14 @@ export default function HomePage() {
             <NavItem
               icon={<Scroll size={20} />}
               label="Quests"
-              onClick={() => {}}
+              onClick={() => { }}
+              darkMode={darkMode}
+              accentColor={accentColor}
+            />
+            <NavItem
+              icon={<ClipboardList size={20} />}
+              label="Daily Tasks"
+              onClick={() => navigate("/daily-tasks")}
               darkMode={darkMode}
               accentColor={accentColor}
             />
@@ -311,9 +318,8 @@ export default function HomePage() {
                     </span>
                   </div>
                   <div
-                    className={`h-3 rounded-full overflow-hidden ${
-                      darkMode ? "bg-gray-800" : "bg-gray-200"
-                    }`}
+                    className={`h-3 rounded-full overflow-hidden ${darkMode ? "bg-gray-800" : "bg-gray-200"
+                      }`}
                     style={{
                       ...theme.borderStyle,
                       borderWidth: "1px",
@@ -338,9 +344,8 @@ export default function HomePage() {
                     <span className="text-blue-400">0 / 100</span>
                   </div>
                   <div
-                    className={`h-3 rounded-full overflow-hidden ${
-                      darkMode ? "bg-gray-800" : "bg-gray-200"
-                    }`}
+                    className={`h-3 rounded-full overflow-hidden ${darkMode ? "bg-gray-800" : "bg-gray-200"
+                      }`}
                     style={{
                       borderWidth: "1px",
                       borderStyle: "solid",
@@ -434,9 +439,8 @@ export default function HomePage() {
 
                 <div className="py-12 text-center flex flex-col items-center justify-center">
                   <div
-                    className={`w-16 h-16 ${
-                      darkMode ? "bg-gray-800/50" : "bg-gray-100"
-                    } rounded-full flex items-center justify-center mb-4`}
+                    className={`w-16 h-16 ${darkMode ? "bg-gray-800/50" : "bg-gray-100"
+                      } rounded-full flex items-center justify-center mb-4`}
                   >
                     <FileText
                       size={32}
@@ -492,11 +496,10 @@ export default function HomePage() {
                         if (Number.isNaN(raw)) return;
                         setFocusDuration(raw);
                       }}
-                      className={`${
-                        darkMode
+                      className={`${darkMode
                           ? "bg-gray-800/50 text-gray-200 border-gray-700"
                           : "bg-gray-100 text-gray-800 border-gray-200"
-                      } w-full p-2 rounded-lg border`}
+                        } w-full p-2 rounded-lg border`}
                     />
                   </div>
 
@@ -575,11 +578,10 @@ export default function HomePage() {
                       </button>
                       <button
                         onClick={handleReset}
-                        className={`${
-                          darkMode
+                        className={`${darkMode
                             ? "bg-gray-800 hover:bg-gray-700 text-gray-300"
                             : "bg-gray-200 hover:bg-gray-300 text-gray-700"
-                        } px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors`}
+                          } px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors`}
                       >
                         RESET
                       </button>
@@ -617,16 +619,16 @@ export default function HomePage() {
                     style={
                       d.isToday
                         ? {
-                            background: `linear-gradient(to bottom, ${accentColor}, #a855f7)`,
-                            color: "white",
-                            boxShadow: `0 0 15px ${accentColor}50`,
-                          }
+                          background: `linear-gradient(to bottom, ${accentColor}, #a855f7)`,
+                          color: "white",
+                          boxShadow: `0 0 15px ${accentColor}50`,
+                        }
                         : {
-                            backgroundColor: darkMode
-                              ? "rgba(55, 65, 81, 0.3)"
-                              : "rgba(243, 244, 246, 1)",
-                            color: darkMode ? "#9ca3af" : "#6b7280",
-                          }
+                          backgroundColor: darkMode
+                            ? "rgba(55, 65, 81, 0.3)"
+                            : "rgba(243, 244, 246, 1)",
+                          color: darkMode ? "#9ca3af" : "#6b7280",
+                        }
                     }
                   >
                     <p className="text-xs font-medium">{d.day}</p>
@@ -721,9 +723,8 @@ export default function HomePage() {
                   </span>
                 </div>
                 <div
-                  className={`h-2 ${
-                    darkMode ? "bg-gray-800" : "bg-gray-200"
-                  } rounded-full overflow-hidden`}
+                  className={`h-2 ${darkMode ? "bg-gray-800" : "bg-gray-200"
+                    } rounded-full overflow-hidden`}
                 >
                   <div
                     className="h-full rounded-full"
@@ -769,15 +770,15 @@ function NavItem({
         style={
           active
             ? {
-                background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
-                color: accentColor,
-                borderWidth: "1px",
-                borderStyle: "solid",
-                borderColor: `${accentColor}50`,
-              }
+              background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
+              color: accentColor,
+              borderWidth: "1px",
+              borderStyle: "solid",
+              borderColor: `${accentColor}50`,
+            }
             : {
-                color: darkMode ? "#9ca3af" : "#6b7280",
-              }
+              color: darkMode ? "#9ca3af" : "#6b7280",
+            }
         }
       >
         {icon}
@@ -833,9 +834,8 @@ function StatBox({
     >
       <span style={{ color: colors.text }}>{icon}</span>
       <p
-        className={`text-xs ${
-          darkMode ? "text-gray-500" : "text-gray-400"
-        } mt-1`}
+        className={`text-xs ${darkMode ? "text-gray-500" : "text-gray-400"
+          } mt-1`}
       >
         {label}
       </p>

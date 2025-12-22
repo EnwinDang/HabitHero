@@ -2,7 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
-import { ProfilePage, FocusModePage, StatsPage, CalendarPage, AchievementsPage, SettingsPage } from "./pages/student";
+import { ProfilePage, FocusModePage, StatsPage, CalendarPage, AchievementsPage, SettingsPage, DailyTasksPage } from "./pages/student";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
@@ -70,6 +70,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <SettingsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/daily-tasks"
+              element={
+                <ProtectedRoute>
+                  <DailyTasksPage />
                 </ProtectedRoute>
               }
             />
