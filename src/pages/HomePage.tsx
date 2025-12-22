@@ -1,21 +1,12 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 
-import { useAuth } from "@/context/AuthContext";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { usePomodoro } from "@/context/pomodoro";
 import {
   Sword,
-  Scroll,
-  Timer,
-  BarChart3,
-  Trophy,
-  Calendar,
-  User,
-  Settings,
-  LogOut,
+  ClipboardList,
   BookOpen,
   Zap,
   Gift,
@@ -23,15 +14,12 @@ import {
   Shield,
   Heart,
   CalendarDays,
-  ClipboardList,
   FileText,
   Coins,
   AlertTriangle,
 } from "lucide-react";
 
 export default function HomePage() {
-  const navigate = useNavigate();
-  const { logout, loading: authLoading } = useAuth();
   const { user, loading: userLoading, error: userError } = useRealtimeUser();
   const { error: tasksError } = useRealtimeTasks();
   const { darkMode, accentColor } = useTheme();
@@ -86,12 +74,9 @@ export default function HomePage() {
   const handleStartPause = () => toggle();
   const handleReset = () => reset();
 
-  async function handleLogout() {
-    await logout();
-    navigate("/login");
-  }
 
-  if (authLoading || userLoading) {
+
+  if (userLoading) {
     return (
       <div
         className={`min-h-screen ${theme.bg} flex items-center justify-center transition-colors duration-300`}
@@ -114,114 +99,8 @@ export default function HomePage() {
   );
 
   return (
-    <div
-      className={`min-h-screen ${theme.bg} flex transition-colors duration-300`}
-    >
-      {/* SIDEBAR */}
-      <aside
-        className={`w-64 ${theme.sidebar} flex flex-col min-h-screen transition-colors duration-300`}
-        style={{
-          ...theme.borderStyle,
-          borderRightWidth: "1px",
-          borderRightStyle: "solid",
-        }}
-      >
-        <div className="p-6">
-          <h1 className="text-2xl font-bold" style={theme.gradientText}>
-            HabitHero
-          </h1>
-          {/* <p className={`text-xs ${theme.textSubtle} mt-1`}>ARISE</p> */}
-        </div>
-
-        <nav className="flex-1 px-4">
-          <ul className="space-y-2">
-            <NavItem
-              icon={<Sword size={20} />}
-              label="Home"
-              active
-              onClick={() => navigate("/dashboard")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Scroll size={20} />}
-              label="Quests"
-              onClick={() => { }}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<ClipboardList size={20} />}
-              label="Daily Tasks"
-              onClick={() => navigate("/daily-tasks")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Timer size={20} />}
-              label="Focus Mode"
-              onClick={() => navigate("/focus")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<BarChart3 size={20} />}
-              label="Stats"
-              onClick={() => navigate("/stats")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Trophy size={20} />}
-              label="Achievements"
-              onClick={() => navigate("/achievements")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Calendar size={20} />}
-              label="Calendar"
-              onClick={() => navigate("/calendar")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<User size={20} />}
-              label="Profile"
-              onClick={() => navigate("/profile")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Settings size={20} />}
-              label="Settings"
-              onClick={() => navigate("/settings")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-          </ul>
-        </nav>
-
-        <div
-          className="p-4"
-          style={{
-            ...theme.borderStyle,
-            borderTopWidth: "1px",
-            borderTopStyle: "solid",
-          }}
-        >
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 text-red-400 hover:text-red-300 w-full px-4 py-2 rounded-lg hover:bg-red-900/20 transition-colors"
-          >
-            <LogOut size={20} />
-            <span>Logout</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* MAIN CONTENT */}
-      <main className="flex-1 p-8 overflow-y-auto">
+    <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
+      <main className="p-8 overflow-y-auto">
         {/* Welcome Header */}
         <div className="mb-6">
           <p
@@ -497,8 +376,8 @@ export default function HomePage() {
                         setFocusDuration(raw);
                       }}
                       className={`${darkMode
-                          ? "bg-gray-800/50 text-gray-200 border-gray-700"
-                          : "bg-gray-100 text-gray-800 border-gray-200"
+                        ? "bg-gray-800/50 text-gray-200 border-gray-700"
+                        : "bg-gray-100 text-gray-800 border-gray-200"
                         } w-full p-2 rounded-lg border`}
                     />
                   </div>
@@ -579,8 +458,8 @@ export default function HomePage() {
                       <button
                         onClick={handleReset}
                         className={`${darkMode
-                            ? "bg-gray-800 hover:bg-gray-700 text-gray-300"
-                            : "bg-gray-200 hover:bg-gray-300 text-gray-700"
+                          ? "bg-gray-800 hover:bg-gray-700 text-gray-300"
+                          : "bg-gray-200 hover:bg-gray-300 text-gray-700"
                           } px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors`}
                       >
                         RESET
@@ -746,47 +625,7 @@ export default function HomePage() {
   );
 }
 
-/* Navigation Item Component */
-function NavItem({
-  icon,
-  label,
-  active = false,
-  onClick,
-  darkMode,
-  accentColor,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-  darkMode: boolean;
-  accentColor: string;
-}) {
-  return (
-    <li>
-      <button
-        onClick={onClick}
-        className="flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-all"
-        style={
-          active
-            ? {
-              background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
-              color: accentColor,
-              borderWidth: "1px",
-              borderStyle: "solid",
-              borderColor: `${accentColor}50`,
-            }
-            : {
-              color: darkMode ? "#9ca3af" : "#6b7280",
-            }
-        }
-      >
-        {icon}
-        <span className="font-medium">{label}</span>
-      </button>
-    </li>
-  );
-}
+
 
 /* Stat Box Component */
 function StatBox({

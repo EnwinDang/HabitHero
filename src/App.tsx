@@ -2,6 +2,7 @@ import { Routes, Route } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
+import StudentLayout from "./pages/layouts/StudentLayout";
 import { ProfilePage, FocusModePage, StatsPage, CalendarPage, AchievementsPage, SettingsPage, DailyTasksPage } from "./pages/student";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
@@ -14,73 +15,32 @@ export default function App() {
       <ThemeProvider>
         <PomodoroProvider>
           <Routes>
+            {/* Public Routes */}
             <Route path="/" element={<LoginPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+
+            {/* Student Dashboard Routes (Nested in StudentLayout) */}
             <Route
               path="/dashboard"
               element={
                 <ProtectedRoute>
-                  <HomePage />
+                  <StudentLayout />
                 </ProtectedRoute>
               }
-            />
-            <Route
-              path="/profile"
-              element={
-                <ProtectedRoute>
-                  <ProfilePage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/focus"
-              element={
-                <ProtectedRoute>
-                  <FocusModePage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/stats"
-              element={
-                <ProtectedRoute>
-                  <StatsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/calendar"
-              element={
-                <ProtectedRoute>
-                  <CalendarPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/achievements"
-              element={
-                <ProtectedRoute>
-                  <AchievementsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/settings"
-              element={
-                <ProtectedRoute>
-                  <SettingsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/daily-tasks"
-              element={
-                <ProtectedRoute>
-                  <DailyTasksPage />
-                </ProtectedRoute>
-              }
-            />
+            >
+              {/* Index route - default when visiting /dashboard */}
+              <Route index element={<HomePage />} />
+
+              {/* Nested student routes */}
+              <Route path="profile" element={<ProfilePage />} />
+              <Route path="focus" element={<FocusModePage />} />
+              <Route path="stats" element={<StatsPage />} />
+              <Route path="calendar" element={<CalendarPage />} />
+              <Route path="achievements" element={<AchievementsPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="daily-tasks" element={<DailyTasksPage />} />
+            </Route>
           </Routes>
         </PomodoroProvider>
       </ThemeProvider>

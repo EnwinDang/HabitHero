@@ -1,25 +1,16 @@
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/context/AuthContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { usePomodoro } from "@/context/pomodoro";
+import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import {
-  Sword,
-  Scroll,
-  Timer,
-  BarChart3,
-  Trophy,
-  Calendar,
-  User,
   Settings,
-  LogOut,
   Star,
   Flame,
 } from "lucide-react";
 
 export default function FocusModePage() {
-  const navigate = useNavigate();
-  const { logout } = useAuth();
   const { user, loading } = useRealtimeUser();
+  const { darkMode, accentColor } = useTheme();
+  const theme = getThemeClasses(darkMode, accentColor);
 
   const {
     focusDuration,
@@ -56,100 +47,33 @@ export default function FocusModePage() {
   const safeTimeLeft = Math.min(Math.max(timeLeftSeconds, 0), totalSeconds);
   const progress = ((totalSeconds - safeTimeLeft) / totalSeconds) * 100;
 
-  async function handleLogout() {
-    await logout();
-    navigate("/login");
-  }
+
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-xl text-gray-600">Loading...</div>
+      <div className={`min-h-screen ${theme.bg} flex items-center justify-center transition-colors duration-300`}>
+        <div className="text-xl animate-pulse" style={theme.accentText}>Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
       {/* XP Notification */}
       {xpGained && (
         <div className="fixed top-8 left-1/2 transform -translate-x-1/2 z-50 animate-bounce">
-          <div className="bg-purple-600 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2">
+          <div className="px-6 py-3 rounded-full shadow-lg flex items-center gap-2" style={{ background: accentColor, color: 'white' }}>
             <span className="text-xl">⭐</span>
             <span className="font-bold">+{xpGained} XP earned!</span>
           </div>
         </div>
       )}
 
-      {/* SIDEBAR */}
-      <aside className="w-64 bg-white flex flex-col min-h-screen border-r border-gray-200">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold text-purple-600">HabitHero</h1>
-        </div>
-
-        <nav className="flex-1 px-4">
-          <ul className="space-y-2">
-            <SidebarItem
-              icon={<Sword size={20} />}
-              label="Home"
-              onClick={() => navigate("/dashboard")}
-            />
-            <SidebarItem
-              icon={<Scroll size={20} />}
-              label="Quests"
-              onClick={() => {}}
-            />
-            <SidebarItem
-              icon={<Timer size={20} />}
-              label="Focus Mode"
-              active
-              onClick={() => navigate("/focus")}
-            />
-            <SidebarItem
-              icon={<BarChart3 size={20} />}
-              label="Stats"
-              onClick={() => navigate("/stats")}
-            />
-            <SidebarItem
-              icon={<Trophy size={20} />}
-              label="Achievements"
-              onClick={() => navigate("/achievements")}
-            />
-            <SidebarItem
-              icon={<Calendar size={20} />}
-              label="Calendar"
-              onClick={() => navigate("/calendar")}
-            />
-            <SidebarItem
-              icon={<User size={20} />}
-              label="Profile"
-              onClick={() => navigate("/profile")}
-            />
-            <SidebarItem
-              icon={<Settings size={20} />}
-              label="Settings"
-              onClick={() => navigate("/settings")}
-            />
-          </ul>
-        </nav>
-
-        <div className="p-4 border-t border-gray-200">
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 text-red-500 hover:text-red-600 w-full px-4 py-2 rounded-lg hover:bg-red-50 transition-colors"
-          >
-            <LogOut size={20} />
-            <span>Logout</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* MAIN CONTENT */}
-      <main className="flex-1 p-8 overflow-y-auto bg-gray-50">
+      <main className="p-8 overflow-y-auto w-full">
         {/* Header */}
         <div className="mb-8">
-          <h2 className="text-3xl font-bold text-gray-800">Focus Mode</h2>
-          <p className="text-purple-600">
+          <h2 className={`text-3xl font-bold ${theme.text}`}>Focus Mode</h2>
+          <p style={theme.accentText}>
             Stay focused with the Pomodoro technique
           </p>
         </div>
@@ -157,10 +81,10 @@ export default function FocusModePage() {
         {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Timer Card - Takes 2 columns */}
-          <div className="lg:col-span-2 bg-white rounded-2xl p-8 shadow-sm">
+          <div className={`lg:col-span-2 ${theme.card} rounded-2xl p-8`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
             <div className="text-center mb-8">
-              <h3 className="text-2xl font-bold text-gray-800">Focus Time</h3>
-              <p className="text-purple-500">Time to concentrate</p>
+              <h3 className={`text-2xl font-bold ${theme.text}`}>Focus Time</h3>
+              <p style={theme.accentText}>Time to concentrate</p>
             </div>
 
             {/* Timer Circle */}
@@ -183,7 +107,7 @@ export default function FocusModePage() {
                     cx="128"
                     cy="128"
                     r="110"
-                    stroke="#8b5cf6"
+                    stroke={accentColor}
                     strokeWidth="8"
                     fill="none"
                     strokeLinecap="round"
@@ -193,10 +117,10 @@ export default function FocusModePage() {
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                  <span className="text-4xl font-bold text-gray-800">
+                  <span className={`text-4xl font-bold ${theme.text}`}>
                     {formatTime(safeTimeLeft)}
                   </span>
-                  <span className="text-gray-500">
+                  <span className={theme.textMuted}>
                     {getMinutesLeft()} minutes left
                   </span>
                 </div>
@@ -208,21 +132,24 @@ export default function FocusModePage() {
               {status !== "running" ? (
                 <button
                   onClick={handleStart}
-                  className="flex flex-col items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-xl font-medium transition-colors"
+                  className="flex flex-col items-center gap-1 text-white px-8 py-3 rounded-xl font-medium transition-colors"
+                  style={{ background: accentColor }}
                 >
                   <span>Start</span>
                 </button>
               ) : (
                 <button
                   onClick={handlePause}
-                  className="flex flex-col items-center gap-1 bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-xl font-medium transition-colors"
+                  className="flex flex-col items-center gap-1 text-white px-8 py-3 rounded-xl font-medium transition-colors"
+                  style={{ background: accentColor }}
                 >
                   <span>Pause</span>
                 </button>
               )}
               <button
                 onClick={handleReset}
-                className="flex flex-col items-center gap-1 bg-white border-2 border-purple-200 text-purple-600 hover:bg-purple-50 px-8 py-3 rounded-xl font-medium transition-colors"
+                className={`flex flex-col items-center gap-1 ${theme.card} px-8 py-3 rounded-xl font-medium transition-colors`}
+                style={{ ...theme.borderStyle, borderWidth: '2px', borderStyle: 'solid', color: accentColor }}
               >
                 <span>Reset</span>
               </button>
@@ -233,49 +160,49 @@ export default function FocusModePage() {
           <div className="space-y-6">
             {/* Current XP */}
             {user && (
-              <div className="bg-white rounded-2xl p-6 shadow-sm">
+              <div className={`${theme.card} rounded-2xl p-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
                 <div className="flex items-center gap-2 mb-3">
-                  <Star size={20} className="text-purple-600" />
-                  <h3 className="text-lg font-bold text-gray-800">Your XP</h3>
+                  <Star size={20} style={{ color: accentColor }} />
+                  <h3 className={`text-lg font-bold ${theme.text}`}>Your XP</h3>
                 </div>
-                <p className="text-3xl font-bold text-purple-600">
+                <p className="text-3xl font-bold" style={{ color: accentColor }}>
                   {user.stats.xp || 0} XP
                 </p>
-                <p className="text-gray-500 text-sm">
+                <p className={`${theme.textMuted} text-sm`}>
                   Level {user.stats.level || 1}
                 </p>
               </div>
             )}
 
             {/* Focus Streak */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <div className={`${theme.card} rounded-2xl p-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
               <div className="flex items-center gap-2 mb-3">
                 <Flame size={20} className="text-orange-500" />
-                <h3 className="text-lg font-bold text-gray-800">
+                <h3 className={`text-lg font-bold ${theme.text}`}>
                   Focus Streak
                 </h3>
               </div>
-              <p className="text-3xl font-bold text-gray-800">
+              <p className={`text-3xl font-bold ${theme.text}`}>
                 {user?.stats?.streak || 0} days
               </p>
-              <p className="text-gray-500 text-sm">Keep it up!</p>
+              <p className={`${theme.textMuted} text-sm`}>Keep it up!</p>
             </div>
 
             {/* Today's Stats */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <h3 className="text-lg font-bold text-gray-800 mb-4">
+            <div className={`${theme.card} rounded-2xl p-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+              <h3 className={`text-lg font-bold ${theme.text} mb-4`}>
                 Today's Stats
               </h3>
               <div className="space-y-3">
-                <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                  <span className="text-gray-600">Sessions</span>
-                  <span className="font-bold text-gray-800">
+                <div className="flex justify-between items-center py-2" style={{ ...theme.borderStyle, borderBottomWidth: '1px', borderBottomStyle: 'solid' }}>
+                  <span className={theme.textMuted}>Sessions</span>
+                  <span className={`font-bold ${theme.text}`}>
                     {sessionsCompleted}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2">
-                  <span className="text-gray-600">Focus Time</span>
-                  <span className="font-bold text-purple-600">
+                  <span className={theme.textMuted}>Focus Time</span>
+                  <span className="font-bold" style={{ color: accentColor }}>
                     {Math.floor(totalFocusSeconds / 60)} min
                   </span>
                 </div>
@@ -283,16 +210,16 @@ export default function FocusModePage() {
             </div>
 
             {/* Timer Settings */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <div className={`${theme.card} rounded-2xl p-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
               <div className="flex items-center gap-2 mb-4">
-                <Settings size={20} className="text-gray-600" />
-                <h3 className="text-lg font-bold text-gray-800">
+                <Settings size={20} className={theme.textMuted} />
+                <h3 className={`text-lg font-bold ${theme.text}`}>
                   Timer Settings
                 </h3>
               </div>
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm text-gray-600 block mb-1">
+                  <label className={`text-sm ${theme.textMuted} block mb-1`}>
                     Focus Duration
                   </label>
                   <div className="flex items-center gap-2">
@@ -308,15 +235,16 @@ export default function FocusModePage() {
                         if (Number.isNaN(raw)) return;
                         setFocusDuration(raw);
                       }}
-                      className="w-full p-2 border border-gray-200 rounded-lg text-gray-800 bg-white"
+                      className={`w-full p-2 rounded-lg ${theme.text} ${theme.card}`}
+                      style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}
                     />
-                    <span className="text-sm text-gray-500 whitespace-nowrap">
+                    <span className={`text-sm ${theme.textMuted} whitespace-nowrap`}>
                       minutes
                     </span>
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600 block mb-1">
+                  <label className={`text-sm ${theme.textMuted} block mb-1`}>
                     Break Duration
                   </label>
                   <div className="flex items-center gap-2">
@@ -332,9 +260,10 @@ export default function FocusModePage() {
                         if (Number.isNaN(raw)) return;
                         setBreakDuration(raw);
                       }}
-                      className="w-full p-2 border border-gray-200 rounded-lg text-gray-800 bg-white"
+                      className={`w-full p-2 rounded-lg ${theme.text} ${theme.card}`}
+                      style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}
                     />
-                    <span className="text-sm text-gray-500 whitespace-nowrap">
+                    <span className={`text-sm ${theme.textMuted} whitespace-nowrap`}>
                       minutes
                     </span>
                   </div>
@@ -364,11 +293,10 @@ function SidebarItem({
     <li>
       <button
         onClick={onClick}
-        className={`flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-all ${
-          active
-            ? "bg-purple-50 text-purple-600 border border-purple-200"
-            : "text-gray-600 hover:bg-gray-50"
-        }`}
+        className={`flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-all ${active
+          ? "bg-purple-50 text-purple-600 border border-purple-200"
+          : "text-gray-600 hover:bg-gray-50"
+          }`}
       >
         {icon}
         <span className="font-medium">{label}</span>

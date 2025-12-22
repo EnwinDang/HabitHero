@@ -1,6 +1,4 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/context/AuthContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { TasksAPI } from "@/api/tasks.api";
@@ -8,15 +6,6 @@ import { CoursesAPI } from "@/api/courses.api";
 import type { Task } from "@/models/task.model";
 import type { Course } from "@/models/course.model";
 import {
-    Sword,
-    Scroll,
-    Timer,
-    BarChart3,
-    Trophy,
-    Calendar,
-    User,
-    Settings,
-    LogOut,
     ClipboardList,
     BookOpen,
     Coins,
@@ -25,8 +14,6 @@ import {
 } from "lucide-react";
 
 export default function DailyTasksPage() {
-    const navigate = useNavigate();
-    const { logout } = useAuth();
     const { user, loading: userLoading } = useRealtimeUser();
     const { darkMode, accentColor } = useTheme();
     const theme = getThemeClasses(darkMode, accentColor);
@@ -77,11 +64,6 @@ export default function DailyTasksPage() {
         }
     }
 
-    const handleLogout = async () => {
-        await logout();
-        navigate("/");
-    };
-
     const filteredTasks = selectedDifficulty === "all"
         ? tasks
         : tasks.filter(t => t.difficulty === selectedDifficulty);
@@ -106,41 +88,8 @@ export default function DailyTasksPage() {
     }
 
     return (
-        <div className={`min-h-screen ${theme.bg} flex transition-colors duration-300`}>
-            {/* SIDEBAR */}
-            <aside className={`w-64 ${theme.card} flex flex-col transition-colors duration-300`} style={{ ...theme.borderStyle, borderRightWidth: '1px', borderRightStyle: 'solid' }}>
-                <div className="p-6">
-                    <h2 className={`text-2xl font-bold ${theme.text}`}>HabitHero</h2>
-                    <p className={theme.textMuted}>Daily Tasks</p>
-                </div>
-
-                <nav className="flex-1 px-4">
-                    <ul className="space-y-2">
-                        <NavItem icon={<Sword size={20} />} label="Home" onClick={() => navigate("/dashboard")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<Scroll size={20} />} label="Quests" onClick={() => { }} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<ClipboardList size={20} />} label="Daily Tasks" active onClick={() => navigate("/daily-tasks")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<Timer size={20} />} label="Focus Mode" onClick={() => navigate("/focus")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<BarChart3 size={20} />} label="Stats" onClick={() => navigate("/stats")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<Trophy size={20} />} label="Achievements" onClick={() => navigate("/achievements")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<Calendar size={20} />} label="Calendar" onClick={() => navigate("/calendar")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<User size={20} />} label="Profile" onClick={() => navigate("/profile")} darkMode={darkMode} accentColor={accentColor} />
-                        <NavItem icon={<Settings size={20} />} label="Settings" onClick={() => navigate("/settings")} darkMode={darkMode} accentColor={accentColor} />
-                    </ul>
-                </nav>
-
-                <div className="p-4" style={{ ...theme.borderStyle, borderTopWidth: '1px', borderTopStyle: 'solid' }}>
-                    <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-3 text-red-400 hover:text-red-300 w-full px-4 py-2 rounded-lg hover:bg-red-900/20 transition-colors"
-                    >
-                        <LogOut size={20} />
-                        <span>Logout</span>
-                    </button>
-                </div>
-            </aside>
-
-            {/* MAIN CONTENT */}
-            <main className="flex-1 p-8 overflow-y-auto">
+        <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
+            <main className="p-8 overflow-y-auto">
                 {/* Header */}
                 <div className="mb-6">
                     <h2 className={`text-3xl font-bold ${theme.text}`}>Daily Tasks</h2>
@@ -168,8 +117,8 @@ export default function DailyTasksPage() {
                     <button
                         onClick={() => setSelectedDifficulty("all")}
                         className={`px-4 py-2 rounded-xl font-medium transition-all ${selectedDifficulty === "all"
-                                ? `text-white`
-                                : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
+                            ? `text-white`
+                            : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
                             }`}
                         style={selectedDifficulty === "all" ? {
                             background: `linear-gradient(to right, ${accentColor}, #a855f7)`
@@ -348,8 +297,8 @@ function DifficultyFilter({
         <button
             onClick={onClick}
             className={`px-4 py-2 rounded-xl font-medium transition-all ${isSelected
-                    ? 'text-white'
-                    : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
+                ? 'text-white'
+                : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
                 }`}
             style={isSelected ? {
                 backgroundColor: color

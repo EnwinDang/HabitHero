@@ -1,29 +1,17 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/context/AuthContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { db, auth } from "@/firebase";
-import { collection, addDoc, deleteDoc, doc } from "firebase/firestore";
+import { collection, addDoc, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import type { Task } from "@/models/task.model";
 import {
-  Sword,
-  Scroll,
-  Timer,
-  BarChart3,
-  Trophy,
   Calendar,
-  User,
-  Settings,
-  LogOut,
   Trash2,
   Check,
 } from "lucide-react";
 
 export default function CalendarPage() {
-  const navigate = useNavigate();
-  const { logout, loading: authLoading } = useAuth();
   const { user, loading: userLoading } = useRealtimeUser();
   const { tasks } = useRealtimeTasks();
   const { darkMode, accentColor } = useTheme();
@@ -43,12 +31,9 @@ export default function CalendarPage() {
   >("medium");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function handleLogout() {
-    await logout();
-    navigate("/login");
-  }
 
-  if (authLoading || userLoading) {
+
+  if (userLoading) {
     return (
       <div
         className={`min-h-screen ${theme.bg} flex items-center justify-center transition-colors duration-300`}
@@ -172,18 +157,18 @@ export default function CalendarPage() {
           newTaskDifficulty === "easy"
             ? 25
             : newTaskDifficulty === "medium"
-            ? 50
-            : newTaskDifficulty === "hard"
-            ? 100
-            : 200,
+              ? 50
+              : newTaskDifficulty === "hard"
+                ? 100
+                : 200,
         gold:
           newTaskDifficulty === "easy"
             ? 10
             : newTaskDifficulty === "medium"
-            ? 25
-            : newTaskDifficulty === "hard"
-            ? 50
-            : 100,
+              ? 25
+              : newTaskDifficulty === "hard"
+                ? 50
+                : 100,
         date: dateStr,
         dueAt: selectedDate.getTime(),
         isRepeatable: false,
@@ -218,6 +203,25 @@ export default function CalendarPage() {
     }
   };
 
+  // Complete task - toggle isActive status
+  const handleCompleteTask = async (taskId: string, currentStatus: boolean) => {
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser) {
+      console.error("No authenticated user");
+      return;
+    }
+
+    try {
+      const taskRef = doc(db, "users", firebaseUser.uid, "tasks", taskId);
+      await updateDoc(taskRef, {
+        isActive: !currentStatus, // Toggle active status
+      });
+      console.log("✅ Task completed successfully!");
+    } catch (error) {
+      console.error("Failed to complete task:", error);
+    }
+  };
+
   // Get selected day tasks
   const selectedDayTasks = selectedDate
     ? getTasksForDay(selectedDate.getDate())
@@ -233,106 +237,8 @@ export default function CalendarPage() {
   }
 
   return (
-    <div
-      className={`min-h-screen ${theme.bg} flex transition-colors duration-300`}
-    >
-      {/* SIDEBAR */}
-      <aside
-        className={`w-64 ${theme.sidebar} flex flex-col min-h-screen transition-colors duration-300`}
-        style={{
-          ...theme.borderStyle,
-          borderRightWidth: "1px",
-          borderRightStyle: "solid",
-        }}
-      >
-        <div className="p-6">
-          <h1 className="text-2xl font-bold" style={theme.gradientText}>
-            HabitHero
-          </h1>
-        </div>
-
-        <nav className="flex-1 px-4">
-          <ul className="space-y-2">
-            <NavItem
-              icon={<Sword size={20} />}
-              label="Home"
-              onClick={() => navigate("/dashboard")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Scroll size={20} />}
-              label="Quests"
-              onClick={() => {}}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Timer size={20} />}
-              label="Focus Mode"
-              onClick={() => navigate("/focus")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<BarChart3 size={20} />}
-              label="Stats"
-              onClick={() => navigate("/stats")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Trophy size={20} />}
-              label="Achievements"
-              onClick={() => navigate("/achievements")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Calendar size={20} />}
-              label="Calendar"
-              active
-              onClick={() => navigate("/calendar")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<User size={20} />}
-              label="Profile"
-              onClick={() => navigate("/profile")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Settings size={20} />}
-              label="Settings"
-              onClick={() => navigate("/settings")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-          </ul>
-        </nav>
-
-        <div
-          className="p-4"
-          style={{
-            ...theme.borderStyle,
-            borderTopWidth: "1px",
-            borderTopStyle: "solid",
-          }}
-        >
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 text-red-400 hover:text-red-300 w-full px-4 py-2 rounded-lg hover:bg-red-900/20 transition-colors"
-          >
-            <LogOut size={20} />
-            <span>Logout</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* MAIN CONTENT */}
-      <main className="flex-1 p-8 overflow-y-auto">
+    <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
+      <main className="p-8 overflow-y-auto">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -365,9 +271,8 @@ export default function CalendarPage() {
             <div className="flex justify-between items-center mb-6">
               <button
                 onClick={prevMonth}
-                className={`p-2 rounded-lg transition-colors ${
-                  darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"
-                }`}
+                className={`p-2 rounded-lg transition-colors ${darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"
+                  }`}
               >
                 <span className="text-xl">←</span>
               </button>
@@ -376,9 +281,8 @@ export default function CalendarPage() {
               </h3>
               <button
                 onClick={nextMonth}
-                className={`p-2 rounded-lg transition-colors ${
-                  darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"
-                }`}
+                className={`p-2 rounded-lg transition-colors ${darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"
+                  }`}
               >
                 <span className="text-xl">→</span>
               </button>
@@ -413,33 +317,31 @@ export default function CalendarPage() {
                   <button
                     key={day}
                     onClick={() => handleDayClick(day)}
-                    className={`aspect-square rounded-xl flex flex-col items-center justify-center transition-all relative ${
-                      isToday(day) ? "" : ""
-                    } ${isSelected(day) ? "" : ""}`}
+                    className={`aspect-square rounded-xl flex flex-col items-center justify-center transition-all relative ${isToday(day) ? "" : ""
+                      } ${isSelected(day) ? "" : ""}`}
                     style={{
                       backgroundColor: isSelected(day)
                         ? `${accentColor}30`
                         : isToday(day)
-                        ? darkMode
-                          ? "rgba(88, 28, 135, 0.3)"
-                          : "rgba(243, 232, 255, 1)"
-                        : darkMode
-                        ? "rgba(55, 65, 81, 0.2)"
-                        : "rgba(249, 250, 251, 1)",
+                          ? darkMode
+                            ? "rgba(88, 28, 135, 0.3)"
+                            : "rgba(243, 232, 255, 1)"
+                          : darkMode
+                            ? "rgba(55, 65, 81, 0.2)"
+                            : "rgba(249, 250, 251, 1)",
                       borderWidth:
                         isSelected(day) || isToday(day) ? "2px" : "1px",
                       borderStyle: "solid",
                       borderColor: isSelected(day)
                         ? accentColor
                         : isToday(day)
-                        ? `${accentColor}50`
-                        : "transparent",
+                          ? `${accentColor}50`
+                          : "transparent",
                     }}
                   >
                     <span
-                      className={`font-medium ${
-                        isToday(day) || isSelected(day) ? "" : theme.text
-                      }`}
+                      className={`font-medium ${isToday(day) || isSelected(day) ? "" : theme.text
+                        }`}
                       style={
                         isToday(day) || isSelected(day)
                           ? { color: accentColor }
@@ -521,9 +423,8 @@ export default function CalendarPage() {
                   <div className="text-center py-8">
                     <Calendar
                       size={40}
-                      className={`mb-4 mx-auto ${
-                        darkMode ? "text-gray-500" : "text-gray-400"
-                      }`}
+                      className={`mb-4 mx-auto ${darkMode ? "text-gray-500" : "text-gray-400"
+                        }`}
                     />
                     <p className={theme.textMuted}>No tasks for this day</p>
                     <button
@@ -544,6 +445,7 @@ export default function CalendarPage() {
                         accentColor={accentColor}
                         theme={theme}
                         onDelete={() => handleDeleteTask(task.taskId)}
+                        onComplete={() => handleCompleteTask(task.taskId, task.isActive)}
                       />
                     ))}
                   </div>
@@ -601,11 +503,10 @@ export default function CalendarPage() {
                       </button>
                       <button
                         onClick={() => setShowAddTask(false)}
-                        className={`px-4 py-2 rounded-lg ${
-                          darkMode
-                            ? "bg-gray-700 text-gray-300"
-                            : "bg-gray-200 text-gray-700"
-                        }`}
+                        className={`px-4 py-2 rounded-lg ${darkMode
+                          ? "bg-gray-700 text-gray-300"
+                          : "bg-gray-200 text-gray-700"
+                          }`}
                       >
                         Cancel
                       </button>
@@ -617,9 +518,8 @@ export default function CalendarPage() {
               <div className="text-center py-8">
                 <Calendar
                   size={40}
-                  className={`mb-4 mx-auto ${
-                    darkMode ? "text-gray-500" : "text-gray-400"
-                  }`}
+                  className={`mb-4 mx-auto ${darkMode ? "text-gray-500" : "text-gray-400"
+                    }`}
                 />
                 <p className={theme.textMuted}>Select a day to view tasks</p>
               </div>
@@ -638,12 +538,14 @@ function TaskCard({
   accentColor,
   theme,
   onDelete,
+  onComplete,
 }: {
   task: Task;
   darkMode: boolean;
   accentColor: string;
   theme: ReturnType<typeof getThemeClasses>;
   onDelete: () => void;
+  onComplete: () => void;
 }) {
   const [showConfirm, setShowConfirm] = useState(false);
 
@@ -656,9 +558,8 @@ function TaskCard({
 
   return (
     <div
-      className={`p-4 rounded-xl transition-all ${
-        task.isActive ? "" : "opacity-60"
-      }`}
+      className={`p-4 rounded-xl transition-all ${task.isActive ? "" : "opacity-60"
+        }`}
       style={{
         backgroundColor: darkMode
           ? "rgba(55, 65, 81, 0.3)"
@@ -671,9 +572,8 @@ function TaskCard({
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <p
-            className={`font-medium ${
-              task.isActive ? theme.text : "line-through " + theme.textMuted
-            }`}
+            className={`font-medium ${task.isActive ? theme.text : "line-through " + theme.textMuted
+              }`}
           >
             {task.title}
           </p>
@@ -691,6 +591,15 @@ function TaskCard({
         </div>
         <div className="flex items-center gap-2">
           {!task.isActive && <Check size={18} className="text-green-500" />}
+          {task.isActive && (
+            <button
+              onClick={onComplete}
+              className="text-green-500 hover:text-green-600 p-1 rounded transition-colors"
+              title="Mark as complete"
+            >
+              <Check size={18} />
+            </button>
+          )}
           {showConfirm ? (
             <div className="flex gap-1">
               <button
@@ -748,15 +657,15 @@ function NavItem({
         style={
           active
             ? {
-                background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
-                color: accentColor,
-                borderWidth: "1px",
-                borderStyle: "solid",
-                borderColor: `${accentColor}50`,
-              }
+              background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
+              color: accentColor,
+              borderWidth: "1px",
+              borderStyle: "solid",
+              borderColor: `${accentColor}50`,
+            }
             : {
-                color: darkMode ? "#9ca3af" : "#6b7280",
-              }
+              color: darkMode ? "#9ca3af" : "#6b7280",
+            }
         }
       >
         {icon}

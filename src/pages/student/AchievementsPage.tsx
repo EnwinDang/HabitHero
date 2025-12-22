@@ -1,6 +1,4 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/context/AuthContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useRealtimeAchievements } from "@/hooks/useRealtimeAchievements";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
@@ -11,15 +9,7 @@ import {
   onTaskCompleted,
 } from "@/services/achievement.service";
 import {
-  Sword,
-  Scroll,
-  Timer,
-  BarChart3,
   Trophy,
-  Calendar,
-  User,
-  Settings,
-  LogOut,
   Star,
   TrendingUp,
   Coins,
@@ -28,8 +18,6 @@ import {
 } from "lucide-react";
 
 export default function AchievementsPage() {
-  const navigate = useNavigate();
-  const { logout, loading: authLoading } = useAuth();
   const { user, loading: userLoading } = useRealtimeUser();
   const { achievements, loading: achievementsLoading } =
     useRealtimeAchievements();
@@ -67,12 +55,9 @@ export default function AchievementsPage() {
     }
   }, [tasks]);
 
-  async function handleLogout() {
-    await logout();
-    navigate("/login");
-  }
 
-  if (authLoading || userLoading || achievementsLoading) {
+
+  if (userLoading || achievementsLoading) {
     return (
       <div
         className={`min-h-screen ${theme.bg} flex items-center justify-center transition-colors duration-300`}
@@ -108,106 +93,8 @@ export default function AchievementsPage() {
     .reduce((sum, a) => sum + (a.reward?.xp || 0), 0);
 
   return (
-    <div
-      className={`min-h-screen ${theme.bg} flex transition-colors duration-300`}
-    >
-      {/* SIDEBAR */}
-      <aside
-        className={`w-64 ${theme.sidebar} flex flex-col min-h-screen transition-colors duration-300`}
-        style={{
-          ...theme.borderStyle,
-          borderRightWidth: "1px",
-          borderRightStyle: "solid",
-        }}
-      >
-        <div className="p-6">
-          <h1 className="text-2xl font-bold" style={theme.gradientText}>
-            HabitHero
-          </h1>
-        </div>
-
-        <nav className="flex-1 px-4">
-          <ul className="space-y-2">
-            <NavItem
-              icon={<Sword size={20} />}
-              label="Home"
-              onClick={() => navigate("/dashboard")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Scroll size={20} />}
-              label="Quests"
-              onClick={() => {}}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Timer size={20} />}
-              label="Focus Mode"
-              onClick={() => navigate("/focus")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<BarChart3 size={20} />}
-              label="Stats"
-              onClick={() => navigate("/stats")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Trophy size={20} />}
-              label="Achievements"
-              active
-              onClick={() => navigate("/achievements")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Calendar size={20} />}
-              label="Calendar"
-              onClick={() => navigate("/calendar")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<User size={20} />}
-              label="Profile"
-              onClick={() => navigate("/profile")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Settings size={20} />}
-              label="Settings"
-              onClick={() => navigate("/settings")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-          </ul>
-        </nav>
-
-        <div
-          className="p-4"
-          style={{
-            ...theme.borderStyle,
-            borderTopWidth: "1px",
-            borderTopStyle: "solid",
-          }}
-        >
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 text-red-400 hover:text-red-300 w-full px-4 py-2 rounded-lg hover:bg-red-900/20 transition-colors"
-          >
-            <LogOut size={20} />
-            <span>Logout</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* MAIN CONTENT */}
-      <main className="flex-1 p-8 overflow-y-auto">
+    <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
+      <main className="p-8 overflow-y-auto">
         {/* Header */}
         <div className="mb-6">
           <h2 className={`text-3xl font-bold ${theme.text}`}>Achievements</h2>
@@ -261,15 +148,15 @@ export default function AchievementsPage() {
               style={
                 selectedCategory === category
                   ? {
-                      background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
-                      color: "white",
-                    }
+                    background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                    color: "white",
+                  }
                   : {
-                      backgroundColor: darkMode
-                        ? "rgba(55, 65, 81, 0.3)"
-                        : "rgba(243, 244, 246, 1)",
-                      color: darkMode ? "#9ca3af" : "#6b7280",
-                    }
+                    backgroundColor: darkMode
+                      ? "rgba(55, 65, 81, 0.3)"
+                      : "rgba(243, 244, 246, 1)",
+                    color: darkMode ? "#9ca3af" : "#6b7280",
+                  }
               }
             >
               {category}
@@ -294,9 +181,8 @@ export default function AchievementsPage() {
           <div className="text-center py-12">
             <Trophy
               size={40}
-              className={`mb-4 mx-auto ${
-                darkMode ? "text-gray-500" : "text-gray-400"
-              }`}
+              className={`mb-4 mx-auto ${darkMode ? "text-gray-500" : "text-gray-400"
+                }`}
             />
             <p className={theme.textMuted}>No achievements in this category</p>
           </div>
@@ -334,9 +220,8 @@ function AchievementCard({
 
   return (
     <div
-      className={`rounded-2xl p-5 transition-all ${
-        achievement.isUnlocked ? "" : "opacity-70"
-      }`}
+      className={`rounded-2xl p-5 transition-all ${achievement.isUnlocked ? "" : "opacity-70"
+        }`}
       style={{
         backgroundColor: darkMode
           ? "rgba(31, 41, 55, 0.5)"
@@ -346,8 +231,8 @@ function AchievementCard({
         borderColor: achievement.isUnlocked
           ? accentColor
           : darkMode
-          ? "rgba(75, 85, 99, 0.5)"
-          : "rgba(229, 231, 235, 1)",
+            ? "rgba(75, 85, 99, 0.5)"
+            : "rgba(229, 231, 235, 1)",
         boxShadow: achievement.isUnlocked
           ? `0 0 20px ${accentColor}30`
           : "none",
@@ -361,8 +246,8 @@ function AchievementCard({
             backgroundColor: achievement.isUnlocked
               ? `${accentColor}20`
               : darkMode
-              ? "rgba(55, 65, 81, 0.5)"
-              : "rgba(243, 244, 246, 1)",
+                ? "rgba(55, 65, 81, 0.5)"
+                : "rgba(243, 244, 246, 1)",
             borderWidth: "2px",
             borderStyle: "solid",
             borderColor: achievement.isUnlocked ? accentColor : "transparent",
@@ -396,9 +281,8 @@ function AchievementCard({
           </span>
         </div>
         <div
-          className={`h-2 rounded-full overflow-hidden ${
-            darkMode ? "bg-gray-700" : "bg-gray-200"
-          }`}
+          className={`h-2 rounded-full overflow-hidden ${darkMode ? "bg-gray-700" : "bg-gray-200"
+            }`}
         >
           <div
             className="h-full rounded-full transition-all"
@@ -407,8 +291,8 @@ function AchievementCard({
               background: achievement.isUnlocked
                 ? `linear-gradient(to right, ${accentColor}, #a855f7)`
                 : darkMode
-                ? "#4b5563"
-                : "#9ca3af",
+                  ? "#4b5563"
+                  : "#9ca3af",
             }}
           />
         </div>
@@ -468,15 +352,15 @@ function NavItem({
         style={
           active
             ? {
-                background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
-                color: accentColor,
-                borderWidth: "1px",
-                borderStyle: "solid",
-                borderColor: `${accentColor}50`,
-              }
+              background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
+              color: accentColor,
+              borderWidth: "1px",
+              borderStyle: "solid",
+              borderColor: `${accentColor}50`,
+            }
             : {
-                color: darkMode ? "#9ca3af" : "#6b7280",
-              }
+              color: darkMode ? "#9ca3af" : "#6b7280",
+            }
         }
       >
         {icon}

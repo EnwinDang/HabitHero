@@ -64,106 +64,8 @@ export default function SettingsPage() {
   }
 
   return (
-    <div
-      className={`min-h-screen ${theme.bg} flex transition-colors duration-300`}
-    >
-      {/* SIDEBAR */}
-      <aside
-        className={`w-64 ${theme.sidebar} flex flex-col min-h-screen transition-colors duration-300`}
-        style={{
-          ...theme.borderStyle,
-          borderRightWidth: "1px",
-          borderRightStyle: "solid",
-        }}
-      >
-        <div className="p-6">
-          <h1 className="text-2xl font-bold" style={theme.gradientText}>
-            HabitHero
-          </h1>
-        </div>
-
-        <nav className="flex-1 px-4">
-          <ul className="space-y-2">
-            <NavItem
-              icon={<Sword size={20} />}
-              label="Home"
-              onClick={() => navigate("/dashboard")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Scroll size={20} />}
-              label="Quests"
-              onClick={() => {}}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Timer size={20} />}
-              label="Focus Mode"
-              onClick={() => navigate("/focus")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<BarChart3 size={20} />}
-              label="Stats"
-              onClick={() => navigate("/stats")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Trophy size={20} />}
-              label="Achievements"
-              onClick={() => navigate("/achievements")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Calendar size={20} />}
-              label="Calendar"
-              onClick={() => navigate("/calendar")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<User size={20} />}
-              label="Profile"
-              onClick={() => navigate("/profile")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-            <NavItem
-              icon={<Settings size={20} />}
-              label="Settings"
-              active
-              onClick={() => navigate("/settings")}
-              darkMode={darkMode}
-              accentColor={accentColor}
-            />
-          </ul>
-        </nav>
-
-        <div
-          className="p-4"
-          style={{
-            ...theme.borderStyle,
-            borderTopWidth: "1px",
-            borderTopStyle: "solid",
-          }}
-        >
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-3 text-red-400 hover:text-red-300 w-full px-4 py-2 rounded-lg hover:bg-red-900/20 transition-colors"
-          >
-            <LogOut size={20} />
-            <span>Logout</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* MAIN CONTENT */}
-      <main className="flex-1 p-8 overflow-y-auto">
+    <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
+      <main className="p-8 overflow-y-auto">
         {/* Header */}
         <div className="mb-8">
           <h2 className={`text-4xl font-bold ${theme.text}`}>Settings</h2>
@@ -225,8 +127,12 @@ export default function SettingsPage() {
               {accentColors.map((colorOption, i) => (
                 <button
                   key={i}
-                  onClick={() => setAccentColor(colorOption.color)}
-                  className="w-12 h-12 rounded-xl transition-all"
+                  type="button"
+                  onClick={() => {
+                    console.log('Changing accent color to:', colorOption.color);
+                    setAccentColor(colorOption.color);
+                  }}
+                  className="w-12 h-12 rounded-xl transition-all cursor-pointer"
                   style={{
                     backgroundColor: colorOption.color,
                     boxShadow:
@@ -243,6 +149,7 @@ export default function SettingsPage() {
                     borderColor: "white",
                   }}
                   title={colorOption.name}
+                  aria-label={`Set accent color to ${colorOption.name}`}
                 />
               ))}
             </div>
@@ -370,16 +277,14 @@ export default function SettingsPage() {
 
             <div className="mb-4">
               <p
-                className={`font-medium ${
-                  darkMode ? "text-red-300" : "text-red-700"
-                }`}
+                className={`font-medium ${darkMode ? "text-red-300" : "text-red-700"
+                  }`}
               >
                 Reset All Data
               </p>
               <p
-                className={`text-sm ${
-                  darkMode ? "text-red-400/70" : "text-red-600/70"
-                }`}
+                className={`text-sm ${darkMode ? "text-red-400/70" : "text-red-600/70"
+                  }`}
               >
                 This will permanently delete all your tasks, progress, items,
                 and achievements. This action cannot be undone.
@@ -432,9 +337,8 @@ function Toggle({
       }}
     >
       <div
-        className={`w-6 h-6 rounded-full bg-white shadow transition-transform ${
-          enabled ? "translate-x-6" : "translate-x-0"
-        }`}
+        className={`w-6 h-6 rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-6" : "translate-x-0"
+          }`}
       />
     </button>
   );
@@ -468,16 +372,14 @@ function SettingRow({
         {icon && <span className="text-xl">{icon}</span>}
         <div>
           <p
-            className={`font-medium ${
-              darkMode ? "text-white" : "text-gray-800"
-            }`}
+            className={`font-medium ${darkMode ? "text-white" : "text-gray-800"
+              }`}
           >
             {title}
           </p>
           <p
-            className={`text-sm ${
-              darkMode ? "text-gray-400" : "text-gray-500"
-            }`}
+            className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-500"
+              }`}
           >
             {description}
           </p>
@@ -512,15 +414,15 @@ function NavItem({
         style={
           active
             ? {
-                background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
-                color: accentColor,
-                borderWidth: "1px",
-                borderStyle: "solid",
-                borderColor: `${accentColor}50`,
-              }
+              background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
+              color: accentColor,
+              borderWidth: "1px",
+              borderStyle: "solid",
+              borderColor: `${accentColor}50`,
+            }
             : {
-                color: darkMode ? "#9ca3af" : "#6b7280",
-              }
+              color: darkMode ? "#9ca3af" : "#6b7280",
+            }
         }
       >
         {icon}
