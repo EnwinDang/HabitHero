@@ -131,6 +131,86 @@ const moduleSchema = z
 
 const moduleUpdateSchema = moduleSchema.partial();
 
+const achievementSchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().optional().nullable(),
+    icon: z.string().optional().nullable(),
+    reward: z
+      .object({
+        xp: z.number().int().nonnegative().optional(),
+        gold: z.number().int().nonnegative().optional(),
+      })
+      .catchall(z.any())
+      .optional(),
+  })
+  .catchall(z.any());
+
+const notificationSchema = z
+  .object({
+    title: z.string().min(1),
+    message: z.string().min(1),
+    type: z.string().min(1),
+  })
+  .catchall(z.any());
+
+const itemInstanceSchema = z
+  .object({
+    instanceId: z.string().optional(),
+    itemId: z.string().min(1),
+    quantity: z.number().int().nonnegative(),
+    obtainedAt: z.number().int().optional(),
+    meta: z.record(z.string(), z.any()).optional(),
+  })
+  .catchall(z.any());
+
+const inventorySchema = z
+  .object({
+    gold: z.number().int().nonnegative().optional(),
+    items: z.array(itemInstanceSchema).optional(),
+    materials: z.record(z.string(), z.number().int().nonnegative()).optional(),
+    lastUpdatedAt: z.number().int().optional(),
+  })
+  .catchall(z.any());
+
+const worldSchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().optional().nullable(),
+    order: z.number().int().nonnegative(),
+    isActive: z.boolean().optional().default(true),
+  })
+  .catchall(z.any());
+
+const worldUpdateSchema = worldSchema.partial();
+
+const petSchema = z
+  .object({
+    name: z.string().min(1),
+    rarity: z.string().min(1),
+    element: z.string().optional().nullable(),
+    baseStats: statsSchema.optional(),
+    abilities: z.array(z.string()).optional(),
+    isActive: z.boolean().optional().default(true),
+  })
+  .catchall(z.any());
+
+const petUpdateSchema = petSchema.partial();
+
+const lootboxOpenSchema = z
+  .object({
+    count: z.number().int().positive().optional().default(1),
+  })
+  .catchall(z.any());
+
+const combatStartSchema = z
+  .object({
+    worldId: z.string().min(1),
+    stage: z.number().int().nonnegative(),
+    seed: z.string().optional(),
+  })
+  .catchall(z.any());
+
 // ============ AUTH ============
 
 /**
@@ -428,7 +508,13 @@ app.get("/achievements", async (req, res) => {
  */
 app.post("/achievements", requireAuth, async (req, res) => {
   try {
-    const { name, description, icon, reward } = req.body;
+    const parsed = achievementSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid achievement payload", issues: parsed.error.issues });
+    }
+
+    const { name, description, icon, reward } = parsed.data;
 
     const newAchievementRef = db.collection("achievements").doc();
     await newAchievementRef.set({
@@ -478,12 +564,17 @@ app.patch("/users/:uid/inventory", requireAuth, async (req, res) => {
     const { uid } = req.params;
     const userRef = db.collection("users").doc(uid);
 
+    const parsed = inventorySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid inventory payload", issues: parsed.error.issues });
+    }
+
     await userRef.update({
-      inventory: req.body,
+      inventory: parsed.data,
       updatedAt: Date.now(),
     });
 
-    return res.status(200).json(req.body);
+    return res.status(200).json(parsed.data);
   } catch (e: any) {
     console.error("Error in PATCH /users/:uid/inventory:", e);
     return res.status(500).json({ error: e?.message });
@@ -603,13 +694,20 @@ app.get("/users/:uid/notifications", requireAuth, async (req, res) => {
 app.post("/users/:uid/notifications", requireAuth, async (req, res) => {
   try {
     const { uid } = req.params;
-    const { title, message, type } = req.body;
+
+    const parsed = notificationSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid notification payload", issues: parsed.error.issues });
+    }
+
+    const { title, message, type, ...rest } = parsed.data;
 
     const notifRef = db.collection("users").doc(uid).collection("notifications").doc();
     await notifRef.set({
       title,
       message,
       type,
+      ...rest,
       read: false,
       createdAt: Date.now(),
     });
@@ -1079,7 +1177,13 @@ app.delete("/modules/:moduleId", requireAuth, async (req, res) => {
 app.post("/combat/start", requireAuth, async (req, res) => {
   try {
     const uid = (req as any).user.uid;
-    const { worldId, stage, seed } = req.body;
+
+    const parsed = combatStartSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid combat payload", issues: parsed.error.issues });
+    }
+
+    const { worldId, stage, seed } = parsed.data;
 
     const combatRef = db.collection("combats").doc();
     const combat = {
@@ -1200,9 +1304,15 @@ app.get("/worlds", async (req, res) => {
  */
 app.post("/worlds", requireAuth, async (req, res) => {
   try {
+    const parsed = worldSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid world payload", issues: parsed.error.issues });
+    }
+
     const worldRef = db.collection("worlds").doc();
     const world = {
-      ...req.body,
+      ...parsed.data,
+      isActive: parsed.data.isActive ?? true,
       createdAt: Date.now(),
     };
     await worldRef.set(world);
@@ -1245,9 +1355,15 @@ app.get("/worlds/:worldId", async (req, res) => {
 app.put("/worlds/:worldId", requireAuth, async (req, res) => {
   try {
     const { worldId } = req.params;
+
+    const parsed = worldSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid world payload", issues: parsed.error.issues });
+    }
     const worldRef = db.collection("worlds").doc(worldId);
     const world = {
-      ...req.body,
+      ...parsed.data,
+      isActive: parsed.data.isActive ?? true,
       updatedAt: Date.now(),
     };
     await worldRef.set(world, { merge: false });
@@ -1268,9 +1384,14 @@ app.put("/worlds/:worldId", requireAuth, async (req, res) => {
 app.patch("/worlds/:worldId", requireAuth, async (req, res) => {
   try {
     const { worldId } = req.params;
+
+    const parsed = worldUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid world update", issues: parsed.error.issues });
+    }
     const worldRef = db.collection("worlds").doc(worldId);
     await worldRef.update({
-      ...req.body,
+      ...parsed.data,
       updatedAt: Date.now(),
     });
 
@@ -1348,9 +1469,15 @@ app.get("/pets", async (req, res) => {
  */
 app.post("/pets", requireAuth, async (req, res) => {
   try {
+    const parsed = petSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid pet payload", issues: parsed.error.issues });
+    }
+
     const petRef = db.collection("pets").doc();
     const pet = {
-      ...req.body,
+      ...parsed.data,
+      isActive: parsed.data.isActive ?? true,
       createdAt: Date.now(),
     };
     await petRef.set(pet);
@@ -1393,9 +1520,15 @@ app.get("/pets/:petId", async (req, res) => {
 app.put("/pets/:petId", requireAuth, async (req, res) => {
   try {
     const { petId } = req.params;
+
+    const parsed = petSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid pet payload", issues: parsed.error.issues });
+    }
     const petRef = db.collection("pets").doc(petId);
     const pet = {
-      ...req.body,
+      ...parsed.data,
+      isActive: parsed.data.isActive ?? true,
       updatedAt: Date.now(),
     };
     await petRef.set(pet, { merge: false });
@@ -1416,9 +1549,14 @@ app.put("/pets/:petId", requireAuth, async (req, res) => {
 app.patch("/pets/:petId", requireAuth, async (req, res) => {
   try {
     const { petId } = req.params;
+
+    const parsed = petUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid pet update", issues: parsed.error.issues });
+    }
     const petRef = db.collection("pets").doc(petId);
     await petRef.update({
-      ...req.body,
+      ...parsed.data,
       updatedAt: Date.now(),
     });
 
@@ -1711,7 +1849,13 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
   try {
     const uid = (req as any).user.uid;
     const { lootboxId } = req.params;
-    const { count = 1 } = req.body;
+
+    const parsed = lootboxOpenSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid lootbox open payload", issues: parsed.error.issues });
+    }
+
+    const { count } = parsed.data;
 
     const lootboxSnap = await db.collection("lootboxes").doc(lootboxId).get();
     if (!lootboxSnap.exists) {
