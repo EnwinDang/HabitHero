@@ -23,8 +23,8 @@ export default function Profile() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="hh-card" style={{ padding: 22 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 16 }}>
+        <div className="hh-card" style={{ padding: '20px 16px' }}>
           <div className="hh-title-sm">Profile Info</div>
           <div style={{ marginTop: 14, display: 'grid', gap: 14 }}>
             <div>
@@ -48,7 +48,7 @@ export default function Profile() {
           </div>
         </div>
 
-        <div className="hh-card" style={{ padding: 22 }}>
+        <div className="hh-card" style={{ padding: '20px 16px' }}>
           <div className="hh-title-sm">Account</div>
           <div style={{ marginTop: 14, display: 'grid', gap: 12 }}>
             <div>
@@ -72,11 +72,12 @@ export default function Profile() {
           </div>
         </div>
 
-        <div className="hh-card" style={{ padding: 22, gridColumn: '1 / -1' }}>
+        <div className="hh-card" style={{ padding: '20px 16px', gridColumn: '1 / -1' }}>
           <button
             type="button"
             onClick={handleLogout}
             className="hh-btn hh-btn-danger"
+            style={{ width: '100%' }}
           >
             Log out
           </button>

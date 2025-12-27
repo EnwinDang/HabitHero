@@ -89,9 +89,16 @@ export default function StudentDetail() {
         setLoading(true);
         setError(null);
         
+        if (!firebaseUser?.uid || !studentId || !currentCourse?.id) {
+          setError('Missing required data');
+          setStudent(null);
+          setLoading(false);
+          return;
+        }
+        
         const studentsData = await loadCourseStudents(firebaseUser.uid, currentCourse.id);
         
-        if (!studentsData || !studentsData[studentId]) {
+        if (!studentsData || !studentId || !studentsData[studentId]) {
           setError('Student not found');
           setStudent(null);
           return;
@@ -116,19 +123,21 @@ export default function StudentDetail() {
         // Calculate level from XP
         const xpLevel = Math.floor(studentInfo.totalXP / 100) + 1;
         
-        // Build module progress from course modules
-        const modules: ModuleProgress[] = (currentCourse.modules || []).map(module => {
-          // For now, we'll estimate based on overall completion
-          // In a real implementation, you'd fetch task completion per module
-          const moduleTasks = module.exercises || 0;
-          const completed = Math.round((completionPercent / 100) * moduleTasks);
-          
-          return {
-            name: module.name,
-            completed: completed,
-            total: moduleTasks,
-          };
-        });
+        // Build module progress from course modules, sorted alphabetically
+        const modules: ModuleProgress[] = (currentCourse.modules || [])
+          .map(module => {
+            // For now, we'll estimate based on overall completion
+            // In a real implementation, you'd fetch task completion per module
+            const moduleTasks = module.exercises || 0;
+            const completed = Math.round((completionPercent / 100) * moduleTasks);
+            
+            return {
+              name: module.name,
+              completed: completed,
+              total: moduleTasks,
+            };
+          })
+          .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
         
         // Timeline would need to come from task completion history
         // For now, we'll show an empty timeline
@@ -215,51 +224,52 @@ export default function StudentDetail() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="hh-card"
-        style={{ padding: 24, marginBottom: 24 }}
+        style={{ padding: '20px 16px', marginBottom: 24 }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div
               style={{
-                width: 64,
-                height: 64,
-                borderRadius: 16,
+                width: 56,
+                height: 56,
+                borderRadius: 14,
                 background: 'linear-gradient(180deg, var(--hh-indigo), var(--hh-violet))',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#fff',
                 fontWeight: 700,
-                fontSize: 24,
+                fontSize: 22,
                 boxShadow: '0 10px 22px rgba(75, 74, 239, 0.18)',
+                flexShrink: 0,
               }}
             >
               {student.displayName.charAt(0)}
             </div>
-            <div>
-              <h2 style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.2, marginBottom: 4 }}>
+            <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+              <h2 style={{ fontSize: 'clamp(18px, 4vw, 22px)', fontWeight: 700, lineHeight: 1.2, marginBottom: 4 }}>
                 {student.displayName}
               </h2>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
                 <StatusBadge variant={student.status} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 14, color: 'var(--hh-muted)' }}>
-                  <Zap style={{ width: 16, height: 16, color: 'var(--hh-gold)' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: 'var(--hh-muted)' }}>
+                  <Zap style={{ width: 14, height: 14, color: 'var(--hh-gold)' }} />
                   Level {student.xpLevel}
                 </div>
               </div>
             </div>
           </div>
           
-          <div style={{ textAlign: 'right' }}>
-            <p style={{ fontSize: 14, color: 'var(--hh-muted)', marginBottom: 4 }}>Course Completion</p>
-            <p style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.2 }}>
+          <div style={{ textAlign: 'left', paddingTop: 12, borderTop: '1px solid var(--hh-border)' }}>
+            <p style={{ fontSize: 13, color: 'var(--hh-muted)', marginBottom: 4 }}>Course Completion</p>
+            <p style={{ fontSize: 'clamp(24px, 6vw, 32px)', fontWeight: 700, lineHeight: 1.2 }}>
               {student.completionPercent}%
             </p>
           </div>
         </div>
       </motion.div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 20 }}>
         {/* Module Progress */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}

@@ -1,7 +1,7 @@
 import { RewardBreakdown } from "./reward.model";
 import { CombatSummary } from "./combat.model";
 
-export type TaskDifficulty = "easy" | "medium" | "hard" | "extreme";
+export type TaskDifficulty = "easy" | "medium" | "hard";
 
 export interface Task {
   taskId: string;

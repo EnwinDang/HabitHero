@@ -1,9 +1,12 @@
-import { useMemo, useState, cloneElement, Children, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Plus, MoreVertical, Pencil, Trash2, Calendar, Link as LinkIcon, ArrowLeft } from 'lucide-react';
 import { useCourses } from '../../store/courseStore';
 import { loadTasks, createTask, updateTask, deleteTask } from '../../services/task.service';
+import { Modal } from '../../components/Modal';
+import { DropdownMenu } from '../../components/DropdownMenu';
+import { DropdownMenuItem } from '../../components/DropdownMenuItem';
 
 // Helper functions to map between API format and UI format
 function mapTaskFromAPI(apiTask: any) {
@@ -21,18 +24,29 @@ function mapTaskFromAPI(apiTask: any) {
 }
 
 function mapTaskToAPI(uiTask: any, moduleId: string, courseId?: string) {
+  const difficulty = (uiTask.difficulty || 'easy').toLowerCase();
+  
+  // Calculate XP and gold based on difficulty (25% increase per level)
+  const difficultyMultipliers: Record<string, { xp: number; gold: number }> = {
+    easy: { xp: 100, gold: 50 },
+    medium: { xp: 125, gold: 63 },      // 25% increase from easy
+    hard: { xp: 156, gold: 78 },        // 25% increase from medium
+  };
+  
+  const rewards = difficultyMultipliers[difficulty] || difficultyMultipliers.medium;
+  
   return {
     taskId: uiTask.id || undefined,
     courseId: courseId,
     moduleId: moduleId,
     title: uiTask.title,
     description: uiTask.description || null,
-    difficulty: (uiTask.difficulty || 'easy').toLowerCase(),
+    difficulty: difficulty,
     dueAt: uiTask.date ? new Date(uiTask.date).getTime() : undefined,
     isActive: uiTask.status !== 'Inactive',
     isRepeatable: false,
-    xp: 100, // Default values
-    gold: 50,
+    xp: rewards.xp,
+    gold: rewards.gold,
   };
 }
 
@@ -61,169 +75,6 @@ function DifficultyBadge({ value }: DifficultyBadgeProps) {
   );
 }
 
-interface DropdownMenuProps {
-  children: React.ReactNode;
-  trigger: React.ReactElement;
-}
-
-function DropdownMenu({ children, trigger }: DropdownMenuProps) {
-  const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [triggerRect, setTriggerRect] = useState<{ top: number; right: number } | null>(null);
-
-  const handleToggle = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!isOpen) {
-      // Get trigger button position for fixed positioning
-      const rect = e.currentTarget.getBoundingClientRect();
-      setTriggerRect({
-        top: rect.bottom + 4,
-        right: window.innerWidth - rect.right,
-      });
-    }
-    setIsOpen(!isOpen);
-  };
-
-  const handleClose = () => {
-    setIsOpen(false);
-    setTriggerRect(null);
-  };
-
-  // Clone trigger to add click handler
-  const triggerWithClick = cloneElement(trigger, {
-    onClick: (e: React.MouseEvent) => {
-      handleToggle(e);
-      // Call original onClick if it exists
-      if (trigger.props && typeof trigger.props === 'object' && 'onClick' in trigger.props) {
-        const onClick = (trigger.props as any).onClick;
-        if (typeof onClick === 'function') {
-          onClick(e);
-        }
-      }
-    },
-  } as any);
-
-  // Clone children to add close handler
-  const childrenWithClose = Children.map(children, (child) => {
-    if (child && typeof child === 'object' && 'type' in child) {
-      return cloneElement(child as React.ReactElement, { onItemClick: handleClose } as any);
-    }
-    return child;
-  });
-
-  return (
-    <div style={{ position: 'relative' }}>
-      {triggerWithClick}
-      {isOpen && triggerRect && (
-        <>
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 999,
-            }}
-            onClick={handleClose}
-          />
-          <div
-            style={{
-              position: 'fixed',
-              top: `${triggerRect.top}px`,
-              right: `${triggerRect.right}px`,
-              zIndex: 1000,
-              background: '#fff',
-              border: '1px solid var(--hh-border)',
-              borderRadius: 8,
-              boxShadow: 'var(--hh-shadow)',
-              minWidth: 160,
-              padding: 4,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {childrenWithClose}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-interface DropdownMenuItemProps {
-  children: React.ReactNode;
-  onClick?: (e: React.MouseEvent) => void;
-  disabled?: boolean;
-  style?: React.CSSProperties;
-  onItemClick?: () => void;
-}
-
-function DropdownMenuItem({ children, onClick, disabled = false, style: customStyle = {}, onItemClick }: DropdownMenuItemProps) {
-  const handleClick = (e: React.MouseEvent) => {
-    if (disabled) return;
-    e.stopPropagation();
-    if (onClick) onClick(e);
-    if (onItemClick) {
-      setTimeout(() => onItemClick(), 0);
-    }
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={disabled}
-      style={{
-        width: '100%',
-        justifyContent: 'flex-start',
-        padding: '8px 12px',
-        fontSize: 14,
-        background: 'transparent',
-        border: 'none',
-        borderRadius: 6,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-        display: 'flex',
-        alignItems: 'center',
-        color: 'inherit',
-        ...customStyle,
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled) {
-          e.currentTarget.style.background = 'rgba(31, 31, 35, 0.04)';
-        }
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent';
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-interface ModalProps {
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-}
-
-function Modal({ title, children, onClose }: ModalProps) {
-  return (
-    <div className="hh-modal-overlay">
-      <div className="hh-modal" style={{ maxWidth: 760 }}>
-        <div className="hh-modal__head">
-          <div>
-            <div className="hh-label">Exercises</div>
-            <div className="hh-title-sm" style={{ marginTop: 6 }}>
-              {title}
-            </div>
-          </div>
-          <button type="button" onClick={onClose} className="hh-btn hh-btn-secondary">
-            Close
-          </button>
-        </div>
-        <div className="hh-modal__body">{children}</div>
-      </div>
-    </div>
-  );
-}
 
 export default function ModuleDetail() {
   const { moduleId } = useParams<{ moduleId: string }>();
@@ -247,37 +98,43 @@ export default function ModuleDetail() {
   const [error, setError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState<boolean>(false);
 
   // Load exercises (tasks) from API
   useEffect(() => {
-    if (moduleId) {
-      loadExercises();
-    }
-  }, [moduleId]);
-
-  async function loadExercises() {
-    try {
-      setLoading(true);
-      setError(null);
+    async function loadExercises() {
+      if (!moduleId) return;
       
-      // Get courseId from currentCourse
-      const courseId = currentCourse?.id;
-      if (!courseId) {
-        setError('Course not found');
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Get courseId from currentCourse - wait for courses to load
+        const courseId = currentCourse?.id;
+        if (!courseId) {
+          // Don't set error if courses are still loading
+          if (courses.length === 0) {
+            setLoading(false);
+            return;
+          }
+          setError('Course not found');
+          setLoading(false);
+          return;
+        }
+        
+        const tasks = await loadTasks(courseId, moduleId);
+        const mapped = tasks.map(mapTaskFromAPI);
+        setExercises(mapped);
+      } catch (err) {
+        console.error('Error loading exercises:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load exercises');
+      } finally {
         setLoading(false);
-        return;
       }
-      
-      const tasks = await loadTasks(courseId, moduleId);
-      const mapped = tasks.map(mapTaskFromAPI);
-      setExercises(mapped);
-    } catch (err) {
-      console.error('Error loading exercises:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load exercises');
-    } finally {
-      setLoading(false);
     }
-  }
+    
+    loadExercises();
+  }, [moduleId, currentCourse?.id, courses.length]);
 
   const editing = useMemo(
     () => exercises.find((e) => e.id === editingId) || null,
@@ -289,6 +146,7 @@ export default function ModuleDetail() {
   const [difficulty, setDifficulty] = useState<string>('Easy');
   const [date, setDate] = useState<string>('');
   const [canvasUrl, setCanvasUrl] = useState<string>('');
+  const [status, setStatus] = useState<string>('Active');
 
   function resetForm() {
     setEditingId(null);
@@ -297,6 +155,7 @@ export default function ModuleDetail() {
     setDifficulty('Easy');
     setDate('');
     setCanvasUrl('');
+    setStatus('Active');
   }
 
   function openCreate() {
@@ -311,6 +170,7 @@ export default function ModuleDetail() {
     setDifficulty(ex.difficulty || 'Easy');
     setDate(ex.date || '');
     setCanvasUrl(ex.canvasUrl || '');
+    setStatus(ex.status || 'Active');
     setModalOpen(true);
   }
 
@@ -323,13 +183,21 @@ export default function ModuleDetail() {
   }
 
   async function save() {
+    // Prevent double submission
+    if (saving) {
+      console.log('⚠️ [ModuleDetail] Save already in progress, ignoring duplicate call');
+      return;
+    }
+
     if (!title.trim()) return;
-    if (!moduleId) {
+    if (!moduleId || !moduleId.trim()) {
       setError('Module ID is required');
+      console.error('❌ [ModuleDetail] Missing or empty moduleId:', moduleId);
       return;
     }
 
     try {
+      setSaving(true);
       setError(null);
       const exerciseData = {
         id: editingId || '',
@@ -337,44 +205,93 @@ export default function ModuleDetail() {
         description: description.trim(),
         difficulty,
         date,
-        status: 'Active',
+        status: status,
         canvasUrl: canvasUrl.trim(),
       };
 
       const courseId = currentCourse?.id;
-      if (!courseId) {
+      if (!courseId || !courseId.trim()) {
         setError('Course not found');
+        console.error('❌ [ModuleDetail] Missing or empty courseId:', courseId);
+        setSaving(false);
         return;
       }
+      
+      console.log('✅ [ModuleDetail] Valid IDs:', { moduleId, courseId, title: exerciseData.title });
 
       if (editingId) {
         // Update existing task
         const apiTask = mapTaskToAPI(exerciseData, moduleId, courseId);
-        const updated = await updateTask(editingId, apiTask);
-        const mapped = mapTaskFromAPI(updated);
-        setExercises((prev) =>
-          prev.map((e) => (e.id === editingId ? mapped : e))
-        );
+        console.log('🔄 [ModuleDetail] Updating task:', { editingId, apiTask });
+        await updateTask(editingId, apiTask);
       } else {
         // Create new task
         const apiTask = mapTaskToAPI(exerciseData, moduleId, courseId);
+        console.log('➕ [ModuleDetail] Creating task:', { moduleId, courseId, apiTask });
         const created = await createTask(apiTask);
-        const mapped = mapTaskFromAPI(created);
-        setExercises((prev) => [mapped, ...prev]);
+        console.log('✅ [ModuleDetail] Task created:', created);
       }
+
+      // Reload exercises to ensure we have the latest data from the server
+      // This ensures tasks are correctly filtered by moduleId
+      const tasks = await loadTasks(courseId, moduleId);
+      const mapped = tasks.map(mapTaskFromAPI);
+      setExercises(mapped);
 
       handleCloseModal();
     } catch (err) {
       console.error('Error saving exercise:', err);
       setError(err instanceof Error ? err.message : 'Failed to save exercise');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleStatus(id: string, currentStatus: string) {
+    try {
+      setError(null);
+      const courseId = currentCourse?.id;
+      if (!courseId || !moduleId) {
+        setError('Course or module not found');
+        return;
+      }
+      
+      const newStatus = currentStatus === 'Active' ? 'Inactive' : 'Active';
+      const exercise = exercises.find(e => e.id === id);
+      if (!exercise) return;
+      
+      const exerciseData = {
+        ...exercise,
+        status: newStatus,
+      };
+      
+      const apiTask = mapTaskToAPI(exerciseData, moduleId, courseId);
+      await updateTask(id, apiTask);
+      
+      // Reload exercises to ensure we have the latest data from the server
+      const tasks = await loadTasks(courseId, moduleId);
+      const mapped = tasks.map(mapTaskFromAPI);
+      setExercises(mapped);
+    } catch (err) {
+      console.error('Error toggling exercise status:', err);
+      setError(err instanceof Error ? err.message : 'Failed to toggle exercise status');
     }
   }
 
   async function remove(id: string) {
     try {
       setError(null);
-      await deleteTask(id);
-      setExercises((prev) => prev.filter((e) => e.id !== id));
+      const courseId = currentCourse?.id;
+      if (!courseId || !moduleId) {
+        setError('Course or module not found');
+        return;
+      }
+      await deleteTask(id, courseId, moduleId);
+      
+      // Reload exercises to ensure we have the latest data from the server
+      const tasks = await loadTasks(courseId, moduleId);
+      const mapped = tasks.map(mapTaskFromAPI);
+      setExercises(mapped);
     } catch (err) {
       console.error('Error deleting exercise:', err);
       setError(err instanceof Error ? err.message : 'Failed to delete exercise');
@@ -411,24 +328,26 @@ export default function ModuleDetail() {
           Back to Modules
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <div className="hh-card" style={{ padding: 24, flex: 1, minWidth: 300 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 650, marginBottom: 8 }}>
-              {moduleFromStore?.description || 'Define exercises with difficulty and recommended dates.'}
-            </h2>
-            <p style={{ fontSize: 14, color: 'var(--hh-muted)' }}>
-              {exercises.length} exercises • {totalCompletions} completions
-            </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div className="hh-card" style={{ padding: '20px 16px', flex: '1 1 200px', minWidth: 0 }}>
+              <h2 style={{ fontSize: 'clamp(16px, 4vw, 18px)', fontWeight: 650, marginBottom: 8 }}>
+                {moduleFromStore?.description || 'Define exercises with difficulty and recommended dates.'}
+              </h2>
+              <p style={{ fontSize: 13, color: 'var(--hh-muted)' }}>
+                {exercises.length} exercises • {totalCompletions} completions
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={openCreate}
+              className="hh-btn hh-btn-primary"
+              style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}
+            >
+              <Plus style={{ width: 16, height: 16 }} />
+              <span style={{ whiteSpace: 'nowrap' }}>Add Exercise</span>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={openCreate}
-            className="hh-btn hh-btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-          >
-            <Plus style={{ width: 16, height: 16 }} />
-            Add Exercise
-          </button>
         </div>
       </motion.div>
 
@@ -556,14 +475,38 @@ export default function ModuleDetail() {
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
+                              position: 'relative',
+                              zIndex: 10,
+                              cursor: 'pointer',
                             }}
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            <MoreVertical style={{ width: 16, height: 16 }} />
+                            <MoreVertical style={{ width: 16, height: 16, color: 'var(--hh-text)' }} />
                           </button>
                         }
                       >
+                        {e.status === 'Active' ? (
+                          <DropdownMenuItem
+                            onClick={() => toggleStatus(e.id, e.status)}
+                            background="transparent"
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              Set Inactive
+                            </div>
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem
+                            onClick={() => toggleStatus(e.id, e.status)}
+                            background="transparent"
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              Set Active
+                            </div>
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           onClick={() => openEdit(e)}
+                          background="transparent"
                         >
                           <div style={{ display: 'flex', alignItems: 'center' }}>
                             <Pencil style={{ width: 14, height: 14, marginRight: 8 }} />
@@ -573,6 +516,7 @@ export default function ModuleDetail() {
                         <DropdownMenuItem
                           onClick={() => remove(e.id)}
                           style={{ color: 'rgb(185, 28, 28)' }}
+                          background="transparent"
                         >
                           <div style={{ display: 'flex', alignItems: 'center' }}>
                             <Trash2 style={{ width: 14, height: 14, marginRight: 8 }} />
@@ -590,7 +534,12 @@ export default function ModuleDetail() {
       </motion.div>
 
       {modalOpen ? (
-        <Modal title={editing ? 'Edit Exercise' : 'Add Exercise'} onClose={handleCloseModal}>
+        <Modal 
+          title={editing ? 'Edit Exercise' : 'Add Exercise'} 
+          label="Exercises"
+          maxWidth={720}
+          onClose={handleCloseModal}
+        >
           <div style={{ display: 'grid', gap: 16 }}>
             <div>
               <div className="hh-label">Exercise Title</div>
@@ -613,7 +562,7 @@ export default function ModuleDetail() {
                 style={{ marginTop: 8 }}
               />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
               <div>
                 <div className="hh-label">Difficulty</div>
                 <select
@@ -663,11 +612,16 @@ export default function ModuleDetail() {
               </button>
               <button
                 type="button"
-                onClick={save}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  save();
+                }}
+                disabled={saving}
                 className="hh-btn hh-btn-primary"
-                style={{ flex: 1 }}
+                style={{ flex: 1, opacity: saving ? 0.6 : 1, cursor: saving ? 'not-allowed' : 'pointer' }}
               >
-                {editing ? 'Save Changes' : 'Add Exercise'}
+                {saving ? 'Saving...' : editing ? 'Save Changes' : 'Add Exercise'}
               </button>
             </div>
           </div>

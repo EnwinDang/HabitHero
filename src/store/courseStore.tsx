@@ -44,17 +44,24 @@ interface UICourse {
 
 // Helper functions to map between API format and UI format
 function mapCourseFromAPI(apiCourse: APICourse, modules: APIModule[] = []) {
-  const uiModules = modules.map(apiModule => ({
-    id: apiModule.moduleId,
-    name: apiModule.title || '',
-    description: apiModule.description || '',
-    active: apiModule.isActive !== false,
-    order: apiModule.order || 0,
-    achievementId: apiModule.achievementId || null,
-    courseId: apiCourse.courseId,
-    exercises: 0, // Will be calculated from tasks
-    completion: 0, // Will be calculated
-  }));
+  const uiModules = modules.map((apiModule, index) => {
+    // Handle missing moduleId - use index as fallback (shouldn't happen but defensive)
+    const moduleId = apiModule.moduleId || `missing-id-${index}`;
+    if (!apiModule.moduleId) {
+      console.warn('⚠️ Module missing moduleId from API:', apiModule);
+    }
+    return {
+      id: moduleId,
+      name: apiModule.title || '',
+      description: apiModule.description || '',
+      active: apiModule.isActive !== false,
+      order: apiModule.order || 0,
+      achievementId: apiModule.achievementId || null,
+      courseId: apiCourse.courseId,
+      exercises: 0, // Will be calculated from tasks
+      completion: 0, // Will be calculated
+    };
+  });
 
   return {
     id: apiCourse.courseId,
@@ -147,8 +154,12 @@ function mapCourseToAPI(uiCourse: any) {
 }
 
 function mapModuleFromAPI(apiModule: APIModule) {
+  // Handle missing moduleId - this shouldn't happen but defensive
+  if (!apiModule.moduleId) {
+    console.warn('⚠️ Module missing moduleId from API:', apiModule);
+  }
   return {
-    id: apiModule.moduleId,
+    id: apiModule.moduleId || `missing-id-${Date.now()}`,
     name: apiModule.title || '',
     description: apiModule.description || '',
     active: apiModule.isActive !== false,
@@ -199,57 +210,60 @@ export function useCourses() {
       
       try {
         console.log('🔄 [API] Attempting to fetch courses from API...');
-        // Get all courses from API
-        const apiCourses = await CoursesAPI.list(false); // Get all courses, not just active
+      // Get all courses from API
+      const apiCourses = await CoursesAPI.list(false); // Get all courses, not just active
         console.log(`✅ [API] Loaded ${apiCourses.length} courses from API`);
-        
-        // Load modules for all courses in parallel
+      
+      // Load modules for all courses in parallel
         console.log('🔄 [API] Loading modules for all courses...');
-        const modulesPromises = apiCourses.map(course => 
-          CoursesAPI.listModules(course.courseId).catch(err => {
+      const modulesPromises = apiCourses.map(course => 
+        CoursesAPI.listModules(course.courseId).catch(err => {
             console.error(`❌ [API] Error loading modules for course ${course.courseId}:`, err);
+          return []; // Return empty array on error
+        })
+      );
+      
+      const allModulesArrays = await Promise.all(modulesPromises);
+      
+      // Map courses with their modules
+      const coursesWithModules = apiCourses.map((apiCourse, index) => ({
+        apiCourse,
+        modules: allModulesArrays[index] || [],
+      }));
+      
+      // Load all tasks in parallel for all modules
+        console.log('🔄 [API] Loading tasks for all modules...');
+      const taskPromises = coursesWithModules.flatMap(({ apiCourse, modules }) => 
+        modules.map(module => 
+          loadTasks(apiCourse.courseId, module.moduleId).catch(err => {
+            console.error(`❌ [API] Error loading tasks for course ${apiCourse.courseId}, module ${module.moduleId}:`, err);
             return []; // Return empty array on error
           })
-        );
+        )
+      );
+      
+      const allTasksArrays = await Promise.all(taskPromises);
+      
+      // Process courses with their corresponding tasks and modules
+      let taskArrayIndex = 0;
+        coursesList = coursesWithModules.map(({ apiCourse, modules }) => {
+        const mappedCourse = mapCourseFromAPI(apiCourse, modules);
         
-        const allModulesArrays = await Promise.all(modulesPromises);
-        
-        // Map courses with their modules
-        const coursesWithModules = apiCourses.map((apiCourse, index) => ({
-          apiCourse,
-          modules: allModulesArrays[index] || [],
-        }));
-        
-        // Load all tasks in parallel for all courses
-        console.log('🔄 [API] Loading tasks for all courses...');
-        const taskPromises = coursesWithModules.map(({ apiCourse }) => 
-          loadTasks(apiCourse.courseId).catch(err => {
-            console.error(`❌ [API] Error loading tasks for course ${apiCourse.courseId}:`, err);
-            return []; // Return empty array on error
-          })
-        );
-        
-        const allTasksArrays = await Promise.all(taskPromises);
-        
-        // Process courses with their corresponding tasks and modules
-        coursesList = coursesWithModules.map(({ apiCourse, modules }, index) => {
-          const allTasks = allTasksArrays[index] || [];
-          const mappedCourse = mapCourseFromAPI(apiCourse, modules);
-          
-          // Update module exercise counts
-          mappedCourse.modules = mappedCourse.modules.map(module => {
-            const moduleTasks = allTasks.filter(t => t.moduleId === module.id);
-            return {
-              ...module,
-              exercises: moduleTasks.length,
-              completion: moduleTasks.length > 0 
-                ? Math.round((moduleTasks.filter(t => t.isActive).length / moduleTasks.length) * 100)
-                : 0,
-            };
-          });
-          
-          return mappedCourse;
+        // Update module exercise counts
+        mappedCourse.modules = mappedCourse.modules.map((module) => {
+          const moduleTasks = allTasksArrays[taskArrayIndex] || [];
+          taskArrayIndex++;
+          return {
+            ...module,
+            exercises: moduleTasks.length,
+            completion: moduleTasks.length > 0 
+              ? Math.round((moduleTasks.filter(t => !t.isActive).length / moduleTasks.length) * 100)
+              : 0,
+          };
         });
+        
+        return mappedCourse;
+      });
         
         console.log(`✅ [API] Successfully loaded ${coursesList.length} courses with modules and tasks from API`);
       } catch (apiErr: any) {
@@ -274,28 +288,30 @@ export function useCourses() {
         
         const coursesWithIds = await Promise.all(coursePromises);
         
-        // Load all tasks in parallel for all courses
-        const taskPromises = coursesWithIds.map(({ courseId }) => 
-          loadTasks(courseId).catch(err => {
-            console.error(`Error loading tasks for course ${courseId}:`, err);
-            return []; // Return empty array on error
-          })
+        // Load all tasks in parallel for all modules
+        const taskPromises = coursesWithIds.flatMap(({ courseId, mappedCourse }) => 
+          mappedCourse.modules.map(module => 
+            loadTasks(courseId, module.id).catch(err => {
+              console.error(`Error loading tasks for course ${courseId}, module ${module.id}:`, err);
+              return []; // Return empty array on error
+            })
+          )
         );
         
         const allTasksArrays = await Promise.all(taskPromises);
         
         // Process courses with their corresponding tasks
-        coursesList = coursesWithIds.map(({ courseId, mappedCourse }, index) => {
-          const allTasks = allTasksArrays[index] || [];
-          
+        let taskArrayIndex = 0;
+        coursesList = coursesWithIds.map(({ courseId, mappedCourse }) => {
           // Update module exercise counts
-          mappedCourse.modules = mappedCourse.modules.map(module => {
-            const moduleTasks = allTasks.filter(t => t.moduleId === module.id);
+          mappedCourse.modules = mappedCourse.modules.map((module) => {
+            const moduleTasks = allTasksArrays[taskArrayIndex] || [];
+            taskArrayIndex++;
             return {
               ...module,
               exercises: moduleTasks.length,
               completion: moduleTasks.length > 0 
-                ? Math.round((moduleTasks.filter(t => t.isActive).length / moduleTasks.length) * 100)
+                ? Math.round((moduleTasks.filter(t => !t.isActive).length / moduleTasks.length) * 100)
                 : 0,
             };
           });
@@ -331,14 +347,14 @@ export function useCourses() {
       
       try {
         console.log('🔄 [API] Attempting to create course via API...');
-        const apiCourseData = mapCourseToAPI({
-          ...courseData,
-          active: courseData.active !== undefined ? courseData.active : true,
-          courseCode: courseData.courseCode || courseData.program || '',
-        });
-        
-        // Create course via API (backend will generate courseId)
-        const createdCourse = await CoursesAPI.create(apiCourseData as APICourse);
+      const apiCourseData = mapCourseToAPI({
+        ...courseData,
+        active: courseData.active !== undefined ? courseData.active : true,
+        courseCode: courseData.courseCode || courseData.program || '',
+      });
+      
+      // Create course via API (backend will generate courseId)
+      const createdCourse = await CoursesAPI.create(apiCourseData as APICourse);
         mapped = mapCourseFromAPI(createdCourse, []);
         console.log('✅ [API] Course created via API');
       } catch (apiErr: any) {
@@ -394,16 +410,16 @@ export function useCourses() {
       let mapped: any;
       
       try {
-        // Map updates to API format
-        const apiUpdates = mapCourseToAPI({ ...course, ...updates });
-        
-        // Update via API
-        const updatedCourse = await CoursesAPI.patch(id, apiUpdates);
-        
-        // Reload modules for this course
-        const modules = await CoursesAPI.listModules(id).catch(() => []);
-        
-        // Map to UI format
+      // Map updates to API format
+      const apiUpdates = mapCourseToAPI({ ...course, ...updates });
+      
+      // Update via API
+      const updatedCourse = await CoursesAPI.patch(id, apiUpdates);
+      
+      // Reload modules for this course
+      const modules = await CoursesAPI.listModules(id).catch(() => []);
+      
+      // Map to UI format
         mapped = mapCourseFromAPI(updatedCourse, modules);
         console.log('✅ [API] Course updated via API');
       } catch (apiErr: any) {
@@ -450,7 +466,7 @@ export function useCourses() {
       setError(null);
       
       try {
-        await CoursesAPI.delete(id);
+      await CoursesAPI.delete(id);
         console.log('✅ [API] Course deleted via API');
       } catch (apiErr: any) {
         // API failed, fallback to Firestore
@@ -488,16 +504,16 @@ export function useCourses() {
       let mapped: any;
       
       try {
-        const apiModuleData = mapModuleToAPI({
-          ...moduleData,
-          active: moduleData.active !== undefined ? moduleData.active : true,
-        });
-        
-        // Create module via API (backend will generate moduleId)
-        const createdModule = await CoursesAPI.createModule(courseId, {
-          ...apiModuleData,
-          courseId,
-        } as APIModule);
+      const apiModuleData = mapModuleToAPI({
+        ...moduleData,
+        active: moduleData.active !== undefined ? moduleData.active : true,
+      });
+      
+      // Create module via API (backend will generate moduleId)
+      const createdModule = await CoursesAPI.createModule(courseId, {
+        ...apiModuleData,
+        courseId,
+      } as APIModule);
         
         mapped = mapModuleFromAPI(createdModule);
         console.log('✅ [API] Module created via API');
@@ -584,11 +600,11 @@ export function useCourses() {
       let mapped: any;
       
       try {
-        // Map updates to API format
-        const apiUpdates = mapModuleToAPI({ ...module, ...updates });
-        
-        // Update via API
-        const updatedModule = await ModulesAPI.patch(moduleId, apiUpdates);
+      // Map updates to API format
+      const apiUpdates = mapModuleToAPI({ ...module, ...updates });
+      
+      // Update via API
+      const updatedModule = await ModulesAPI.patch(moduleId, apiUpdates);
         mapped = mapModuleFromAPI(updatedModule);
         console.log('✅ [API] Module updated via API');
       } catch (apiErr: any) {
@@ -626,7 +642,7 @@ export function useCourses() {
       const allTasks = await loadTasks(courseId, moduleId);
       mapped.exercises = allTasks.length;
       mapped.completion = allTasks.length > 0 
-        ? Math.round((allTasks.filter(t => t.isActive).length / allTasks.length) * 100)
+          ? Math.round((allTasks.filter(t => t.isActive).length / allTasks.length) * 100)
         : 0;
       
       // Invalidate cache and update state
@@ -655,7 +671,7 @@ export function useCourses() {
       setError(null);
       
       try {
-        await ModulesAPI.delete(moduleId);
+      await ModulesAPI.delete(moduleId);
         console.log('✅ [API] Module deleted via API');
       } catch (apiErr: any) {
         // API failed, fallback to Firestore

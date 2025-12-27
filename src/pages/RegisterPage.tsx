@@ -36,7 +36,7 @@ export default function RegisterPage() {
     return (
       <div className="hh-auth">
         <div className="hh-auth__wrap">
-          <div className="hh-card hh-auth__card" style={{ padding: 24, textAlign: 'center' }}>
+          <div className="hh-card hh-auth__card" style={{ padding: '20px 16px', textAlign: 'center' }}>
             <p style={{ fontSize: 14, color: 'var(--hh-muted)' }}>Loading...</p>
           </div>
         </div>
@@ -97,7 +97,7 @@ export default function RegisterPage() {
         </div>
 
         <div className="hh-card hh-auth__card">
-          <div className="hh-title">Create Account</div>
+          <div className="hh-title" style={{ fontSize: 'clamp(18px, 4vw, 22px)' }}>Create Account</div>
           <div className="hh-hint" style={{ marginTop: 8 }}>
             Set up your profile.
           </div>

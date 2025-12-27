@@ -5,8 +5,8 @@ React + Vite + Firebase application for managing courses, modules, and student p
 ## Setup
 
 1. **Install dependencies**
-   ```bash
-   npm install
+```bash
+npm install
    cd functions && npm install && cd ..
    ```
 
@@ -18,7 +18,6 @@ React + Vite + Firebase application for managing courses, modules, and student p
    VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
    VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
    VITE_FIREBASE_APP_ID=your_app_id
-   VITE_FIREBASE_DATABASE_URL=https://habithero-73d98-default-rtdb.europe-west1.firebasedatabase.app
    ```
 
 3. **Login to Firebase**

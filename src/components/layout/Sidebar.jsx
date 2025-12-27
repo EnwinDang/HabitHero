@@ -1,12 +1,15 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   GraduationCap, 
   BookOpen, 
   Users, 
   User, 
-  LogOut 
+  LogOut,
+  Menu,
+  X
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -40,7 +43,14 @@ function NavItem({ to, label, icon: Icon, delay = 0 }) {
 
 export default function Sidebar() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { logout } = useAuth();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Close mobile menu when route changes
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   async function handleLogout() {
     try {
@@ -52,7 +62,31 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="hh-sidebar">
+    <aside className={`hh-sidebar ${isMobileMenuOpen ? 'hh-sidebar--open' : ''}`}>
+      {/* Mobile menu toggle */}
+      <button
+        type="button"
+        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        className="hh-mobile-menu-toggle"
+        style={{
+          display: 'none',
+          position: 'absolute',
+          top: 12,
+          right: 12,
+          zIndex: 100,
+          padding: 8,
+          background: 'rgba(255, 255, 255, 0.9)',
+          border: '1px solid var(--hh-border)',
+          borderRadius: 8,
+          cursor: 'pointer',
+        }}
+      >
+        {isMobileMenuOpen ? (
+          <X style={{ width: 20, height: 20 }} />
+        ) : (
+          <Menu style={{ width: 20, height: 20 }} />
+        )}
+      </button>
       <motion.div 
         className="hh-sidebar__brand"
         initial={{ opacity: 0, y: -10 }}

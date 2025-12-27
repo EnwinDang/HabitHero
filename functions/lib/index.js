@@ -124,11 +124,28 @@ app.get("/auth/me", requireAuth, async (req, res) => {
 // ============ TASKS ============
 /**
  * GET /tasks
+ * Supports query parameters: courseId, moduleId
+ * If courseId and moduleId are provided, queries from courses/{courseId}/modules/{moduleId}/tasks
+ * Otherwise, queries from users/{uid}/tasks
  */
 app.get("/tasks", requireAuth, async (req, res) => {
     try {
-        const uid = req.user.uid;
-        const tasksRef = db.collection("users").doc(uid).collection("tasks");
+        const { courseId, moduleId } = req.query;
+        let tasksRef;
+        if (courseId && moduleId) {
+            // Query tasks from course/module
+            tasksRef = db
+                .collection("courses")
+                .doc(courseId)
+                .collection("modules")
+                .doc(moduleId)
+                .collection("tasks");
+        }
+        else {
+            // Query tasks from user (backward compatibility)
+            const uid = req.user.uid;
+            tasksRef = db.collection("users").doc(uid).collection("tasks");
+        }
         const snap = await tasksRef.get();
         const tasks = snap.docs.map((doc) => ({
             taskId: doc.id,
@@ -143,49 +160,104 @@ app.get("/tasks", requireAuth, async (req, res) => {
 });
 /**
  * POST /tasks
+ * If courseId and moduleId are provided in body, saves to courses/{courseId}/modules/{moduleId}/tasks
+ * Otherwise, saves to users/{uid}/tasks (backward compatibility)
  */
 app.post("/tasks", requireAuth, async (req, res) => {
     try {
-        const uid = req.user.uid;
-        const { title, description, difficulty, xp, gold, dueAt, isRepeatable } = req.body;
-        const tasksRef = db.collection("users").doc(uid).collection("tasks");
+        const { title, description, difficulty, xp, gold, dueAt, isRepeatable, courseId, moduleId } = req.body;
+        console.log('📝 [POST /tasks] Received request:', { title, courseId, moduleId, hasCourseId: !!courseId, hasModuleId: !!moduleId });
+        let tasksRef;
+        // Check for valid (non-empty) courseId and moduleId
+        if (courseId && courseId.trim() && moduleId && moduleId.trim()) {
+            // Save to course/module tasks
+            const path = `courses/${courseId}/modules/${moduleId}/tasks`;
+            console.log('✅ [POST /tasks] Saving to course/module path:', path);
+            tasksRef = db
+                .collection("courses")
+                .doc(courseId.trim())
+                .collection("modules")
+                .doc(moduleId.trim())
+                .collection("tasks");
+        }
+        else {
+            // Save to user tasks (backward compatibility)
+            const uid = req.user.uid;
+            console.log('⚠️ [POST /tasks] No valid courseId/moduleId, saving to user tasks:', { courseId, moduleId, uid });
+            tasksRef = db.collection("users").doc(uid).collection("tasks");
+        }
         const newTaskRef = tasksRef.doc();
+        // Calculate XP and gold based on difficulty if not provided
+        let finalXP = xp;
+        let finalGold = gold;
+        if (!finalXP || !finalGold) {
+            const difficultyMultipliers = {
+                easy: { xp: 100, gold: 50 },
+                medium: { xp: 125, gold: 63 }, // 25% increase from easy
+                hard: { xp: 156, gold: 78 }, // 25% increase from medium
+            };
+            const normalizedDifficulty = (difficulty || 'medium').toLowerCase();
+            const rewards = difficultyMultipliers[normalizedDifficulty] || difficultyMultipliers.medium;
+            finalXP = finalXP || rewards.xp;
+            finalGold = finalGold || rewards.gold;
+        }
         const task = {
             title,
             description,
             difficulty,
-            xp,
-            gold,
+            xp: finalXP,
+            gold: finalGold,
             dueAt: dueAt || null,
             isRepeatable: isRepeatable || false,
             isActive: true,
             createdAt: Date.now(),
             completedAt: null,
+            ...(courseId && { courseId }),
+            ...(moduleId && { moduleId }),
         };
+        console.log('💾 [POST /tasks] Saving task to Firebase:', { taskId: newTaskRef.id, path: tasksRef.path, task });
         await newTaskRef.set(task);
+        console.log('✅ [POST /tasks] Task saved successfully:', newTaskRef.id);
         return res.status(201).json({
             taskId: newTaskRef.id,
             ...task,
         });
     }
     catch (e) {
-        console.error("Error in POST /tasks:", e);
+        console.error("❌ [POST /tasks] Error:", e);
         return res.status(500).json({ error: e?.message });
     }
 });
 /**
  * GET /tasks/{taskId}
+ * Checks both course/module tasks and user tasks
  */
 app.get("/tasks/:taskId", requireAuth, async (req, res) => {
     try {
-        const uid = req.user.uid;
         const { taskId } = req.params;
-        const taskSnap = await db
-            .collection("users")
-            .doc(uid)
-            .collection("tasks")
-            .doc(taskId)
-            .get();
+        const { courseId, moduleId } = req.query;
+        let taskSnap;
+        if (courseId && moduleId) {
+            // Try course/module tasks first
+            taskSnap = await db
+                .collection("courses")
+                .doc(courseId)
+                .collection("modules")
+                .doc(moduleId)
+                .collection("tasks")
+                .doc(taskId)
+                .get();
+        }
+        if (!taskSnap || !taskSnap.exists) {
+            // Fallback to user tasks
+            const uid = req.user.uid;
+            taskSnap = await db
+                .collection("users")
+                .doc(uid)
+                .collection("tasks")
+                .doc(taskId)
+                .get();
+        }
         if (!taskSnap.exists) {
             return res.status(404).json({ error: "Task not found" });
         }
@@ -201,21 +273,44 @@ app.get("/tasks/:taskId", requireAuth, async (req, res) => {
 });
 /**
  * PATCH /tasks/{taskId}
+ * Updates task in course/module if courseId and moduleId are in body, otherwise updates user task
  */
 app.patch("/tasks/:taskId", requireAuth, async (req, res) => {
     try {
-        const uid = req.user.uid;
         const { taskId } = req.params;
-        const taskRef = db
-            .collection("users")
-            .doc(uid)
-            .collection("tasks")
-            .doc(taskId);
+        const { courseId, moduleId } = req.body;
+        let taskRef;
+        if (courseId && moduleId) {
+            // Update course/module task
+            taskRef = db
+                .collection("courses")
+                .doc(courseId)
+                .collection("modules")
+                .doc(moduleId)
+                .collection("tasks")
+                .doc(taskId);
+        }
+        else {
+            // Update user task (backward compatibility)
+            const uid = req.user.uid;
+            taskRef = db
+                .collection("users")
+                .doc(uid)
+                .collection("tasks")
+                .doc(taskId);
+        }
+        // Remove courseId and moduleId from update data if present (they're path params, not data)
+        const updateData = { ...req.body };
+        delete updateData.courseId;
+        delete updateData.moduleId;
         await taskRef.update({
-            ...req.body,
+            ...updateData,
             updatedAt: Date.now(),
         });
         const updated = await taskRef.get();
+        if (!updated.exists) {
+            return res.status(404).json({ error: "Task not found" });
+        }
         return res.status(200).json({
             taskId: updated.id,
             ...updated.data(),
@@ -228,17 +323,33 @@ app.patch("/tasks/:taskId", requireAuth, async (req, res) => {
 });
 /**
  * DELETE /tasks/{taskId}
+ * Deletes task from course/module if courseId and moduleId are in query, otherwise deletes user task
  */
 app.delete("/tasks/:taskId", requireAuth, async (req, res) => {
     try {
-        const uid = req.user.uid;
         const { taskId } = req.params;
-        await db
-            .collection("users")
-            .doc(uid)
-            .collection("tasks")
-            .doc(taskId)
-            .delete();
+        const { courseId, moduleId } = req.query;
+        if (courseId && moduleId) {
+            // Delete from course/module tasks
+            await db
+                .collection("courses")
+                .doc(courseId)
+                .collection("modules")
+                .doc(moduleId)
+                .collection("tasks")
+                .doc(taskId)
+                .delete();
+        }
+        else {
+            // Delete from user tasks (backward compatibility)
+            const uid = req.user.uid;
+            await db
+                .collection("users")
+                .doc(uid)
+                .collection("tasks")
+                .doc(taskId)
+                .delete();
+        }
         return res.status(200).json({ success: true });
     }
     catch (e) {
@@ -872,10 +983,14 @@ app.get("/courses/:courseId/modules", async (req, res) => {
             .doc(courseId)
             .collection("modules")
             .get();
-        const modules = modulesSnap.docs.map((doc) => ({
-            moduleId: doc.id,
-            ...doc.data(),
-        }));
+        const modules = modulesSnap.docs.map((doc) => {
+            const data = doc.data();
+            // Ensure moduleId is always set to the document ID (don't let data.moduleId override it)
+            return {
+                ...data,
+                moduleId: doc.id, // Always use document ID, even if data has moduleId field
+            };
+        });
         return res.status(200).json(modules);
     }
     catch (e) {

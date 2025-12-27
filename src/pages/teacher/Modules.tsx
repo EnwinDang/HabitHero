@@ -1,170 +1,143 @@
-import { useMemo, useState, cloneElement, Children } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Plus, BookOpen, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import { useCourses } from '../../store/courseStore';
+import { Modal } from '../../components/Modal';
+import { DropdownMenuItem } from '../../components/DropdownMenuItem';
 
-interface ModalProps {
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
+// Module-specific dropdown menu component
+interface ModuleDropdownMenuProps {
+  module: any;
+  courseId: string;
+  onEdit: (module: any, courseId: string) => void;
+  onDelete: (courseId: string, moduleId: string) => void;
+  onToggleActive: (courseId: string, moduleId: string, active: boolean) => void;
 }
 
-function Modal({ title, children, onClose }: ModalProps) {
-  return (
-    <div className="hh-modal-overlay">
-      <div className="hh-modal" style={{ maxWidth: 640 }}>
-        <div className="hh-modal__head">
-          <div>
-            <div className="hh-label">Modules</div>
-            <div className="hh-title-sm" style={{ marginTop: 6 }}>
-              {title}
-            </div>
-          </div>
-          <button type="button" onClick={onClose} className="hh-btn hh-btn-secondary">
-            Close
-          </button>
-        </div>
-        <div className="hh-modal__body">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-interface DropdownMenuProps {
-  children: React.ReactNode;
-  trigger: React.ReactElement;
-}
-
-function DropdownMenu({ children, trigger }: DropdownMenuProps) {
+function ModuleDropdownMenu({ module, courseId, onEdit, onDelete, onToggleActive }: ModuleDropdownMenuProps) {
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [triggerRect, setTriggerRect] = useState<{ top: number; right: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [isOpen]);
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isOpen) {
-      // Get trigger button position for fixed positioning
-      const rect = e.currentTarget.getBoundingClientRect();
-      setTriggerRect({
-        top: rect.bottom + 4,
-        right: window.innerWidth - rect.right,
-      });
-    }
+    e.preventDefault();
     setIsOpen(!isOpen);
   };
 
-  const handleClose = () => {
+  const handleItemClick = (action: () => void) => {
+    action();
     setIsOpen(false);
-    setTriggerRect(null);
   };
 
-  // Clone trigger to add click handler
-  const triggerWithClick = cloneElement(trigger, {
-    onClick: (e: React.MouseEvent) => {
-      handleToggle(e);
-      // Call original onClick if it exists
-      if (trigger.props && typeof trigger.props === 'object' && 'onClick' in trigger.props) {
-        const onClick = (trigger.props as any).onClick;
-        if (typeof onClick === 'function') {
-          onClick(e);
-        }
-      }
-    },
-  } as any);
-
-  // Clone children to add close handler
-  const childrenWithClose = Children.map(children, (child) => {
-    if (child && typeof child === 'object' && 'type' in child) {
-      return cloneElement(child as React.ReactElement, { onItemClick: handleClose } as any);
-    }
-    return child;
-  });
-
   return (
-    <div style={{ position: 'relative' }}>
-      {triggerWithClick}
-      {isOpen && triggerRect && (
+    <div ref={menuRef} style={{ position: 'relative', display: 'inline-block', zIndex: 1001 }}>
+      <button
+        type="button"
+        onClick={handleToggle}
+        style={{
+          width: 32,
+          height: 32,
+          padding: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          cursor: 'pointer',
+          background: '#ffffff',
+          border: '1px solid var(--hh-border)',
+          borderRadius: 8,
+          minWidth: 32,
+          minHeight: 32,
+          opacity: 1,
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'rgba(31, 31, 35, 0.02)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = '#ffffff';
+        }}
+      >
+        <MoreVertical style={{ width: 16, height: 16, color: 'var(--hh-text)', opacity: 1 }} />
+      </button>
+      {isOpen && (
         <>
           <div
             style={{
               position: 'fixed',
               inset: 0,
               zIndex: 999,
+              background: 'transparent',
             }}
-            onClick={handleClose}
+            onClick={() => setIsOpen(false)}
           />
           <div
             style={{
-              position: 'fixed',
-              top: `${triggerRect.top}px`,
-              right: `${triggerRect.right}px`,
+              position: 'absolute',
+              top: '100%',
+              right: 0,
+              marginTop: 4,
               zIndex: 1000,
-              background: '#fff',
+              background: '#ffffff',
               border: '1px solid var(--hh-border)',
               borderRadius: 8,
               boxShadow: 'var(--hh-shadow)',
               minWidth: 160,
               padding: 4,
+              opacity: 1,
+              pointerEvents: 'auto',
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            {childrenWithClose}
+          {module.active === false ? (
+            <DropdownMenuItem
+              onClick={() => handleItemClick(() => onToggleActive(courseId, module.id, true))}
+            >
+              Activate
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              onClick={() => handleItemClick(() => onToggleActive(courseId, module.id, false))}
+            >
+              Deactivate
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem
+            onClick={() => handleItemClick(() => onEdit(module, courseId))}
+          >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Pencil style={{ width: 14, height: 14, marginRight: 8 }} />
+              Edit
+            </div>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => handleItemClick(() => onDelete(courseId, module.id))}
+            style={{ color: 'rgb(185, 28, 28)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <Trash2 style={{ width: 14, height: 14, marginRight: 8 }} />
+              Delete
+            </div>
+          </DropdownMenuItem>
           </div>
         </>
       )}
     </div>
-  );
-}
-
-interface DropdownMenuItemProps {
-  children: React.ReactNode;
-  onClick?: (e: React.MouseEvent) => void;
-  disabled?: boolean;
-  style?: React.CSSProperties;
-  onItemClick?: () => void;
-}
-
-function DropdownMenuItem({ children, onClick, disabled = false, style: customStyle = {}, onItemClick }: DropdownMenuItemProps) {
-  const handleClick = (e: React.MouseEvent) => {
-    if (disabled) return;
-    e.stopPropagation();
-    if (onClick) onClick(e);
-    if (onItemClick) {
-      setTimeout(() => onItemClick(), 0);
-    }
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      disabled={disabled}
-      style={{
-        width: '100%',
-        justifyContent: 'flex-start',
-        padding: '8px 12px',
-        fontSize: 14,
-        background: 'transparent',
-        border: 'none',
-        borderRadius: 6,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-        display: 'flex',
-        alignItems: 'center',
-        color: 'inherit',
-        ...customStyle,
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled) {
-          e.currentTarget.style.background = 'rgba(31, 31, 35, 0.04)';
-        }
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent';
-      }}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -193,20 +166,23 @@ export default function Modules() {
 
   const [name, setName] = useState<string>('');
   const [description, setDescription] = useState<string>('');
+  const [active, setActive] = useState<boolean>(true);
 
   function openCreate(courseId: string) {
     setEditingId(null);
     setEditingCourseId(courseId);
     setName('');
     setDescription('');
+    setActive(true);
     setModalOpen(true);
   }
 
-  function openEdit(module: { id: string; name: string; description: string }, courseId: string) {
+  function openEdit(module: { id: string; name: string; description: string; active?: boolean }, courseId: string) {
     setEditingId(module.id);
     setEditingCourseId(courseId);
     setName(module.name);
     setDescription(module.description);
+    setActive(module.active !== false);
     setModalOpen(true);
   }
 
@@ -220,11 +196,19 @@ export default function Modules() {
           name: name.trim(),
           description: description.trim(),
         });
+        // Update active status separately if it changed
+        const currentModule = courses.find(c => c.id === editingCourseId)?.modules?.find(m => m.id === editingId);
+        if (currentModule && currentModule.active !== active) {
+          await setModuleActive(editingCourseId, editingId, active);
+        }
       } else {
         await addModule(editingCourseId, {
           name: name.trim(),
           description: description.trim(),
         });
+        // Note: New modules are created as active by default
+        // If we need to set them as inactive, we'd need to wait for the module to be created first
+        // For now, new modules will always be active
       }
       setModalOpen(false);
     } catch (err) {
@@ -235,6 +219,14 @@ export default function Modules() {
 
   async function remove(courseId: string, moduleId: string) {
     if (!courseId) return;
+    
+    const module = courses.find(c => c.id === courseId)?.modules?.find(m => m.id === moduleId);
+    const moduleName = module?.name || 'this module';
+    
+    if (!window.confirm(`Are you sure you want to delete "${moduleName}"? This action cannot be undone.`)) {
+      return;
+    }
+    
     try {
       await deleteModule(courseId, moduleId);
     } catch (err) {
@@ -309,50 +301,50 @@ export default function Modules() {
               <div
                 style={{
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
+                  flexDirection: 'column',
+                  gap: 12,
                   marginBottom: 16,
-                  flexWrap: 'wrap',
-                  gap: 16,
                 }}
               >
-                <div>
-                  <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>
-                    {course.name}
-                  </h2>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                    {course.year && (
-                      <span style={{ fontSize: 14, color: 'var(--hh-muted)' }}>
-                        Year {course.year}
-                      </span>
-                    )}
-                    {course.program && (
-                      <span style={{ fontSize: 14, color: 'var(--hh-muted)' }}>
-                        {course.program}
-                      </span>
-                    )}
-                    {course.active === false ? (
-                      <span className="hh-pill hh-pill--behind">
-                        <span className="hh-pill-dot" />
-                        Inactive
-                      </span>
-                    ) : (
-                      <span className="hh-pill hh-pill--ahead">
-                        <span className="hh-pill-dot" style={{ background: 'var(--hh-green)' }} />
-                        Active
-                      </span>
-                    )}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 200px' }}>
+                    <h2 style={{ fontSize: 'clamp(18px, 4vw, 20px)', fontWeight: 700, marginBottom: 4 }}>
+                      {course.name}
+                    </h2>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      {course.year && (
+                        <span style={{ fontSize: 13, color: 'var(--hh-muted)' }}>
+                          Year {course.year}
+                        </span>
+                      )}
+                      {course.program && (
+                        <span style={{ fontSize: 13, color: 'var(--hh-muted)' }}>
+                          {course.program}
+                        </span>
+                      )}
+                      {course.active === false ? (
+                        <span className="hh-pill hh-pill--behind">
+                          <span className="hh-pill-dot" />
+                          Inactive
+                        </span>
+                      ) : (
+                        <span className="hh-pill hh-pill--ahead">
+                          <span className="hh-pill-dot" style={{ background: 'var(--hh-green)' }} />
+                          Active
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => openCreate(course.id)}
+                    className="hh-btn hh-btn-primary"
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}
+                  >
+                    <Plus style={{ width: 16, height: 16 }} />
+                    <span style={{ whiteSpace: 'nowrap' }}>New Module</span>
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => openCreate(course.id)}
-                  className="hh-btn hh-btn-primary"
-                  style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-                >
-                  <Plus style={{ width: 16, height: 16 }} />
-                  New Module
-                </button>
               </div>
 
               {/* Modules Table */}
@@ -374,17 +366,38 @@ export default function Modules() {
                       </tr>
                     </thead>
                     <tbody className="hh-tbody">
-                      {course.modules.map((m, index) => (
+                      {[...course.modules]
+                        .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
+                        .map((m, index) => {
+                          const handleRowClick = () => {
+                            if (m.id && m.id.trim()) {
+                              navigate(`/teacher/modules/${m.id}`);
+                            } else {
+                              console.error('Module missing ID:', m);
+                              alert(`Module "${m.name}" is missing an ID. Please contact support or recreate this module.`);
+                            }
+                          };
+                          
+                          return (
                         <motion.tr
-                          key={m.id}
+                          key={m.id || `module-${index}`}
                           className="hh-trow"
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: courseIndex * 0.1 + 0.15 + index * 0.03 }}
-                          style={{ cursor: 'pointer' }}
-                          onClick={() => navigate(`/teacher/modules/${m.id}`)}
+                          style={{ 
+                            cursor: m.id ? 'pointer' : 'not-allowed',
+                            pointerEvents: 'auto',
+                            position: 'relative',
+                            zIndex: 1
+                          }}
+                          onClick={handleRowClick}
                         >
-                          <td className="px-5 py-4" style={{ fontWeight: 700, color: 'rgba(31,31,35,0.92)' }}>
+                          <td 
+                            className="px-5 py-4" 
+                            style={{ fontWeight: 700, color: 'rgba(31,31,35,0.92)', cursor: m.id ? 'pointer' : 'not-allowed' }}
+                            onClick={handleRowClick}
+                          >
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                               <div
                                 style={{
@@ -417,10 +430,18 @@ export default function Modules() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-5 py-4" style={{ textAlign: 'center' }}>
+                          <td 
+                            className="px-5 py-4" 
+                            style={{ textAlign: 'center', cursor: m.id ? 'pointer' : 'not-allowed' }}
+                            onClick={handleRowClick}
+                          >
                             <span style={{ fontSize: 14, fontWeight: 650 }}>{m.exercises || 0}</span>
                           </td>
-                          <td className="px-5 py-4">
+                          <td 
+                            className="px-5 py-4"
+                            style={{ cursor: m.id ? 'pointer' : 'not-allowed' }}
+                            onClick={handleRowClick}
+                          >
                             <div style={{ width: 128 }}>
                               <div className="hh-progress">
                                 <div 
@@ -430,7 +451,11 @@ export default function Modules() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-5 py-4">
+                          <td 
+                            className="px-5 py-4"
+                            style={{ cursor: m.id ? 'pointer' : 'not-allowed' }}
+                            onClick={handleRowClick}
+                          >
                             {m.active === false ? (
                               <span className="hh-pill hh-pill--behind">
                                 <span className="hh-pill-dot" />
@@ -445,85 +470,36 @@ export default function Modules() {
                           </td>
                           <td className="px-5 py-4" style={{ textAlign: 'right' }}>
                             <div
-                              style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}
+                              style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <button
                                 type="button"
+                                className="hh-btn hh-btn-secondary"
+                                style={{
+                                  width: 32,
+                                  height: 32,
+                                  padding: 0,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  position: 'relative',
+                                  zIndex: 10,
+                                  cursor: 'pointer',
+                                }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate(`/teacher/modules/${m.id}`);
+                                  openEdit(m, course.id);
                                 }}
-                                className="hh-btn hh-btn-secondary"
-                                style={{ padding: '6px 12px', fontSize: 12 }}
+                                title="Edit"
                               >
-                                View
+                                <Pencil style={{ width: 16, height: 16, color: 'var(--hh-text)' }} />
                               </button>
-                              <DropdownMenu
-                                trigger={
-                                  <button
-                                    type="button"
-                                    className="hh-btn hh-btn-secondary"
-                                    style={{
-                                      width: 32,
-                                      height: 32,
-                                      padding: 0,
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                    }}
-                                  >
-                                    <MoreVertical style={{ width: 16, height: 16 }} />
-                                  </button>
-                                }
-                              >
-                                {m.active === false ? (
-                                  <DropdownMenuItem
-                                    onClick={async () => {
-                                      try {
-                                        await setModuleActive(course.id, m.id, true);
-                                      } catch (err) {
-                                        console.error('Error activating module:', err);
-                                      }
-                                    }}
-                                  >
-                                    Activate
-                                  </DropdownMenuItem>
-                                ) : (
-                                  <DropdownMenuItem
-                                    onClick={async () => {
-                                      try {
-                                        await setModuleActive(course.id, m.id, false);
-                                      } catch (err) {
-                                        console.error('Error deactivating module:', err);
-                                      }
-                                    }}
-                                  >
-                                    Deactivate
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem
-                                  onClick={() => openEdit(m, course.id)}
-                                >
-                                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                                    <Pencil style={{ width: 14, height: 14, marginRight: 8 }} />
-                                    Edit
-                                  </div>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => remove(course.id, m.id)}
-                                  style={{ color: 'rgb(185, 28, 28)' }}
-                                >
-                                  <div style={{ display: 'flex', alignItems: 'center' }}>
-                                    <Trash2 style={{ width: 14, height: 14, marginRight: 8 }} />
-                                    Delete
-                                  </div>
-                                </DropdownMenuItem>
-                              </DropdownMenu>
                             </div>
                           </td>
                         </motion.tr>
-                      ))}
+                          );
+                        })}
                     </tbody>
                   </table>
                 </motion.div>
@@ -555,7 +531,12 @@ export default function Modules() {
       )}
 
       {modalOpen ? (
-        <Modal title={editing ? 'Edit Module' : 'Create Module'} onClose={() => setModalOpen(false)}>
+        <Modal 
+          title={editing ? 'Edit Module' : 'Create Module'} 
+          label="Modules"
+          maxWidth={640}
+          onClose={() => setModalOpen(false)}
+        >
           <div style={{ display: 'grid', gap: 16 }}>
             <div>
               <div className="hh-label">Module name</div>
@@ -578,24 +559,103 @@ export default function Modules() {
                 style={{ marginTop: 8 }}
               />
             </div>
+            {editing && (
+              <div>
+                <div className="hh-label" style={{ marginBottom: 8 }}>Status</div>
+                <label
+                  style={{
+                    position: 'relative',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={active}
+                    onChange={(e) => setActive(e.target.checked)}
+                    style={{
+                      opacity: 0,
+                      width: 0,
+                      height: 0,
+                    }}
+                  />
+                  <span
+                    style={{
+                      position: 'relative',
+                      display: 'inline-block',
+                      width: 44,
+                      height: 24,
+                      backgroundColor: active ? 'var(--hh-green)' : 'rgba(31, 31, 35, 0.2)',
+                      borderRadius: 24,
+                      transition: 'background-color 0.3s',
+                    }}
+                  >
+                    <span
+                      style={{
+                        position: 'absolute',
+                        height: 18,
+                        width: 18,
+                        left: active ? '22px' : '3px',
+                        top: '3px',
+                        backgroundColor: '#ffffff',
+                        borderRadius: '50%',
+                        transition: 'left 0.3s',
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+                      }}
+                    />
+                  </span>
+                  <span style={{ fontSize: 14, color: 'var(--hh-text)' }}>
+                    {active ? 'Active' : 'Inactive'}
+                  </span>
+                </label>
+              </div>
+            )}
 
-            <div style={{ display: 'flex', gap: 12, paddingTop: 16, justifyContent: 'flex-end' }}>
-              <button
-                type="button"
-                onClick={() => setModalOpen(false)}
-                className="hh-btn hh-btn-secondary"
-                style={{ flex: 1 }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={save}
-                className="hh-btn hh-btn-primary"
-                style={{ flex: 1 }}
-              >
-                {editing ? 'Save Changes' : 'Create Module'}
-              </button>
+            <div style={{ display: 'flex', gap: 12, paddingTop: 16, justifyContent: 'space-between', alignItems: 'center' }}>
+              {editing && editingId && editingCourseId ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(`Are you sure you want to delete "${name || 'this module'}"? This action cannot be undone.`)) {
+                      remove(editingCourseId, editingId);
+                      setModalOpen(false);
+                    }
+                  }}
+                  className="hh-btn hh-btn-danger"
+                  style={{ 
+                    minWidth: 120, 
+                    padding: '8px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <Trash2 style={{ width: 16, height: 16 }} />
+                  <span>Delete</span>
+                </button>
+              ) : (
+                <div />
+              )}
+              <div style={{ display: 'flex', gap: 12, flex: editing ? 0 : 1, justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  className="hh-btn hh-btn-secondary"
+                  style={{ flex: editing ? 0 : 1 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={save}
+                  className="hh-btn hh-btn-primary"
+                  style={{ flex: editing ? 0 : 1 }}
+                >
+                  {editing ? 'Save Changes' : 'Create Module'}
+                </button>
+              </div>
             </div>
           </div>
         </Modal>

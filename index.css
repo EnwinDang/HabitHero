@@ -488,6 +488,7 @@
     padding: 22px;
   }
 
+  /* Responsive breakpoints */
   @media (max-width: 1024px) {
     .hh-sidebar {
       width: 92px;
@@ -504,6 +505,134 @@
     .hh-nav__item {
       justify-content: center;
       padding: 12px;
+    }
+
+    .hh-content {
+      padding: 16px;
+    }
+
+    .hh-page {
+      padding: 0 8px;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .hh-shell {
+      flex-direction: column;
+    }
+
+    .hh-sidebar {
+      width: 100%;
+      padding: 12px;
+      border-right: none;
+      border-bottom: 1px solid var(--hh-border);
+      max-height: 60px;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+      position: relative;
+    }
+
+    .hh-sidebar--open {
+      max-height: 500px;
+    }
+
+    .hh-mobile-menu-toggle {
+      display: block !important;
+    }
+
+    .hh-sidebar__brand {
+      margin-bottom: 8px;
+      padding-right: 50px;
+    }
+
+    .hh-sidebar__brandTitle,
+    .hh-sidebar__brandSub {
+      display: block;
+    }
+
+    .hh-nav {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .hh-nav__section {
+      width: 100%;
+      padding: 8px 4px 4px;
+    }
+
+    .hh-nav__item {
+      flex: 1;
+      min-width: 0;
+      justify-content: center;
+      padding: 10px 8px;
+    }
+
+    .hh-nav__label {
+      display: none;
+    }
+
+    .hh-content {
+      padding: 12px;
+    }
+
+    .hh-page {
+      padding: 0 4px;
+    }
+
+    .hh-modal {
+      max-width: calc(100% - 32px);
+      margin: 16px;
+    }
+
+    .hh-modal__head,
+    .hh-modal__body {
+      padding: 16px;
+    }
+
+    .hh-table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .hh-table {
+      min-width: 600px;
+    }
+
+    .hh-thead th,
+    .hh-tbody td {
+      padding: 10px 12px;
+      font-size: 13px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .hh-auth {
+      padding: 24px 16px;
+    }
+
+    .hh-auth__card {
+      padding: 18px;
+    }
+
+    .hh-content {
+      padding: 8px;
+    }
+
+    .hh-page {
+      padding: 0;
+    }
+
+    .hh-title {
+      font-size: 20px;
+    }
+
+    .hh-title-sm {
+      font-size: 16px;
+    }
+
+    .hh-card {
+      border-radius: 12px;
     }
   }
 }

@@ -4,7 +4,7 @@ import { Users, Zap, BarChart3, CheckCircle2, ArrowRight, BookOpen, GraduationCa
 import { useCourses } from '../../store/courseStore';
 import { useAuth } from '../../context/AuthContext';
 import { useEffect, useState, useMemo } from 'react';
-import { loadTeacherDashboard } from '../../services/teacherDashboard.service';
+import { loadTeacherDashboard, type TeacherDashboard } from '../../services/teacherDashboard.service';
 import { cache, cacheKeys } from '../../utils/cache';
 
 // Activities will be fetched from backend in the future
@@ -42,29 +42,30 @@ function KPICard({ title, value, subtitle, icon: Icon, trend, variant = 'primary
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
       className="hh-card"
-      style={{ padding: 20 }}
+      style={{ padding: '16px 14px' }}
     >
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ flex: 1 }}>
-          <p style={{ fontSize: 12, color: 'var(--hh-muted)', marginBottom: 4 }}>{title}</p>
-          <p style={{ fontSize: 28, fontWeight: 800, color: 'var(--hh-text)', marginBottom: 4 }}>{value}</p>
-          <p style={{ fontSize: 12, color: 'var(--hh-muted)' }}>{subtitle}</p>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12, gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 11, color: 'var(--hh-muted)', marginBottom: 4 }}>{title}</p>
+          <p style={{ fontSize: 'clamp(20px, 4vw, 28px)', fontWeight: 800, color: 'var(--hh-text)', marginBottom: 4 }}>{value}</p>
+          <p style={{ fontSize: 11, color: 'var(--hh-muted)' }}>{subtitle}</p>
         </div>
         <div
           style={{
-            padding: 12,
+            padding: 10,
             borderRadius: 12,
             background: colors.bg,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            flexShrink: 0,
           }}
         >
-          <Icon style={{ width: 20, height: 20, color: colors.icon }} />
+          <Icon style={{ width: 18, height: 18, color: colors.icon }} />
         </div>
       </div>
       {trend && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: trend.isPositive ? colors.text : 'rgb(185, 28, 28)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: trend.isPositive ? colors.text : 'rgb(185, 28, 28)' }}>
           <span>{trend.isPositive ? '↑' : '↓'}</span>
           <span>{trend.value}%</span>
         </div>
@@ -75,7 +76,7 @@ function KPICard({ title, value, subtitle, icon: Icon, trend, variant = 'primary
 
 // Activity Item Component
 interface ActivityItemProps {
-  type: string;
+  type: 'completed' | 'created' | 'achievement' | 'module' | string;
   title: string;
   description: string;
   timestamp: string;
@@ -83,7 +84,7 @@ interface ActivityItemProps {
 }
 
 function ActivityItem({ type, title, description, timestamp, delay = 0 }: ActivityItemProps) {
-  const typeColors = {
+  const typeColors: Record<string, { dot: string; bg: string }> = {
     completed: { dot: 'var(--hh-green)', bg: 'rgba(74, 222, 128, 0.10)' },
     created: { dot: 'var(--hh-indigo)', bg: 'rgba(75, 74, 239, 0.10)' },
     achievement: { dot: 'var(--hh-gold)', bg: 'rgba(255, 183, 77, 0.14)' },
@@ -163,9 +164,9 @@ function CourseOverviewCard({ courseId, courseData, courseInfo, delay = 0, onVie
   const students = courseData?.students || {};
   
   const totalModules = Object.keys(modules).length;
-  const totalTasks = Object.values(modules).reduce((sum, m) => sum + (m.totalTasks || 0), 0);
+  const totalTasks = Object.values(modules).reduce((sum: number, m: any) => sum + (m?.totalTasks || 0), 0);
   const avgCompletionRate = totalModules > 0 
-    ? Math.round(Object.values(modules).reduce((sum, m) => sum + (m.completionRate || 0), 0) / totalModules)
+    ? Math.round(Object.values(modules).reduce((sum: number, m: any) => sum + (m?.completionRate || 0), 0) / totalModules)
     : 0;
   
   // Get student count from overview (updated by API) or count students object as fallback
@@ -210,7 +211,7 @@ function CourseOverviewCard({ courseId, courseData, courseInfo, delay = 0, onVie
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 14 }}>
           <span style={{ color: 'var(--hh-muted)', width: 96 }}>Modules:</span>
           <span style={{ fontWeight: 650 }}>
-            {totalModules} modules • {totalTasks} exercises
+            {totalModules} modules • {String(totalTasks)} exercises
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 14 }}>
@@ -227,18 +228,18 @@ function CourseOverviewCard({ courseId, courseData, courseInfo, delay = 0, onVie
         />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 24 }}>
-        <div style={{ padding: 16, borderRadius: 12, background: 'rgba(74, 222, 128, 0.10)', textAlign: 'center' }}>
-          <p style={{ fontSize: 24, fontWeight: 850, color: 'rgb(21, 128, 61)', marginBottom: 4 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 24 }}>
+        <div style={{ padding: '14px 12px', borderRadius: 12, background: 'rgba(74, 222, 128, 0.10)', textAlign: 'center' }}>
+          <p style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 850, color: 'rgb(21, 128, 61)', marginBottom: 4 }}>
             {overview.modulesCompleted || 0}
           </p>
-          <p style={{ fontSize: 12, color: 'var(--hh-muted)' }}>Modules Completed</p>
+          <p style={{ fontSize: 11, color: 'var(--hh-muted)' }}>Modules Completed</p>
         </div>
-        <div style={{ padding: 16, borderRadius: 12, background: 'rgba(59, 130, 246, 0.10)', textAlign: 'center' }}>
-          <p style={{ fontSize: 24, fontWeight: 850, color: 'rgb(29, 78, 216)', marginBottom: 4 }}>
+        <div style={{ padding: '14px 12px', borderRadius: 12, background: 'rgba(59, 130, 246, 0.10)', textAlign: 'center' }}>
+          <p style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 850, color: 'rgb(29, 78, 216)', marginBottom: 4 }}>
             {overview.tasksCompletedToday || 0}
           </p>
-          <p style={{ fontSize: 12, color: 'var(--hh-muted)' }}>Tasks Today</p>
+          <p style={{ fontSize: 11, color: 'var(--hh-muted)' }}>Tasks Today</p>
         </div>
       </div>
 
@@ -263,9 +264,9 @@ export default function Dashboard() {
   const { courses, selectedCourse, setSelectedCourse } = useCourses();
   const { firebaseUser, user } = useAuth();
   
-  const [dashboardData, setDashboardData] = useState(null);
+  const [dashboardData, setDashboardData] = useState<TeacherDashboard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch teacher dashboard data
   useEffect(() => {
@@ -275,6 +276,11 @@ export default function Dashboard() {
     }
 
     async function fetchDashboard() {
+      if (!firebaseUser?.uid) {
+        setLoading(false);
+        return;
+      }
+      
       try {
         setLoading(true);
         setError(null);
@@ -309,8 +315,8 @@ export default function Dashboard() {
     let totalTasksToday = 0;
     let coursesWithData = 0;
 
-    courses.forEach((course) => {
-      if (course.overview) {
+    courses.forEach((course: any) => {
+      if (course?.overview) {
         totalStudents += course.overview.totalStudents || 0;
         totalXP += course.overview.averageXP || 0;
         totalTasksToday += course.overview.tasksCompletedToday || 0;
@@ -318,10 +324,10 @@ export default function Dashboard() {
       }
 
       // Calculate average completion rate from modules
-      if (course.modules) {
-        const moduleRates = Object.values(course.modules).map((m) => m.completionRate || 0);
+      if (course?.modules) {
+        const moduleRates = Object.values(course.modules).map((m: any) => m?.completionRate || 0);
         if (moduleRates.length > 0) {
-          totalCompletionRate += moduleRates.reduce((a, b) => a + b, 0) / moduleRates.length;
+          totalCompletionRate += moduleRates.reduce((a: number, b: number) => a + b, 0) / moduleRates.length;
         }
       }
     });
@@ -395,7 +401,7 @@ export default function Dashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 24, marginBottom: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px 16px', marginBottom: 32 }}>
         <KPICard
           title="Students Enrolled"
           value={kpis.totalStudents}
@@ -431,7 +437,7 @@ export default function Dashboard() {
 
       {/* Course Overviews */}
       {coursesToDisplay.length > 0 ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 24, marginBottom: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 24, marginBottom: 24 }}>
           {coursesToDisplay.map(({ courseId, courseData, courseInfo }, index) => (
             <CourseOverviewCard
               key={courseId}
@@ -493,7 +499,7 @@ export default function Dashboard() {
       )}
 
       {/* Main Content Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 24 }}>
 
         {/* Activity Snapshot */}
         <motion.div

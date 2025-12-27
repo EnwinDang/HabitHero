@@ -2,33 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useCourses } from '../../store/courseStore';
-
-interface ModalProps {
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-}
-
-function Modal({ title, children, onClose }: ModalProps) {
-  return (
-    <div className="hh-modal-overlay">
-      <div className="hh-modal" style={{ maxWidth: 720 }}>
-        <div className="hh-modal__head">
-          <div>
-            <div className="hh-label">Course Management</div>
-            <div className="hh-title-sm" style={{ marginTop: 6 }}>
-              {title}
-            </div>
-          </div>
-          <button type="button" onClick={onClose} className="hh-btn hh-btn-secondary">
-            Close
-          </button>
-        </div>
-        <div className="hh-modal__body">{children}</div>
-      </div>
-    </div>
-  );
-}
+import { Modal } from '../../components/Modal';
 
 export default function Courses() {
   const navigate = useNavigate();
@@ -93,23 +67,25 @@ export default function Courses() {
       transition={{ duration: 0.3 }}
     >
       <motion.div 
-        style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, duration: 0.3 }}
       >
-        <div>
-          <div className="hh-label">Courses</div>
-          <div className="hh-title" style={{ marginTop: 8 }}>
-            Course Management
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 200px' }}>
+            <div className="hh-label">Courses</div>
+            <div className="hh-title" style={{ marginTop: 8 }}>
+              Course Management
+            </div>
+            <div className="hh-hint" style={{ marginTop: 8 }}>
+              Create and manage your courses.
+            </div>
           </div>
-          <div className="hh-hint" style={{ marginTop: 8 }}>
-            Create and manage your courses.
-          </div>
+          <button type="button" onClick={openCreate} className="hh-btn hh-btn-primary" style={{ flexShrink: 0 }}>
+            + New Course
+          </button>
         </div>
-        <button type="button" onClick={openCreate} className="hh-btn hh-btn-primary">
-          + New Course
-        </button>
       </motion.div>
 
       {error && (
@@ -239,13 +215,18 @@ export default function Courses() {
       )}
 
       {modalOpen ? (
-        <Modal title={editing ? 'Edit course' : 'Create course'} onClose={() => setModalOpen(false)}>
+        <Modal 
+          title={editing ? 'Edit course' : 'Create course'} 
+          label="Course Management"
+          maxWidth={720}
+          onClose={() => setModalOpen(false)}
+        >
           <div style={{ display: 'grid', gap: 14 }}>
             <div>
               <div className="hh-label">Course name</div>
               <input value={name} onChange={(e) => setName(e.target.value)} className="hh-input" style={{ marginTop: 8 }} />
             </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14 }}>
               <div>
                 <div className="hh-label">Year</div>
                 <input value={year} onChange={(e) => setYear(e.target.value)} className="hh-input" style={{ marginTop: 8 }} />

@@ -29,7 +29,7 @@ export default function LoginPage() {
     return (
       <div className="hh-auth">
         <div className="hh-auth__wrap">
-          <div className="hh-card hh-auth__card" style={{ padding: 24, textAlign: 'center' }}>
+          <div className="hh-card hh-auth__card" style={{ padding: '20px 16px', textAlign: 'center' }}>
             <p style={{ fontSize: 14, color: 'var(--hh-muted)' }}>Loading...</p>
           </div>
         </div>
@@ -78,7 +78,7 @@ export default function LoginPage() {
         </div>
 
         <div className="hh-card hh-auth__card">
-        <div className="hh-title">Login</div>
+        <div className="hh-title" style={{ fontSize: 'clamp(18px, 4vw, 22px)' }}>Login</div>
         <div className="hh-hint" style={{ marginTop: 8 }}>
           Authenticate with your school email.
         </div>

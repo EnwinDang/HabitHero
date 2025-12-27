@@ -81,56 +81,56 @@ export default function Students() {
       return;
     }
 
-    try {
-      setLoading(true);
-      setError(null);
-      console.log('Fetching students for:', { teacherId: firebaseUser.uid, courseId: currentCourse.id });
-      const studentsData = await loadCourseStudents(firebaseUser.uid, currentCourse.id);
-      console.log('Students data received:', studentsData);
-      
-      if (studentsData) {
-        // Convert students object to array and calculate status
-        const studentsArray = Object.entries(studentsData).map(([studentId, studentInfo]: [string, any]) => {
-          // Calculate completion percentage based on tasks completed
-          const completion = totalTasks > 0 ? Math.round((studentInfo.tasksCompleted / totalTasks) * 100) : 0;
-          
-          // Determine status based on completion
-          let studentStatus = 'On track';
-          if (completion >= 80) {
-            studentStatus = 'Ahead';
-          } else if (completion < 50) {
-            studentStatus = 'Behind';
-          }
-          
-          // Calculate level from XP (assuming 100 XP per level for simplicity)
-          const level = Math.floor(studentInfo.totalXP / 100) + 1;
-          
-          return {
-            id: studentId,
-            name: studentInfo.displayName,
-            level: level,
-            completed: studentInfo.tasksCompleted,
-            total: totalTasks,
-            status: studentStatus,
-            totalXP: studentInfo.totalXP,
-            currentModule: studentInfo.currentModule,
-            lastActive: studentInfo.lastActive,
-          };
-        });
+      try {
+        setLoading(true);
+        setError(null);
+        console.log('Fetching students for:', { teacherId: firebaseUser.uid, courseId: currentCourse.id });
+        const studentsData = await loadCourseStudents(firebaseUser.uid, currentCourse.id);
+        console.log('Students data received:', studentsData);
         
-        console.log('Processed students array:', studentsArray);
-        setStudents(studentsArray);
-      } else {
-        console.log('No students data found');
+        if (studentsData) {
+          // Convert students object to array and calculate status
+          const studentsArray = Object.entries(studentsData).map(([studentId, studentInfo]: [string, any]) => {
+            // Calculate completion percentage based on tasks completed
+            const completion = totalTasks > 0 ? Math.round((studentInfo.tasksCompleted / totalTasks) * 100) : 0;
+            
+            // Determine status based on completion
+            let studentStatus = 'On track';
+            if (completion >= 80) {
+              studentStatus = 'Ahead';
+            } else if (completion < 50) {
+              studentStatus = 'Behind';
+            }
+            
+            // Calculate level from XP (assuming 100 XP per level for simplicity)
+            const level = Math.floor(studentInfo.totalXP / 100) + 1;
+            
+            return {
+              id: studentId,
+              name: studentInfo.displayName,
+              level: level,
+              completed: studentInfo.tasksCompleted,
+              total: totalTasks,
+              status: studentStatus,
+              totalXP: studentInfo.totalXP,
+              currentModule: studentInfo.currentModule,
+              lastActive: studentInfo.lastActive,
+            };
+          });
+          
+          console.log('Processed students array:', studentsArray);
+          setStudents(studentsArray);
+        } else {
+          console.log('No students data found');
+          setStudents([]);
+        }
+      } catch (err) {
+        console.error('Error loading students:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load students');
         setStudents([]);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error('Error loading students:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load students');
-      setStudents([]);
-    } finally {
-      setLoading(false);
-    }
   }, [firebaseUser?.uid, currentCourse?.id, totalTasks]);
 
   useEffect(() => {
@@ -225,7 +225,7 @@ export default function Students() {
       transition={{ duration: 0.3 }}
     >
       <motion.div 
-        style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}
+        style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, duration: 0.3 }}
@@ -237,14 +237,14 @@ export default function Students() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
           <div>
             <div className="hh-label">Course</div>
             <select
               value={selectedCourseId || ''}
               onChange={(e) => setSelectedCourseId(e.target.value || null)}
               className="hh-select"
-              style={{ marginTop: 8, width: 240 }}
+              style={{ marginTop: 8, width: '100%' }}
               disabled={coursesLoading || courses.length === 0}
             >
               {coursesLoading ? (
@@ -266,7 +266,7 @@ export default function Students() {
               value={status}
               onChange={(e) => setStatus(e.target.value)}
               className="hh-select"
-              style={{ marginTop: 8, width: 180 }}
+              style={{ marginTop: 8, width: '100%' }}
             >
               <option>All</option>
               <option>Ahead</option>
@@ -280,7 +280,7 @@ export default function Students() {
               value={sort}
               onChange={(e) => setSort(e.target.value)}
               className="hh-select"
-              style={{ marginTop: 8, width: 210 }}
+              style={{ marginTop: 8, width: '100%' }}
             >
               <option value="name">by name</option>
               <option value="level">by level</option>
@@ -334,11 +334,11 @@ export default function Students() {
                       {s.completed} / {s.total}
                     </td>
                     <td className="px-5 py-4">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div className="hh-progress" style={{ width: 140 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <div className="hh-progress" style={{ minWidth: 100, flex: '1 1 100px' }}>
                           <div className="hh-progress__bar" style={{ width: `${completion}%` }} />
                         </div>
-                        <span className="hh-muted">{completion}%</span>
+                        <span className="hh-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{completion}%</span>
                       </div>
                     </td>
                     <td className="px-5 py-4">

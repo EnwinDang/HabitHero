@@ -5,6 +5,7 @@ import {
   type StudentInfo,
 } from "../api/teacherDashboard.api";
 import { CoursesAPI } from "../api/courses.api";
+import { TasksAPI } from "../api/tasks.api";
 import { cache, cacheKeys } from "../utils/cache";
 
 /**
@@ -46,13 +47,34 @@ export async function loadTeacherDashboard(teacherId: string): Promise<TeacherDa
         
         // Calculate module stats
         const moduleStats: { [moduleId: string]: any } = {};
-        modules.forEach((module) => {
-          moduleStats[module.moduleId] = {
-            completedBy: 0, // Would need student progress data
-            completionRate: 0, // Would need student progress data
-            totalTasks: 0, // Would need task count
-          };
+        
+        // Load tasks for each module to get accurate task counts
+        const modulePromises = modules.map(async (module) => {
+          try {
+            const tasks = await TasksAPI.list({ 
+              courseId: course.courseId, 
+              moduleId: module.moduleId 
+            });
+            const taskCount = tasks.length;
+            
+            moduleStats[module.moduleId] = {
+              completedBy: 0, // Would need student progress data
+              completionRate: 0, // Would need student progress data
+              totalTasks: taskCount,
+            };
+          } catch (err) {
+            console.warn(`⚠️ Failed to load tasks for module ${module.moduleId}:`, err);
+            // Fallback to 0 if task loading fails
+            moduleStats[module.moduleId] = {
+              completedBy: 0,
+              completionRate: 0,
+              totalTasks: 0,
+            };
+          }
         });
+        
+        // Wait for all module task counts to be loaded
+        await Promise.all(modulePromises);
         
         // Calculate average XP from students
         let totalXP = 0;
