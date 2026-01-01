@@ -8,14 +8,7 @@ import {
   onLevelUp,
   onTaskCompleted,
 } from "@/services/achievement.service";
-import {
-  Trophy,
-  Star,
-  TrendingUp,
-  Coins,
-  Lock,
-  Check,
-} from "lucide-react";
+import { Trophy, Star, TrendingUp, Coins, Lock, Check } from "lucide-react";
 
 export default function AchievementsPage() {
   const { user, loading: userLoading } = useRealtimeUser();
@@ -54,8 +47,6 @@ export default function AchievementsPage() {
       }
     }
   }, [tasks]);
-
-
 
   if (userLoading || achievementsLoading) {
     return (
@@ -148,15 +139,15 @@ export default function AchievementsPage() {
               style={
                 selectedCategory === category
                   ? {
-                    background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
-                    color: "white",
-                  }
+                      background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                      color: "white",
+                    }
                   : {
-                    backgroundColor: darkMode
-                      ? "rgba(55, 65, 81, 0.3)"
-                      : "rgba(243, 244, 246, 1)",
-                    color: darkMode ? "#9ca3af" : "#6b7280",
-                  }
+                      backgroundColor: darkMode
+                        ? "rgba(55, 65, 81, 0.3)"
+                        : "rgba(243, 244, 246, 1)",
+                      color: darkMode ? "#9ca3af" : "#6b7280",
+                    }
               }
             >
               {category}
@@ -181,8 +172,9 @@ export default function AchievementsPage() {
           <div className="text-center py-12">
             <Trophy
               size={40}
-              className={`mb-4 mx-auto ${darkMode ? "text-gray-500" : "text-gray-400"
-                }`}
+              className={`mb-4 mx-auto ${
+                darkMode ? "text-gray-500" : "text-gray-400"
+              }`}
             />
             <p className={theme.textMuted}>No achievements in this category</p>
           </div>
@@ -220,8 +212,9 @@ function AchievementCard({
 
   return (
     <div
-      className={`rounded-2xl p-5 transition-all ${achievement.isUnlocked ? "" : "opacity-70"
-        }`}
+      className={`rounded-2xl p-5 transition-all ${
+        achievement.isUnlocked ? "" : "opacity-70"
+      }`}
       style={{
         backgroundColor: darkMode
           ? "rgba(31, 41, 55, 0.5)"
@@ -231,8 +224,8 @@ function AchievementCard({
         borderColor: achievement.isUnlocked
           ? accentColor
           : darkMode
-            ? "rgba(75, 85, 99, 0.5)"
-            : "rgba(229, 231, 235, 1)",
+          ? "rgba(75, 85, 99, 0.5)"
+          : "rgba(229, 231, 235, 1)",
         boxShadow: achievement.isUnlocked
           ? `0 0 20px ${accentColor}30`
           : "none",
@@ -246,8 +239,8 @@ function AchievementCard({
             backgroundColor: achievement.isUnlocked
               ? `${accentColor}20`
               : darkMode
-                ? "rgba(55, 65, 81, 0.5)"
-                : "rgba(243, 244, 246, 1)",
+              ? "rgba(55, 65, 81, 0.5)"
+              : "rgba(243, 244, 246, 1)",
             borderWidth: "2px",
             borderStyle: "solid",
             borderColor: achievement.isUnlocked ? accentColor : "transparent",
@@ -281,8 +274,9 @@ function AchievementCard({
           </span>
         </div>
         <div
-          className={`h-2 rounded-full overflow-hidden ${darkMode ? "bg-gray-700" : "bg-gray-200"
-            }`}
+          className={`h-2 rounded-full overflow-hidden ${
+            darkMode ? "bg-gray-700" : "bg-gray-200"
+          }`}
         >
           <div
             className="h-full rounded-full transition-all"
@@ -291,8 +285,8 @@ function AchievementCard({
               background: achievement.isUnlocked
                 ? `linear-gradient(to right, ${accentColor}, #a855f7)`
                 : darkMode
-                  ? "#4b5563"
-                  : "#9ca3af",
+                ? "#4b5563"
+                : "#9ca3af",
             }}
           />
         </div>
@@ -352,15 +346,15 @@ function NavItem({
         style={
           active
             ? {
-              background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
-              color: accentColor,
-              borderWidth: "1px",
-              borderStyle: "solid",
-              borderColor: `${accentColor}50`,
-            }
+                background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
+                color: accentColor,
+                borderWidth: "1px",
+                borderStyle: "solid",
+                borderColor: `${accentColor}50`,
+              }
             : {
-              color: darkMode ? "#9ca3af" : "#6b7280",
-            }
+                color: darkMode ? "#9ca3af" : "#6b7280",
+              }
         }
       >
         {icon}
