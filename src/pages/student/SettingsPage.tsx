@@ -129,7 +129,7 @@ export default function SettingsPage() {
                   key={i}
                   type="button"
                   onClick={() => {
-                    console.log('Changing accent color to:', colorOption.color);
+                    console.log("Changing accent color to:", colorOption.color);
                     setAccentColor(colorOption.color);
                   }}
                   className="w-12 h-12 rounded-xl transition-all cursor-pointer"
