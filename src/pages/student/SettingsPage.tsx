@@ -74,10 +74,10 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        <div className="space-y-6 max-w-2xl">
+        <div className="columns-1 md:columns-2 gap-6 max-w-6xl mx-auto block">
           {/* Appearance Section */}
           <div
-            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
+            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300 mb-6 break-inside-avoid`}
             style={{
               ...theme.borderStyle,
               borderWidth: "1px",
@@ -108,7 +108,7 @@ export default function SettingsPage() {
 
           {/* Accent Color Section */}
           <div
-            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
+            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300 mb-6 break-inside-avoid`}
             style={{
               ...theme.borderStyle,
               borderWidth: "1px",
@@ -157,7 +157,7 @@ export default function SettingsPage() {
 
           {/* Notifications Section */}
           <div
-            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
+            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300 mb-6 break-inside-avoid`}
             style={{
               ...theme.borderStyle,
               borderWidth: "1px",
@@ -231,7 +231,7 @@ export default function SettingsPage() {
 
           {/* Audio Section */}
           <div
-            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
+            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300 mb-6 break-inside-avoid`}
             style={{
               ...theme.borderStyle,
               borderWidth: "1px",
@@ -261,7 +261,7 @@ export default function SettingsPage() {
 
           {/* Danger Zone */}
           <div
-            className="rounded-2xl p-6 transition-colors duration-300"
+            className="rounded-2xl p-6 transition-colors duration-300 mb-6 break-inside-avoid"
             style={{
               backgroundColor: darkMode
                 ? "rgba(127, 29, 29, 0.2)"
@@ -301,7 +301,7 @@ export default function SettingsPage() {
 
           {/* App Version */}
           <div
-            className="rounded-2xl p-6 transition-colors duration-300"
+            className="rounded-2xl p-6 transition-colors duration-300 mb-6 break-inside-avoid"
             style={{
               background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
             }}
