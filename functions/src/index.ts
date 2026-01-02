@@ -1653,28 +1653,36 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
  */
 app.get("/items", async (req, res) => {
   try {
-    let query = db.collection("items");
-    
-    if (req.query.type) {
-      query = query.where("type", "==", req.query.type) as any;
-    }
-    if (req.query.rarity) {
-      query = query.where("rarity", "==", req.query.rarity) as any;
-    }
-    if (req.query.activeOnly === "true") {
-      query = query.where("isActive", "==", true) as any;
-    }
+    const { collection = "items_weapons", type, rarity, activeOnly } = req.query;
+    const collectionName = collection as string;
 
-    const itemsSnap = await query.get();
-    const items = itemsSnap.docs.map((doc) => ({
-      itemId: doc.id,
-      ...doc.data(),
-    }));
+    const snapshot = await db.collection(collectionName).get();
+    let items: any[] = [];
 
-    return res.status(200).json(items);
+    snapshot.docs.forEach(doc => {
+      const data = doc.data();
+      const fieldValues = Object.values(data);
+      
+      const isBundleDoc = fieldValues.some(val => 
+        typeof val === 'object' && val !== null && (val as any).name
+      );
+
+      if (isBundleDoc) {
+        Object.entries(data).forEach(([key, value]: [string, any]) => {
+          items.push({ itemId: key, ...value });
+        });
+      } else {
+        items.push({ itemId: doc.id, ...data });
+      }
+    });
+
+    if (type) items = items.filter(i => i.type === type || i.itemType === type);
+    if (rarity) items = items.filter(i => i.rarity === rarity);
+    if (activeOnly === "true") items = items.filter(i => i.isActive !== false);
+
+    return res.status(200).json({ data: items });
   } catch (e: any) {
-    console.error("Error in GET /items:", e);
-    return res.status(500).json({ error: e?.message });
+    return res.status(500).json({ error: e.message });
   }
 });
 
@@ -1683,7 +1691,8 @@ app.get("/items", async (req, res) => {
  */
 app.post("/items", requireAuth, async (req, res) => {
   try {
-    const itemRef = db.collection("items").doc();
+    const { collection = "items_weapons" } = req.query;
+    const itemRef = db.collection(collection as string).doc();
     const item = {
       ...req.body,
       createdAt: Date.now(),
@@ -1691,8 +1700,10 @@ app.post("/items", requireAuth, async (req, res) => {
     await itemRef.set(item);
 
     return res.status(201).json({
-      itemId: itemRef.id,
-      ...item,
+      data: {
+        itemId: itemRef.id,
+        ...item,
+      }
     });
   } catch (e: any) {
     console.error("Error in POST /items:", e);

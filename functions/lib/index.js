@@ -444,11 +444,13 @@ app.get("/users", requireAuth, async (req, res) => {
         // Get total count for pagination
         const totalSnap = await query.get();
         const total = totalSnap.size;
+        const limitNum = parseInt(limit, 10) || 50;
+        const offsetNum = parseInt(offset, 10) || 0;
         // Apply pagination
         const snap = await query
-            .orderBy("uid")
-            .limit(parseInt(limit))
-            .offset(parseInt(offset))
+            .orderBy(admin.firestore.FieldPath.documentId())
+            .limit(limitNum)
+            .offset(offsetNum)
             .get();
         const users = snap.docs.map((doc) => ({
             uid: doc.id,
@@ -1541,14 +1543,21 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
  */
 app.get("/items", async (req, res) => {
     try {
+        //We halen de collectienaam uit de query
+        const { collection, type, rarity, activeOnly } = req.query;
+        //we gebruiken altijd de "items" collection
         let query = db.collection("items");
-        if (req.query.type) {
-            query = query.where("type", "==", req.query.type);
+        //als collection is opgegeven, filter op category veld
+        if (collection) {
+            query = query.where("category", "==", collection);
         }
-        if (req.query.rarity) {
-            query = query.where("rarity", "==", req.query.rarity);
+        if (type) {
+            query = query.where("type", "==", type);
         }
-        if (req.query.activeOnly === "true") {
+        if (rarity) {
+            query = query.where("rarity", "==", rarity);
+        }
+        if (activeOnly === "true") {
             query = query.where("isActive", "==", true);
         }
         const itemsSnap = await query.get();
@@ -1556,7 +1565,7 @@ app.get("/items", async (req, res) => {
             itemId: doc.id,
             ...doc.data(),
         }));
-        return res.status(200).json(items);
+        return res.status(200).json({ data: items });
     }
     catch (e) {
         console.error("Error in GET /items:", e);
@@ -1568,15 +1577,19 @@ app.get("/items", async (req, res) => {
  */
 app.post("/items", requireAuth, async (req, res) => {
     try {
+        const { collection } = req.query;
         const itemRef = db.collection("items").doc();
         const item = {
             ...req.body,
+            category: collection || "weapons", // default category
             createdAt: Date.now(),
         };
         await itemRef.set(item);
         return res.status(201).json({
-            itemId: itemRef.id,
-            ...item,
+            data: {
+                itemId: itemRef.id,
+                ...item,
+            }
         });
     }
     catch (e) {
