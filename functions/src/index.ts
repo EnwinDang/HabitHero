@@ -1,7 +1,8 @@
 import * as admin from "firebase-admin";
-import { onRequest } from "firebase-functions/v2/https";
+import { onRequest } from "firebase-functions/v1/https";
 import express from "express";
 import cors from "cors";
+import { off } from "process";
 
 // Initialize Admin SDK
 admin.initializeApp();
@@ -442,6 +443,55 @@ app.patch("/users/:uid", requireAuth, async (req, res) => {
     });
   } catch (e: any) {
     console.error("Error in PATCH /users/:uid:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /users
+ */
+app.get("/users", requireAuth, async (req, res) => {
+  try {
+    const { role, status, limit = 50, offset = 0 } = req.query;
+    let query: any = db.collection("users");
+
+    if (role) {
+      query = query.where("role", "==", role);
+    }
+
+    if (status) {
+      query = query.where("status", "==", status);
+    }
+
+    // Get total count for pagination
+    const totalSnap = await query.get();
+    const total = totalSnap.size;
+
+const limitNum = parseInt(limit as string, 10) || 50;
+const offsetNum = parseInt(offset as string, 10) || 0;
+
+    // Apply pagination
+    const snap = await query
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(limitNum)
+      .offset(offsetNum)
+      .get();
+
+    const users = snap.docs.map((doc: any) => ({
+      uid: doc.id,
+      ...doc.data(),
+    }));
+
+    return res.status(200).json({
+      data: users,
+      pagination: {
+        total,
+        limit: parseInt(limit as string),
+        offset: parseInt(offset as string),
+      },
+    });
+  } catch (e: any) {
+    console.error("Error in GET /users:", e);
     return res.status(500).json({ error: e?.message });
   }
 });
@@ -1746,11 +1796,4 @@ app.use((_req, res) => {
 
 // ============ EXPORT ============
 
-export const api = onRequest(
-  {
-    region: "us-central1",
-    timeoutSeconds: 60,
-    memory: "256MiB",
-  },
-  app
-);
+export const api = onRequest(app);

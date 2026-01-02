@@ -38,7 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.api = void 0;
 const admin = __importStar(require("firebase-admin"));
-const https_1 = require("firebase-functions/v2/https");
+const https_1 = require("firebase-functions/v1/https");
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 // Initialize Admin SDK
@@ -425,6 +425,46 @@ app.patch("/users/:uid", requireAuth, async (req, res) => {
     }
     catch (e) {
         console.error("Error in PATCH /users/:uid:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /users
+ */
+app.get("/users", requireAuth, async (req, res) => {
+    try {
+        const { role, status, limit = 50, offset = 0 } = req.query;
+        let query = db.collection("users");
+        if (role) {
+            query = query.where("role", "==", role);
+        }
+        if (status) {
+            query = query.where("status", "==", status);
+        }
+        // Get total count for pagination
+        const totalSnap = await query.get();
+        const total = totalSnap.size;
+        // Apply pagination
+        const snap = await query
+            .orderBy("uid")
+            .limit(parseInt(limit))
+            .offset(parseInt(offset))
+            .get();
+        const users = snap.docs.map((doc) => ({
+            uid: doc.id,
+            ...doc.data(),
+        }));
+        return res.status(200).json({
+            data: users,
+            pagination: {
+                total,
+                limit: parseInt(limit),
+                offset: parseInt(offset),
+            },
+        });
+    }
+    catch (e) {
+        console.error("Error in GET /users:", e);
         return res.status(500).json({ error: e?.message });
     }
 });
@@ -1631,8 +1671,4 @@ app.use((_req, res) => {
     res.status(404).json({ error: "Not found" });
 });
 // ============ EXPORT ============
-exports.api = (0, https_1.onRequest)({
-    region: "us-central1",
-    timeoutSeconds: 60,
-    memory: "256MiB",
-}, app);
+exports.api = (0, https_1.onRequest)(app);

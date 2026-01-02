@@ -17,16 +17,17 @@ export default defineConfig({
       "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
     },
 
-    // Proxy naar Firebase Cloud Functions
+    // Proxy naar Firebase Cloud Functions (emulator tijdens development)
     proxy: {
       "/api": {
-        target: "https://us-central1-habithero-73d98.cloudfunctions.net",
+        target: "http://127.0.0.1:5001/habithero-73d98/us-central1/api",
         changeOrigin: true,
         secure: false,
         timeout: 120000,
         rewrite: (path) => {
-          console.log("[Vite Proxy]", path, "→", `${path}`);
-          return path;
+          const newPath = path.replace(/^\/api/, "");
+  console.log("[Vite Proxy]", path, "→", newPath);
+  return newPath;
         },
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {

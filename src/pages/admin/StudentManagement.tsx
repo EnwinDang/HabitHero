@@ -14,7 +14,7 @@ const StudentManagement: React.FC = () => {
       const response = await UsersAPI.list({ role: 'student' });
       setStudents(response.data || []);
     } catch (error) {
-      console.error(error);
+      console.error("Fout bij het laden van studenten:", error);
     } finally {
       setLoading(false);
     }

@@ -10,7 +10,7 @@ import TeacherManagement from "../pages/admin/TeacherManagement";
 import AdminDashboard from "../pages/admin/AdminDashboard";
 import CourseManagement from "../pages/admin/CourseManagement";
 import WorldManagement from "../pages/admin/WorldManagement";
-import WorldList from "@/pages/admin/worldlist";
+import WorldList from "@/pages/admin/WorldList";
 import MonsterManagement from "@/pages/admin/MonsterManagement";
 import GlobalSettings from "../pages/admin/GlobalSettings";
 import ItemManagement from "../pages/admin/ItemManagement";
