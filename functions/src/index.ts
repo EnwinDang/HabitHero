@@ -325,7 +325,7 @@ app.get("/achievements", async (req, res) => {
       ...doc.data(),
     }));
 
-    return res.status(200).json(achievements);
+    return res.status(200).json({ data: achievements });
   } catch (e: any) {
     console.error("Error in GET /achievements:", e);
     return res.status(500).json({ error: e?.message });
@@ -337,23 +337,36 @@ app.get("/achievements", async (req, res) => {
  */
 app.post("/achievements", requireAuth, async (req, res) => {
   try {
-    const { name, description, icon, reward } = req.body;
+    const { title, description, reward, category } = req.body;
 
-    const newAchievementRef = db.collection("achievements").doc();
-    await newAchievementRef.set({
-      name,
-      description,
-      icon,
-      reward,
+    const slug = title.toLowerCase().trim().replace(/\s+/g, '_');
+    const customId = `ach_${slug}`;
+
+    const achievementRef = db.collection("achievements").doc(customId);
+
+    const achievement = {
+      achievementId: customId,
+      title,
+      category: category || "general",
+      condition: {
+        description: description,
+        operator: ">=",
+        type: "counter",
+        value: 10
+      },
+      reward: {
+        gold: reward?.gold || 0,
+        xp: reward?.xp || 0
+      },
+      iconLocked: "lock",
+      iconUnlocked: "trophy",
       createdAt: Date.now(),
-    });
+    };
+
+    await achievementRef.set(achievement);
 
     return res.status(201).json({
-      achievementId: newAchievementRef.id,
-      name,
-      description,
-      icon,
-      reward,
+      data: achievement
     });
   } catch (e: any) {
     console.error("Error in POST /achievements:", e);
@@ -451,49 +464,37 @@ app.patch("/users/:uid", requireAuth, async (req, res) => {
  * GET /users
  */
 app.get("/users", requireAuth, async (req, res) => {
-  try {
-    const { role, status, limit = 50, offset = 0 } = req.query;
-    let query: any = db.collection("users");
+    try {
+        const { role, status, limit = 50 } = req.query;
+        let query: any = db.collection("users");
 
-    if (role) {
-      query = query.where("role", "==", role);
+        if (role) {
+            query = query.where("role", "==", role);
+        }
+
+        if (status) {
+            query = query.where("status", "==", status);
+        }
+
+        // We halen de data op zonder de complexe sortering die indexen vereist
+        const snap = await query.limit(parseInt(limit as string, 10) || 50).get();
+
+        const users = snap.docs.map((doc: any) => ({
+            uid: doc.id,
+            ...doc.data(),
+        }));
+
+        return res.status(200).json({
+            data: users,
+            pagination: {
+                total: snap.size,
+                limit: parseInt(limit as string, 10) || 50
+            },
+        });
+    } catch (e: any) {
+        console.error("Error in GET /users:", e);
+        return res.status(500).json({ error: e?.message });
     }
-
-    if (status) {
-      query = query.where("status", "==", status);
-    }
-
-    // Get total count for pagination
-    const totalSnap = await query.get();
-    const total = totalSnap.size;
-
-const limitNum = parseInt(limit as string, 10) || 50;
-const offsetNum = parseInt(offset as string, 10) || 0;
-
-    // Apply pagination
-    const snap = await query
-      .orderBy(admin.firestore.FieldPath.documentId())
-      .limit(limitNum)
-      .offset(offsetNum)
-      .get();
-
-    const users = snap.docs.map((doc: any) => ({
-      uid: doc.id,
-      ...doc.data(),
-    }));
-
-    return res.status(200).json({
-      data: users,
-      pagination: {
-        total,
-        limit: parseInt(limit as string),
-        offset: parseInt(offset as string),
-      },
-    });
-  } catch (e: any) {
-    console.error("Error in GET /users:", e);
-    return res.status(500).json({ error: e?.message });
-  }
 });
 
 /**
@@ -1691,17 +1692,29 @@ app.get("/items", async (req, res) => {
  */
 app.post("/items", requireAuth, async (req, res) => {
   try {
-    const { collection = "items_weapons" } = req.query;
-    const itemRef = db.collection(collection as string).doc();
+    const { collection, ...itemData } = req.body;
+    
+    if (!collection) {
+      return res.status(400).json({ error: "Collection is required in body" });
+    }
+
+    const slug = itemData.name.toLowerCase().trim().replace(/\s+/g, '_');
+    const prefix = collection.includes('pets') ? 'pet_' : (collection.includes('lootboxes') ? '' : 'item_');
+    const customId = `${prefix}${slug}`;
+
+    const itemRef = db.collection(collection).doc(customId);
+    
     const item = {
-      ...req.body,
+      ...itemData,
+      id: customId,
       createdAt: Date.now(),
     };
+
     await itemRef.set(item);
 
     return res.status(201).json({
       data: {
-        itemId: itemRef.id,
+        itemId: customId,
         ...item,
       }
     });
@@ -1790,6 +1803,17 @@ app.delete("/items/:itemId", requireAuth, async (req, res) => {
   } catch (e: any) {
     console.error("Error in DELETE /items/:itemId:", e);
     return res.status(500).json({ error: e?.message });
+  }
+});
+
+
+app.delete("/items/:collection/:id", requireAuth, async (req, res) => {
+  try {
+    const { collection, id } = req.params;
+    await db.collection(collection).doc(id).delete();
+    return res.status(200).json({ message: "Deleted successfully" });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
   }
 });
 

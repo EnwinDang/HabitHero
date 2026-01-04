@@ -433,7 +433,7 @@ app.patch("/users/:uid", requireAuth, async (req, res) => {
  */
 app.get("/users", requireAuth, async (req, res) => {
     try {
-        const { role, status, limit = 50, offset = 0 } = req.query;
+        const { role, status, limit = 50 } = req.query;
         let query = db.collection("users");
         if (role) {
             query = query.where("role", "==", role);
@@ -441,17 +441,8 @@ app.get("/users", requireAuth, async (req, res) => {
         if (status) {
             query = query.where("status", "==", status);
         }
-        // Get total count for pagination
-        const totalSnap = await query.get();
-        const total = totalSnap.size;
-        const limitNum = parseInt(limit, 10) || 50;
-        const offsetNum = parseInt(offset, 10) || 0;
-        // Apply pagination
-        const snap = await query
-            .orderBy(admin.firestore.FieldPath.documentId())
-            .limit(limitNum)
-            .offset(offsetNum)
-            .get();
+        // We halen de data op zonder de complexe sortering die indexen vereist
+        const snap = await query.limit(parseInt(limit, 10) || 50).get();
         const users = snap.docs.map((doc) => ({
             uid: doc.id,
             ...doc.data(),
@@ -459,9 +450,8 @@ app.get("/users", requireAuth, async (req, res) => {
         return res.status(200).json({
             data: users,
             pagination: {
-                total,
-                limit: parseInt(limit),
-                offset: parseInt(offset),
+                total: snap.size,
+                limit: parseInt(limit, 10) || 50
             },
         });
     }
@@ -1543,33 +1533,33 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
  */
 app.get("/items", async (req, res) => {
     try {
-        //We halen de collectienaam uit de query
-        const { collection, type, rarity, activeOnly } = req.query;
-        //we gebruiken altijd de "items" collection
-        let query = db.collection("items");
-        //als collection is opgegeven, filter op category veld
-        if (collection) {
-            query = query.where("category", "==", collection);
-        }
-        if (type) {
-            query = query.where("type", "==", type);
-        }
-        if (rarity) {
-            query = query.where("rarity", "==", rarity);
-        }
-        if (activeOnly === "true") {
-            query = query.where("isActive", "==", true);
-        }
-        const itemsSnap = await query.get();
-        const items = itemsSnap.docs.map((doc) => ({
-            itemId: doc.id,
-            ...doc.data(),
-        }));
+        const { collection = "items_weapons", type, rarity, activeOnly } = req.query;
+        const collectionName = collection;
+        const snapshot = await db.collection(collectionName).get();
+        let items = [];
+        snapshot.docs.forEach(doc => {
+            const data = doc.data();
+            const fieldValues = Object.values(data);
+            const isBundleDoc = fieldValues.some(val => typeof val === 'object' && val !== null && val.name);
+            if (isBundleDoc) {
+                Object.entries(data).forEach(([key, value]) => {
+                    items.push({ itemId: key, ...value });
+                });
+            }
+            else {
+                items.push({ itemId: doc.id, ...data });
+            }
+        });
+        if (type)
+            items = items.filter(i => i.type === type || i.itemType === type);
+        if (rarity)
+            items = items.filter(i => i.rarity === rarity);
+        if (activeOnly === "true")
+            items = items.filter(i => i.isActive !== false);
         return res.status(200).json({ data: items });
     }
     catch (e) {
-        console.error("Error in GET /items:", e);
-        return res.status(500).json({ error: e?.message });
+        return res.status(500).json({ error: e.message });
     }
 });
 /**
@@ -1577,11 +1567,10 @@ app.get("/items", async (req, res) => {
  */
 app.post("/items", requireAuth, async (req, res) => {
     try {
-        const { collection } = req.query;
-        const itemRef = db.collection("items").doc();
+        const { collection = "items_weapons" } = req.query;
+        const itemRef = db.collection(collection).doc();
         const item = {
             ...req.body,
-            category: collection || "weapons", // default category
             createdAt: Date.now(),
         };
         await itemRef.set(item);

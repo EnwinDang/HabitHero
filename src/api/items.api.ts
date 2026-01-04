@@ -24,7 +24,11 @@ export const ItemsAPI = {
   },
 
   create(item: Item, collection: string): Promise<Item> {
-    return apiFetch<Item>(`/items?collection=${collection}`, { method: "POST", body: JSON.stringify(item) });
+    // Aangepast naar body-based collection voor je nieuwe backend route
+    return apiFetch<Item>(`/items`, { 
+      method: "POST", 
+      body: JSON.stringify({ ...item, collection }) 
+    });
   },
 
   get(itemId: string, collection: string): Promise<Item> {
@@ -39,7 +43,8 @@ export const ItemsAPI = {
     return apiFetch<Item>(`/items/${itemId}?collection=${collection}`, { method: "PATCH", body: JSON.stringify(patch) });
   },
 
+  // Aangepast: Gebruikt nu de schone route /items/collectie/id
   delete(itemId: string, collection: string): Promise<void> {
-    return apiFetch<void>(`/items/${itemId}?collection=${collection}`, { method: "DELETE" });
+    return apiFetch<void>(`/items/${collection}/${itemId}`, { method: "DELETE" });
   },
 };
