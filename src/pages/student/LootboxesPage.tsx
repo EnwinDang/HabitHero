@@ -247,7 +247,7 @@ export default function LootboxesPage() {
                             <button
                                 onClick={() => setShowRewards(false)}
                                 className="w-full py-3 rounded-xl font-medium text-white transition-all hover:scale-105 flex items-center justify-center gap-2"
-                                style={{ background: `linear-gradient(to right, ${accentColor}, #a855f7)` }}
+                                style={{ backgroundColor: accentColor }} // Use solid accent color
                             >
                                 <Check size={20} />
                                 Awesome!

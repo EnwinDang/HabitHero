@@ -121,7 +121,7 @@ export default function DailyTasksPage() {
                             : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
                             }`}
                         style={selectedDifficulty === "all" ? {
-                            background: `linear-gradient(to right, ${accentColor}, #a855f7)`
+                            backgroundColor: accentColor // Use solid accent color
                         } : {
                             backgroundColor: darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)'
                         }}
@@ -264,7 +264,7 @@ function TaskCard({
                     disabled={completing}
                     className="px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 text-white"
                     style={{
-                        background: completing ? '#6b7280' : `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                        backgroundColor: completing ? '#6b7280' : accentColor, // Use solid accent color
                         opacity: completing ? 0.5 : 1,
                         cursor: completing ? 'not-allowed' : 'pointer'
                     }}
