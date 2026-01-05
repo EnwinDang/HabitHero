@@ -8,3 +8,5 @@ export { default as SettingsPage } from "./SettingsPage";
 export { default as DailyTasksPage } from './DailyTasksPage';
 export { default as LootboxesPage } from './LootboxesPage';
 export { default as InventoryPage } from './InventoryPage';
+export { default as BattlePage } from './BattlePage';
+export { default as WorldMapPage } from './WorldMapPage';

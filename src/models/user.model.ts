@@ -12,6 +12,7 @@ export interface User {
   lastLoginAt?: number;
   stats: UserStats;
   settings?: UserSettings;
+  worldMapProgress?: WorldMapProgress;
 }
 
 export interface UserStats {
@@ -25,4 +26,10 @@ export interface UserSettings {
   notificationsEnabled: boolean;
   theme: "dark" | "light";
   language: string;
+}
+
+export interface WorldMapProgress {
+  [realmId: string]: {
+    completedLevels: number[]; // Array of completed level IDs
+  };
 }

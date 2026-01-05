@@ -113,13 +113,6 @@ export default function HomePage() {
 
         {/* HERO CARD */}
         <div className="relative mb-8">
-          {/* Glow Effect */}
-          <div
-            className="absolute -inset-1 rounded-2xl blur-lg opacity-30 animate-pulse"
-            style={{
-              background: `linear-gradient(to right, ${accentColor}, #a855f7, ${accentColor})`,
-            }}
-          ></div>
 
           {/* Card */}
           <div
@@ -209,7 +202,7 @@ export default function HomePage() {
                       className="h-full rounded-full transition-all"
                       style={{
                         width: `${((user.stats.xp % 1200) / 1200) * 100}%`,
-                        background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                        background: accentColor,
                         boxShadow: `0 0 10px ${accentColor}80`,
                       }}
                     />
@@ -299,7 +292,7 @@ export default function HomePage() {
                     <div
                       className="w-10 h-10 rounded-lg flex items-center justify-center"
                       style={{
-                        background: `linear-gradient(to br, ${accentColor}, #a855f7)`,
+                        background: accentColor,
                       }}
                     >
                       <ClipboardList size={20} className="text-white" />
@@ -335,12 +328,6 @@ export default function HomePage() {
 
               {/* POMODORO TIMER */}
               <div className="relative">
-                <div
-                  className="absolute -inset-0.5 rounded-2xl blur opacity-20"
-                  style={{
-                    background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
-                  }}
-                ></div>
                 <div
                   className={`relative ${theme.card} rounded-2xl p-6 transition-colors duration-300`}
                   style={{
@@ -427,7 +414,7 @@ export default function HomePage() {
                             y2="0%"
                           >
                             <stop offset="0%" stopColor={accentColor} />
-                            <stop offset="100%" stopColor="#a855f7" />
+                            <stop offset="100%" stopColor={accentColor} />
                           </linearGradient>
                         </defs>
                       </svg>
@@ -449,7 +436,7 @@ export default function HomePage() {
                         onClick={handleStartPause}
                         className="text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all"
                         style={{
-                          background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                          background: accentColor,
                           boxShadow: `0 0 20px ${accentColor}50`,
                         }}
                       >
@@ -498,7 +485,7 @@ export default function HomePage() {
                     style={
                       d.isToday
                         ? {
-                          background: `linear-gradient(to bottom, ${accentColor}, #a855f7)`,
+                          background: accentColor,
                           color: "white",
                           boxShadow: `0 0 15px ${accentColor}50`,
                         }
@@ -522,7 +509,6 @@ export default function HomePage() {
           <div className="space-y-6">
             {/* DAILY REWARDS */}
             <div className="relative">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-yellow-600 to-orange-600 rounded-2xl blur opacity-20"></div>
               <div
                 className={`relative ${theme.card} rounded-2xl p-6 transition-colors duration-300`}
                 style={{
@@ -612,7 +598,7 @@ export default function HomePage() {
                         (totalFocusSeconds / 60 / 60) * 100,
                         100
                       )}%`,
-                      background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                      background: accentColor,
                     }}
                   />
                 </div>
