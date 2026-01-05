@@ -13,6 +13,7 @@ import {
   Settings,
   LogOut,
   ClipboardList,
+  Gift,
 } from "lucide-react";
 
 const StudentSidebar = () => {
@@ -40,6 +41,11 @@ const StudentSidebar = () => {
       path: "/dashboard/calendar",
       icon: <Calendar size={20} />,
     },
+    {
+      name: "Lootboxes",
+      path: "/dashboard/lootboxes",
+      icon: <Gift size={20} />,
+    },
     { name: "Profile", path: "/dashboard/profile", icon: <User size={20} /> },
     {
       name: "Settings",
@@ -55,13 +61,11 @@ const StudentSidebar = () => {
 
   return (
     <div
-      className={`h-screen w-64 flex flex-col shadow-xl ${
-        darkMode ? "bg-slate-900 text-slate-100" : "bg-white text-slate-900"
-      }`}
+      className={`h-screen w-64 flex flex-col shadow-xl ${darkMode ? "bg-slate-900 text-slate-100" : "bg-white text-slate-900"
+        }`}
       style={{
-        borderRight: `1px solid ${
-          darkMode ? "rgba(71, 85, 105, 0.5)" : "rgba(226, 232, 240, 1)"
-        }`,
+        borderRight: `1px solid ${darkMode ? "rgba(71, 85, 105, 0.5)" : "rgba(226, 232, 240, 1)"
+          }`,
       }}
     >
       <div
@@ -110,10 +114,9 @@ const StudentSidebar = () => {
               end={item.end}
               className={({ isActive }) => `
                 flex items-center gap-3 p-3 rounded-xl text-sm font-medium transition-all
-                ${
-                  isActive
-                    ? ""
-                    : darkMode
+                ${isActive
+                  ? ""
+                  : darkMode
                     ? "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
                     : "text-slate-600 hover:bg-violet-50 hover:text-violet-700"
                 }
@@ -121,12 +124,12 @@ const StudentSidebar = () => {
               style={({ isActive }) =>
                 isActive
                   ? {
-                      background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
-                      color: accentColor,
-                      borderWidth: "1px",
-                      borderStyle: "solid",
-                      borderColor: `${accentColor}50`,
-                    }
+                    background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
+                    color: accentColor,
+                    borderWidth: "1px",
+                    borderStyle: "solid",
+                    borderColor: `${accentColor}50`,
+                  }
                   : {}
               }
             >

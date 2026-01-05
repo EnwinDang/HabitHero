@@ -6,3 +6,4 @@ export { default as CalendarPage } from "./CalendarPage";
 export { default as AchievementsPage } from "./AchievementsPage";
 export { default as SettingsPage } from "./SettingsPage";
 export { default as DailyTasksPage } from './DailyTasksPage';
+export { default as LootboxesPage } from './LootboxesPage';
