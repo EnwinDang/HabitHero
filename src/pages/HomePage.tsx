@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
@@ -21,6 +22,7 @@ import {
 import { TimeDial } from "./Components/TimeDial";
 
 export default function HomePage() {
+  const navigate = useNavigate();
   const { user, loading: userLoading, error: userError } = useRealtimeUser();
   const { error: tasksError } = useRealtimeTasks();
   const { darkMode, accentColor } = useTheme();
@@ -302,7 +304,11 @@ export default function HomePage() {
                       {/* <p className={`${theme.textSubtle} text-sm`}>Daily tasks</p> */}
                     </div>
                   </div>
-                  <button className="text-sm" style={theme.accentText}>
+                  <button
+                    onClick={() => navigate('/dashboard/daily-tasks')}
+                    className="text-sm hover:underline"
+                    style={theme.accentText}
+                  >
                     View All →
                   </button>
                 </div>
@@ -399,7 +405,11 @@ export default function HomePage() {
                 >
                   <CalendarDays size={20} /> This Week
                 </h3>
-                <button className="text-sm" style={theme.accentText}>
+                <button
+                  onClick={() => navigate('/dashboard/calendar')}
+                  className="text-sm hover:underline"
+                  style={theme.accentText}
+                >
                   Full Calendar →
                 </button>
               </div>
