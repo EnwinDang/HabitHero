@@ -26,7 +26,6 @@ const StudentSidebar = () => {
 
   const menuItems = [
     { name: "Home", path: "/dashboard", icon: <Sword size={20} />, end: true },
-    { name: "Quests", path: "#", icon: <Scroll size={20} /> },
     {
       name: "Daily Tasks",
       path: "/dashboard/daily-tasks",

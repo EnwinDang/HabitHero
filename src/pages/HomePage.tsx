@@ -18,6 +18,7 @@ import {
   Coins,
   AlertTriangle,
 } from "lucide-react";
+import { TimeDial } from "./Components/TimeDial";
 
 export default function HomePage() {
   const { user, loading: userLoading, error: userError } = useRealtimeUser();
@@ -94,9 +95,6 @@ export default function HomePage() {
 
   const totalSeconds = focusDuration * 60;
   const safeTimeLeft = Math.min(Math.max(timeLeftSeconds, 0), totalSeconds);
-  const progress = Math.round(
-    ((totalSeconds - safeTimeLeft) / totalSeconds) * 100
-  );
 
   return (
     <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
@@ -346,95 +344,24 @@ export default function HomePage() {
                     Enter the zone. Eliminate distractions.
                   </p>
 
-                  <div className="mb-4">
-                    <label className={`${theme.textSubtle} text-xs block mb-1`}>
-                      Minutes
-                    </label>
-                    <input
-                      type="number"
-                      inputMode="numeric"
+                  {/* Time Dial & Controls */}
+                  <div className="flex flex-col items-center">
+                    <TimeDial
+                      value={status === "running" ? Math.max(0, safeTimeLeft / 60) : focusDuration}
+                      onChange={setFocusDuration}
                       min={1}
                       max={180}
-                      step={1}
-                      value={focusDuration}
-                      onChange={(e) => {
-                        const raw = e.currentTarget.valueAsNumber;
-                        if (Number.isNaN(raw)) return;
-                        setFocusDuration(raw);
-                      }}
-                      className={`${darkMode
-                        ? "bg-gray-800/50 text-gray-200 border-gray-700"
-                        : "bg-gray-100 text-gray-800 border-gray-200"
-                        } w-full p-2 rounded-lg border`}
+                      darkMode={darkMode}
+                      accentColor={accentColor}
+                      isRunning={status === "running"}
+                      timeLeft={formatTime(safeTimeLeft)}
                     />
-                  </div>
-
-                  <div className="flex flex-col items-center">
-                    {/* Timer Circle */}
-                    <div className="relative w-48 h-48 mb-6">
-                      <svg
-                        viewBox="0 0 192 192"
-                        preserveAspectRatio="xMidYMid meet"
-                        className="w-full h-full transform -rotate-90"
-                      >
-                        <circle
-                          cx="96"
-                          cy="96"
-                          r="88"
-                          stroke={darkMode ? "#1e1e2e" : "#e5e7eb"}
-                          strokeWidth="12"
-                          fill="none"
-                        />
-                        <circle
-                          cx="96"
-                          cy="96"
-                          r="88"
-                          stroke={`url(#timerGradient-${accentColor.replace(
-                            "#",
-                            ""
-                          )})`}
-                          strokeWidth="12"
-                          fill="none"
-                          strokeLinecap="round"
-                          strokeDasharray={2 * Math.PI * 88}
-                          strokeDashoffset={
-                            2 * Math.PI * 88 * (1 - progress / 100)
-                          }
-                          className="transition-all duration-1000"
-                          style={{
-                            filter: `drop-shadow(0 0 10px ${accentColor}80)`,
-                          }}
-                        />
-                        <defs>
-                          <linearGradient
-                            id={`timerGradient-${accentColor.replace("#", "")}`}
-                            x1="0%"
-                            y1="0%"
-                            x2="100%"
-                            y2="0%"
-                          >
-                            <stop offset="0%" stopColor={accentColor} />
-                            <stop offset="100%" stopColor={accentColor} />
-                          </linearGradient>
-                        </defs>
-                      </svg>
-                      <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span
-                          className={`text-4xl font-bold ${theme.text} font-mono`}
-                        >
-                          {formatTime(safeTimeLeft)}
-                        </span>
-                        <span className="text-sm" style={theme.accentText}>
-                          {status === "running" ? "FOCUS" : "READY"}
-                        </span>
-                      </div>
-                    </div>
 
                     {/* Controls */}
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 mt-4">
                       <button
                         onClick={handleStartPause}
-                        className="text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all"
+                        className="text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all transform active:scale-95"
                         style={{
                           background: accentColor,
                           boxShadow: `0 0 20px ${accentColor}50`,
@@ -447,7 +374,7 @@ export default function HomePage() {
                         className={`${darkMode
                           ? "bg-gray-800 hover:bg-gray-700 text-gray-300"
                           : "bg-gray-200 hover:bg-gray-300 text-gray-700"
-                          } px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors`}
+                          } px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors transform active:scale-95`}
                       >
                         RESET
                       </button>
