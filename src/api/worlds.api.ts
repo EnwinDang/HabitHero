@@ -5,7 +5,7 @@ export const WorldsAPI = {
   list(): Promise<World[]> {
     return apiFetch<World[]>("/worlds");
   },
-  create(world: World): Promise<World> {
+  create(world: Partial<World>): Promise<World> {
     return apiFetch<World>("/worlds", { method: "POST", body: JSON.stringify(world) });
   },
   get(worldId: string): Promise<World> {

@@ -1,4 +1,5 @@
 export interface World {
+  id: string;
   worldId: string;
   name: string;
   description?: string | null;

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { MonstersAPI, MonstersQuery } from "../../api/monsters.api";
+import { MonstersAPI } from "../../api/monsters.api";
 import { Monster, MonsterTier } from "../../models/monster.model";
+import CreateMonsterModal from './createMonsterModal';
 import { Ghost, Plus, Search, Trash2, Edit3, Shield, Sword, X, Save, Loader2 } from 'lucide-react';
 
 const MonsterManagement: React.FC = () => {
@@ -8,6 +9,7 @@ const MonsterManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMonster, setSelectedMonster] = useState<Monster | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   const loadMonsters = async () => {
     setLoading(true);
@@ -29,10 +31,11 @@ const MonsterManagement: React.FC = () => {
     if (!selectedMonster) return;
     try {
       await MonstersAPI.patch(selectedMonster.monsterId, selectedMonster);
-      loadMonsters();
+      await loadMonsters();
       setSelectedMonster(null);
     } catch (error) {
       console.error(error);
+      alert("Opslaan mislukt.");
     }
   };
 
@@ -69,7 +72,10 @@ const MonsterManagement: React.FC = () => {
           </h1>
           <p className="text-slate-500 font-medium mt-1">Configure entity stats and combat tiers</p>
         </div>
-        <button className="bg-violet-600 text-white px-8 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg shadow-violet-200 hover:bg-violet-700 transition-all">
+        <button 
+          onClick={() => setIsCreateModalOpen(true)}
+          className="bg-violet-600 text-white px-8 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg hover:bg-violet-700 transition-all"
+        >
           <Plus size={20} /> Create Entity
         </button>
       </div>
@@ -92,7 +98,7 @@ const MonsterManagement: React.FC = () => {
           {filteredMonsters.map((monster) => (
             <div key={monster.monsterId} className="bg-white border border-violet-100 p-8 rounded-[2.5rem] relative overflow-hidden group hover:border-violet-300 transition-all">
               <div className="flex justify-between items-start mb-6">
-                <span className={`text-[10px] font-black px-3 py-1 rounded-lg border uppercase tracking-widest ${getTierStyle(monster.tier)}`}>
+                <span className={`text-[10px] font-black px-3 py-1 rounded-lg border uppercase tracking-widest ${getTierStyle(monster.tier as MonsterTier)}`}>
                   {monster.tier}
                 </span>
                 <div className="flex gap-2">
@@ -141,6 +147,31 @@ const MonsterManagement: React.FC = () => {
           </div>
 
           <div className="space-y-8">
+            <div className="flex items-center justify-between p-4 bg-violet-50 rounded-2xl border border-violet-100">
+              <div>
+                <p className="text-xs font-black uppercase text-slate-900">Entity Status</p>
+                <p className="text-[10px] text-slate-500 uppercase font-bold">
+                  {selectedMonster.isActive ? 'Visible in Worlds' : 'Hidden from Game'}
+                </p>
+              </div>
+              <button 
+                onClick={() => setSelectedMonster({...selectedMonster, isActive: !selectedMonster.isActive})}
+                className={`w-12 h-6 rounded-full transition-all relative ${selectedMonster.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${selectedMonster.isActive ? 'right-1' : 'left-1'}`} />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Entity Name</label>
+              <input 
+                type="text" 
+                className="w-full bg-violet-50 border-none rounded-xl p-4 font-bold text-slate-700 outline-none"
+                value={selectedMonster.name}
+                onChange={(e) => setSelectedMonster({...selectedMonster, name: e.target.value})}
+              />
+            </div>
+
             <div className="space-y-3">
               <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Entity Tier</label>
               <div className="grid grid-cols-2 gap-2">
@@ -156,23 +187,38 @@ const MonsterManagement: React.FC = () => {
               </div>
             </div>
 
+            <div className="space-y-3">
+              <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Element Type</label>
+              <select 
+                className="w-full bg-violet-50 border-none rounded-xl p-4 font-bold text-slate-700 outline-none"
+                value={selectedMonster.elementType || 'water'}
+                onChange={(e) => setSelectedMonster({...selectedMonster, elementType: e.target.value})}
+              >
+                <option value="water">Water</option>
+                <option value="fire">Fire</option>
+                <option value="wind">Wind</option>
+                <option value="earth">Earth</option>
+                <option value="magic">Magic</option>
+              </select>
+            </div>
+
             <div className="space-y-4">
               <h3 className="text-xs font-black uppercase text-slate-900 border-b border-violet-50 pb-2 tracking-widest">Combat Stats</h3>
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase">Base HP</label>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase">HP</label>
                   <input 
                     type="number" 
-                    className="w-full bg-violet-50 border-none rounded-xl p-4 mt-2 font-bold text-slate-700 focus:ring-2 focus:ring-violet-500/20 transition-all"
+                    className="w-full bg-violet-50 border-none rounded-xl p-4 mt-2 font-bold text-slate-700"
                     value={selectedMonster.baseStats?.hp || 0}
                     onChange={(e) => setSelectedMonster({...selectedMonster, baseStats: {...selectedMonster.baseStats!, hp: parseInt(e.target.value)}})}
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-slate-400 uppercase">Base ATK</label>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase">Attack</label>
                   <input 
                     type="number" 
-                    className="w-full bg-violet-50 border-none rounded-xl p-4 mt-2 font-bold text-slate-700 focus:ring-2 focus:ring-violet-500/20 transition-all"
+                    className="w-full bg-violet-50 border-none rounded-xl p-4 mt-2 font-bold text-slate-700"
                     value={selectedMonster.baseStats?.attack || 0}
                     onChange={(e) => setSelectedMonster({...selectedMonster, baseStats: {...selectedMonster.baseStats!, attack: parseInt(e.target.value)}})}
                   />
@@ -181,11 +227,17 @@ const MonsterManagement: React.FC = () => {
             </div>
           </div>
 
-          <button onClick={handleSave} className="w-full mt-12 bg-violet-600 text-white font-black py-5 rounded-[1.5rem] flex items-center justify-center gap-2 shadow-xl shadow-violet-200 uppercase tracking-widest hover:bg-violet-700 transition-all">
+          <button onClick={handleSave} className="w-full mt-12 bg-violet-600 text-white font-black py-5 rounded-[1.5rem] flex items-center justify-center gap-2 shadow-xl hover:bg-violet-700 transition-all uppercase tracking-widest">
             <Save size={20} /> Update Bestiary
           </button>
         </div>
       )}
+
+      <CreateMonsterModal 
+        isOpen={isCreateModalOpen} 
+        onClose={() => setIsCreateModalOpen(false)} 
+        onSuccess={loadMonsters} 
+      />
     </div>
   );
 };
