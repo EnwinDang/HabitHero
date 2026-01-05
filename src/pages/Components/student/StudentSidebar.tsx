@@ -14,6 +14,7 @@ import {
   LogOut,
   ClipboardList,
   Gift,
+  Package,
 } from "lucide-react";
 
 const StudentSidebar = () => {
@@ -45,6 +46,11 @@ const StudentSidebar = () => {
       name: "Lootboxes",
       path: "/dashboard/lootboxes",
       icon: <Gift size={20} />,
+    },
+    {
+      name: "Inventory",
+      path: "/dashboard/inventory",
+      icon: <Package size={20} />,
     },
     { name: "Profile", path: "/dashboard/profile", icon: <User size={20} /> },
     {

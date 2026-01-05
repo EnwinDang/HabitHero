@@ -303,7 +303,7 @@ export default function SettingsPage() {
           <div
             className="rounded-2xl p-6 transition-colors duration-300 mb-6 break-inside-avoid"
             style={{
-              background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+              backgroundColor: accentColor, // Use solid accent color instead of gradient
             }}
           >
             <h3 className="text-xl font-bold text-white mb-1 flex items-center gap-2">

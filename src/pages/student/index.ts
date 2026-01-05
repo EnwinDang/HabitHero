@@ -7,3 +7,4 @@ export { default as AchievementsPage } from "./AchievementsPage";
 export { default as SettingsPage } from "./SettingsPage";
 export { default as DailyTasksPage } from './DailyTasksPage';
 export { default as LootboxesPage } from './LootboxesPage';
+export { default as InventoryPage } from './InventoryPage';
