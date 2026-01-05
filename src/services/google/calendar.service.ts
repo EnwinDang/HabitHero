@@ -1,4 +1,6 @@
+/// <reference types="gapi.calendar" />
 import { gapi } from "gapi-script";
+
 
 export interface CalendarTask {
   title: string;
