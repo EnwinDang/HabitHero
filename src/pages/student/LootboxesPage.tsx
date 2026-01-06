@@ -18,6 +18,19 @@ import {
 // Lootbox types
 type LootboxType = "common" | "rare" | "epic";
 
+// Item types (matching InventoryPage)
+type ItemType = "weapon" | "armor" | "accessory" | "potion";
+type ItemRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
+
+interface GeneratedItem {
+    name: string;
+    type: ItemType;
+    rarity: ItemRarity;
+    icon: string;
+    isEquipped: boolean;
+    level: number;
+}
+
 interface Lootbox {
     id: string;
     type: LootboxType;
@@ -81,7 +94,7 @@ export default function LootboxesPage() {
 
     // Opening state
     const [openingBox, setOpeningBox] = useState<string | null>(null);
-    const [revealedItems, setRevealedItems] = useState<string[]>([]);
+    const [revealedItems, setRevealedItems] = useState<GeneratedItem[]>([]);
     const [showRewards, setShowRewards] = useState(false);
 
     if (userLoading) {
@@ -116,16 +129,21 @@ export default function LootboxesPage() {
             // Simulate opening animation
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            // Generate random rewards based on lootbox type
+            // Generate rewards
             const items = generateRewards(lootbox.type);
 
-            // Save lootbox opening to Firebase
+            // Save items to user's inventory in Firestore
+            const inventoryRef = collection(db, "users", firebaseUser.uid, "inventory");
+            const savePromises = items.map(item => addDoc(inventoryRef, item));
+            await Promise.all(savePromises);
+
+            // Log lootbox opening (optional, keeping for history)
             const lootboxesRef = collection(db, "users", firebaseUser.uid, "lootboxes");
             await addDoc(lootboxesRef, {
                 lootboxType: lootbox.type,
                 lootboxName: lootbox.name,
                 price: lootbox.price,
-                rewards: items,
+                rewards: items.map(i => i.name), // Store names for simple history
                 openedAt: Date.now()
             });
 
@@ -144,10 +162,24 @@ export default function LootboxesPage() {
         }
     };
 
-    const generateRewards = (type: LootboxType): string[] => {
-        const commonItems = ["⚔️ Iron Sword", "🛡️ Wooden Shield", "🧪 Health Potion"];
-        const rareItems = ["⚔️ Steel Sword", "🛡️ Iron Shield", "🧪 Mana Potion", "📿 Lucky Charm"];
-        const epicItems = ["⚔️ Legendary Blade", "🛡️ Dragon Shield", "🧪 Elixir of Life", "👑 Crown of Wisdom"];
+    const generateRewards = (type: LootboxType): GeneratedItem[] => {
+        const commonItems: GeneratedItem[] = [
+            { name: "Iron Sword", type: "weapon", rarity: "common", icon: "⚔️", isEquipped: false, level: 1 },
+            { name: "Wooden Shield", type: "armor", rarity: "common", icon: "🛡️", isEquipped: false, level: 1 },
+            { name: "Health Potion", type: "potion", rarity: "common", icon: "🧪", isEquipped: false, level: 1 }
+        ];
+        const rareItems: GeneratedItem[] = [
+            { name: "Steel Sword", type: "weapon", rarity: "rare", icon: "⚔️", isEquipped: false, level: 1 },
+            { name: "Iron Shield", type: "armor", rarity: "rare", icon: "🛡️", isEquipped: false, level: 1 },
+            { name: "Mana Potion", type: "potion", rarity: "rare", icon: "🧪", isEquipped: false, level: 1 },
+            { name: "Lucky Charm", type: "accessory", rarity: "rare", icon: "📿", isEquipped: false, level: 1 }
+        ];
+        const epicItems: GeneratedItem[] = [
+            { name: "Legendary Blade", type: "weapon", rarity: "epic", icon: "⚔️", isEquipped: false, level: 1 },
+            { name: "Dragon Shield", type: "armor", rarity: "epic", icon: "🛡️", isEquipped: false, level: 1 },
+            { name: "Elixir of Life", type: "potion", rarity: "epic", icon: "🧪", isEquipped: false, level: 1 },
+            { name: "Crown of Wisdom", type: "accessory", rarity: "epic", icon: "👑", isEquipped: false, level: 1 }
+        ];
 
         if (type === "common") {
             return [commonItems[Math.floor(Math.random() * commonItems.length)]];
@@ -239,8 +271,12 @@ export default function LootboxesPage() {
                             </div>
                             <div className="space-y-3 mb-6">
                                 {revealedItems.map((item, index) => (
-                                    <div key={index} className={`p-4 rounded-xl ${theme.inputBg} text-center animate-bounce`} style={{ animationDelay: `${index * 0.2}s` }}>
-                                        <p className={`text-lg font-medium ${theme.text}`}>{item}</p>
+                                    <div key={index} className={`p-4 rounded-xl ${theme.inputBg} text-center animate-bounce flex items-center justify-center gap-3`} style={{ animationDelay: `${index * 0.2}s` }}>
+                                        <span className="text-2xl">{item.icon}</span>
+                                        <div>
+                                            <p className={`text-lg font-medium ${theme.text}`}>{item.name}</p>
+                                            <p className={`text-xs ${theme.textMuted} uppercase`}>{item.rarity}</p>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
