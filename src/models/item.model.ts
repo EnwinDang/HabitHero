@@ -12,6 +12,8 @@ export interface Item {
   stats?: StatBlock;
   valueGold?: number;
   isActive: boolean;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface ItemInstance {

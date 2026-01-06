@@ -355,6 +355,7 @@ app.post("/tasks", requireAuth, async (req, res) => {
         easy: { xp: 100, gold: 50 },
         medium: { xp: 125, gold: 63 },      // 25% increase from easy
         hard: { xp: 156, gold: 78 },        // 25% increase from medium
+        extreme: { xp: 195, gold: 98 },     // 25% increase from hard
       };
       
       const normalizedDifficulty = (difficulty || 'medium').toLowerCase();

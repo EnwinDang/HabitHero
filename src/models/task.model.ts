@@ -1,7 +1,7 @@
 import { RewardBreakdown } from "./reward.model";
 import { CombatSummary } from "./combat.model";
 
-export type TaskDifficulty = "easy" | "medium" | "hard";
+export type TaskDifficulty = "easy" | "medium" | "hard" | "extreme";
 
 export interface Task {
   taskId: string;
@@ -13,10 +13,12 @@ export interface Task {
   xp: number;
   gold: number;
   date?: string;
-  dueAt?: number;
+  dueAt?: number | null;
   achievementTag?: string | null;
   isRepeatable: boolean;
   isActive: boolean;
+  createdAt?: number;
+  completedAt?: number | null;
 }
 
 export interface TaskCompletionResult {
