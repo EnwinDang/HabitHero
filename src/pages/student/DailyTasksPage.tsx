@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
+import { useAuth } from "@/context/AuthContext";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { TasksAPI } from "@/api/tasks.api";
 import { CoursesAPI } from "@/api/courses.api";
@@ -10,47 +11,107 @@ import {
     BookOpen,
     Coins,
     Star,
-    Check
+    Check,
+    Plus,
+    ChevronDown,
+    GraduationCap,
 } from "lucide-react";
 
 export default function DailyTasksPage() {
     const { user, loading: userLoading } = useRealtimeUser();
+    const { firebaseUser } = useAuth();
     const { darkMode, accentColor } = useTheme();
     const theme = getThemeClasses(darkMode, accentColor);
 
-    const [course, setCourse] = useState<Course | null>(null);
+    const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
+    const [availableCourses, setAvailableCourses] = useState<Course[]>([]);
+    const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedDifficulty, setSelectedDifficulty] = useState<string>("all");
+    const [showCourseDropdown, setShowCourseDropdown] = useState(false);
+    const [enrollingCourse, setEnrollingCourse] = useState<string | null>(null);
 
     useEffect(() => {
-        loadCourseAndTasks();
-    }, []);
+        loadCoursesAndTasks();
+    }, [firebaseUser]);
 
-    async function loadCourseAndTasks() {
+    async function loadCoursesAndTasks() {
+        if (!firebaseUser) return;
+        
         try {
             setLoading(true);
-            // Fetch all courses and find Programming Essentials 1
             const courses = await CoursesAPI.list(true);
-            const pe1Course = courses.find(c =>
-                c.name.toLowerCase().includes("programming essentials 1") ||
-                c.courseCode.toLowerCase().includes("pe1")
-            );
-
-            if (pe1Course) {
-                setCourse(pe1Course);
-
-                // Fetch tasks for this course
-                const courseTasks = await TasksAPI.list({
-                    courseId: pe1Course.courseId,
-                    activeOnly: true
-                });
-                setTasks(courseTasks);
+            
+            // Check which courses the user is enrolled in
+            const enrolled: Course[] = [];
+            const available: Course[] = [];
+            
+            for (const course of courses) {
+                try {
+                    const students = await CoursesAPI.listStudents(course.courseId);
+                    if (students.some((s) => s.uid === firebaseUser.uid)) {
+                        enrolled.push(course);
+                    } else {
+                        available.push(course);
+                    }
+                } catch (err) {
+                    console.error(`Error checking enrollment for ${course.courseId}:`, err);
+                    available.push(course);
+                }
+            }
+            
+            setEnrolledCourses(enrolled);
+            setAvailableCourses(available);
+            
+            // Select first enrolled course by default
+            if (enrolled.length > 0) {
+                await selectCourse(enrolled[0]);
             }
         } catch (error) {
-            console.error("Error loading course and tasks:", error);
+            console.error("Error loading courses:", error);
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function selectCourse(course: Course) {
+        setSelectedCourse(course);
+        setShowCourseDropdown(false);
+        
+        try {
+            const courseTasks = await TasksAPI.list({
+                courseId: course.courseId,
+                activeOnly: true
+            });
+            setTasks(courseTasks);
+        } catch (error) {
+            console.error("Error loading tasks:", error);
+            setTasks([]);
+        }
+    }
+
+    async function handleEnrollCourse(course: Course) {
+        if (!firebaseUser) return;
+
+        try {
+            setEnrollingCourse(course.courseId);
+            await CoursesAPI.enroll(course.courseId, {
+                uid: firebaseUser.uid,
+                enrolledAt: Date.now(),
+            });
+
+            // Move course from available to enrolled
+            setAvailableCourses(availableCourses.filter(c => c.courseId !== course.courseId));
+            setEnrolledCourses([...enrolledCourses, course]);
+            
+            // Auto-select the newly enrolled course
+            await selectCourse(course);
+        } catch (error) {
+            console.error("Error enrolling in course:", error);
+            alert("Error al inscribirse en el curso. Por favor intenta de nuevo.");
+        } finally {
+            setEnrollingCourse(null);
         }
     }
 
@@ -91,97 +152,254 @@ export default function DailyTasksPage() {
         <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
             <main className="p-8 overflow-y-auto">
                 {/* Header */}
+                <div className="mb-6 flex items-center justify-between">
+                    <div>
+                        <h2 className={`text-3xl font-bold ${theme.text}`}>Daily Tasks</h2>
+                        <p className={theme.textMuted}>Complete exercises to earn XP and Gold</p>
+                    </div>
+                    {selectedCourse && (
+                        <button
+                            onClick={() => setShowCourseDropdown(!showCourseDropdown)}
+                            className="px-4 py-2 rounded-xl font-medium transition-all flex items-center gap-2"
+                            style={{
+                                backgroundColor: `${accentColor}20`,
+                                color: accentColor,
+                                borderWidth: '1px',
+                                borderStyle: 'solid',
+                                borderColor: `${accentColor}50`
+                            }}
+                        >
+                            <BookOpen size={18} />
+                            Change Course
+                        </button>
+                    )}
+                </div>
+
+                {/* Course Selector */}
                 <div className="mb-6">
-                    <h2 className={`text-3xl font-bold ${theme.text}`}>Daily Tasks</h2>
-                    <p className={theme.textMuted}>Complete exercises to earn XP and Gold</p>
+                    {selectedCourse ? (
+                        <div className="relative">
+                            {/* Current Course Display */}
+                            <div
+                                className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
+                                style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div
+                                        className="w-12 h-12 rounded-xl flex items-center justify-center"
+                                        style={{ backgroundColor: `${accentColor}20` }}
+                                    >
+                                        <BookOpen size={24} style={{ color: accentColor }} />
+                                    </div>
+                                    <div>
+                                        <h3 className={`text-xl font-bold ${theme.text}`}>{selectedCourse.name}</h3>
+                                        <p className={`text-sm ${theme.textMuted}`}>{selectedCourse.courseCode}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Dropdown Menu */}
+                            {showCourseDropdown && (
+                                <div
+                                    className={`absolute top-full left-0 right-0 mt-2 ${theme.card} rounded-2xl shadow-xl z-10 overflow-hidden`}
+                                    style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}
+                                >
+                                    {/* Enrolled Courses */}
+                                    {enrolledCourses.length > 0 && (
+                                        <div className="p-4">
+                                            <p className={`text-xs font-bold uppercase tracking-wider ${theme.textSubtle} mb-2`}>
+                                                My Courses
+                                            </p>
+                                            {enrolledCourses.map((course) => (
+                                                <button
+                                                    key={course.courseId}
+                                                    onClick={() => selectCourse(course)}
+                                                    className={`w-full p-3 rounded-lg text-left transition-colors mb-1 flex items-center gap-3 ${
+                                                        selectedCourse.courseId === course.courseId
+                                                            ? 'bg-opacity-20'
+                                                            : 'hover:bg-opacity-10'
+                                                    }`}
+                                                    style={{
+                                                        backgroundColor: selectedCourse.courseId === course.courseId
+                                                            ? `${accentColor}20`
+                                                            : darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 0.5)'
+                                                    }}
+                                                >
+                                                    <BookOpen size={18} style={{ color: accentColor }} />
+                                                    <div className="flex-1">
+                                                        <p className={`font-medium ${theme.text}`}>{course.name}</p>
+                                                        <p className={`text-xs ${theme.textSubtle}`}>{course.courseCode}</p>
+                                                    </div>
+                                                    {selectedCourse.courseId === course.courseId && (
+                                                        <Check size={18} style={{ color: accentColor }} />
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Available Courses */}
+                                    {availableCourses.length > 0 && (
+                                        <div className={`p-4 ${enrolledCourses.length > 0 ? 'border-t' : ''}`} style={{ borderColor: `${accentColor}20` }}>
+                                            <p className={`text-xs font-bold uppercase tracking-wider ${theme.textSubtle} mb-2`}>
+                                                Available Courses
+                                            </p>
+                                            {availableCourses.map((course) => (
+                                                <button
+                                                    key={course.courseId}
+                                                    onClick={() => handleEnrollCourse(course)}
+                                                    disabled={enrollingCourse === course.courseId}
+                                                    className={`w-full p-3 rounded-lg text-left transition-colors mb-1 flex items-center gap-3`}
+                                                    style={{
+                                                        backgroundColor: darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 0.5)',
+                                                        opacity: enrollingCourse === course.courseId ? 0.6 : 1,
+                                                        cursor: enrollingCourse === course.courseId ? 'not-allowed' : 'pointer'
+                                                    }}
+                                                >
+                                                    <div
+                                                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                                                        style={{ backgroundColor: `${accentColor}20` }}
+                                                    >
+                                                        <Plus size={16} style={{ color: accentColor }} />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <p className={`font-medium ${theme.text}`}>{course.name}</p>
+                                                        <p className={`text-xs ${theme.textSubtle}`}>{course.courseCode}</p>
+                                                    </div>
+                                                    {enrollingCourse === course.courseId && (
+                                                        <span className={`text-xs ${theme.textMuted}`}>Enrolling...</span>
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {enrolledCourses.length === 0 && availableCourses.length === 0 && (
+                                        <div className="p-8 text-center">
+                                            <GraduationCap size={40} className="mx-auto mb-2" style={{ color: accentColor }} />
+                                            <p className={theme.textMuted}>No courses available</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    ) : enrolledCourses.length === 0 ? (
+                        <div className={`${theme.card} rounded-2xl p-8 text-center`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+                            <GraduationCap size={48} className="mx-auto mb-4" style={{ color: accentColor }} />
+                            <h3 className={`text-xl font-bold ${theme.text} mb-2`}>No Courses Enrolled</h3>
+                            <p className={theme.textMuted}>Enroll in a course to start completing tasks!</p>
+                            {availableCourses.length > 0 && (
+                                <div className="mt-6 space-y-2">
+                                    {availableCourses.map((course) => (
+                                        <button
+                                            key={course.courseId}
+                                            onClick={() => handleEnrollCourse(course)}
+                                            disabled={enrollingCourse === course.courseId}
+                                            className="w-full p-4 rounded-xl text-left transition-all flex items-center gap-3"
+                                            style={{
+                                                backgroundColor: `${accentColor}10`,
+                                                borderWidth: '1px',
+                                                borderStyle: 'solid',
+                                                borderColor: `${accentColor}30`,
+                                                opacity: enrollingCourse === course.courseId ? 0.6 : 1
+                                            }}
+                                        >
+                                            <BookOpen size={20} style={{ color: accentColor }} />
+                                            <div className="flex-1">
+                                                <p className={`font-bold ${theme.text}`}>{course.name}</p>
+                                                <p className={`text-sm ${theme.textSubtle}`}>{course.courseCode}</p>
+                                            </div>
+                                            <Plus size={20} style={{ color: accentColor }} />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    ) : null}
                 </div>
 
                 {/* Course Info */}
-                {course && (
-                    <div className={`${theme.card} rounded-2xl p-6 mb-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
-                        <div className="flex items-center gap-3 mb-2">
-                            <BookOpen size={24} style={{ color: accentColor }} />
-                            <div>
-                                <h3 className={`text-xl font-bold ${theme.text}`}>{course.name}</h3>
-                                <p className={`text-sm ${theme.textMuted}`}>{course.courseCode}</p>
-                            </div>
-                        </div>
-                        {course.description && (
-                            <p className={`${theme.textMuted} mt-2`}>{course.description}</p>
-                        )}
+                {selectedCourse && selectedCourse.description && (
+                    <div className={`${theme.card} rounded-xl p-4 mb-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+                        <p className={theme.textMuted}>{selectedCourse.description}</p>
                     </div>
                 )}
 
-                {/* Difficulty Filter */}
-                <div className="flex gap-2 mb-6 flex-wrap">
-                    <button
-                        onClick={() => setSelectedDifficulty("all")}
-                        className={`px-4 py-2 rounded-xl font-medium transition-all ${selectedDifficulty === "all"
-                            ? `text-white`
-                            : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
-                            }`}
-                        style={selectedDifficulty === "all" ? {
-                            backgroundColor: accentColor // Use solid accent color
-                        } : {
-                            backgroundColor: darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)'
-                        }}
-                    >
-                        All ({tasks.length})
-                    </button>
-                    <DifficultyFilter
-                        label="Easy"
-                        count={easyTasks.length}
-                        isSelected={selectedDifficulty === "easy"}
-                        onClick={() => setSelectedDifficulty("easy")}
-                        color="#22c55e"
-                        darkMode={darkMode}
-                    />
-                    <DifficultyFilter
-                        label="Medium"
-                        count={mediumTasks.length}
-                        isSelected={selectedDifficulty === "medium"}
-                        onClick={() => setSelectedDifficulty("medium")}
-                        color="#f59e0b"
-                        darkMode={darkMode}
-                    />
-                    <DifficultyFilter
-                        label="Hard"
-                        count={hardTasks.length}
-                        isSelected={selectedDifficulty === "hard"}
-                        onClick={() => setSelectedDifficulty("hard")}
-                        color="#ef4444"
-                        darkMode={darkMode}
-                    />
-                    <DifficultyFilter
-                        label="Extreme"
-                        count={extremeTasks.length}
-                        isSelected={selectedDifficulty === "extreme"}
-                        onClick={() => setSelectedDifficulty("extreme")}
-                        color="#a855f7"
-                        darkMode={darkMode}
-                    />
-                </div>
-
-                {/* Tasks */}
-                {filteredTasks.length === 0 ? (
-                    <div className="text-center py-12">
-                        <ClipboardList size={40} className={`mb-4 mx-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-                        <p className={theme.textMuted}>No tasks available</p>
-                        <p className={`${theme.textSubtle} text-sm`}>Check back later for new exercises!</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {filteredTasks.map(task => (
-                            <TaskCard
-                                key={task.taskId}
-                                task={task}
-                                onComplete={handleCompleteTask}
+                {/* Only show filters and tasks if a course is selected */}
+                {selectedCourse && (
+                    <>
+                        {/* Difficulty Filter */}
+                        <div className="flex gap-2 mb-6 flex-wrap">
+                            <button
+                                onClick={() => setSelectedDifficulty("all")}
+                                className={`px-4 py-2 rounded-xl font-medium transition-all ${selectedDifficulty === "all"
+                                    ? `text-white`
+                                    : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-600 hover:text-gray-800'
+                                    }`}
+                                style={selectedDifficulty === "all" ? {
+                                    backgroundColor: accentColor
+                                } : {
+                                    backgroundColor: darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)'
+                                }}
+                            >
+                                All ({tasks.length})
+                            </button>
+                            <DifficultyFilter
+                                label="Easy"
+                                count={easyTasks.length}
+                                isSelected={selectedDifficulty === "easy"}
+                                onClick={() => setSelectedDifficulty("easy")}
+                                color="#22c55e"
                                 darkMode={darkMode}
-                                accentColor={accentColor}
-                                theme={theme}
                             />
-                        ))}
-                    </div>
+                            <DifficultyFilter
+                                label="Medium"
+                                count={mediumTasks.length}
+                                isSelected={selectedDifficulty === "medium"}
+                                onClick={() => setSelectedDifficulty("medium")}
+                                color="#f59e0b"
+                                darkMode={darkMode}
+                            />
+                            <DifficultyFilter
+                                label="Hard"
+                                count={hardTasks.length}
+                                isSelected={selectedDifficulty === "hard"}
+                                onClick={() => setSelectedDifficulty("hard")}
+                                color="#ef4444"
+                                darkMode={darkMode}
+                            />
+                            <DifficultyFilter
+                                label="Extreme"
+                                count={extremeTasks.length}
+                                isSelected={selectedDifficulty === "extreme"}
+                                onClick={() => setSelectedDifficulty("extreme")}
+                                color="#a855f7"
+                                darkMode={darkMode}
+                            />
+                        </div>
+
+                        {/* Tasks */}
+                        {filteredTasks.length === 0 ? (
+                            <div className="text-center py-12">
+                                <ClipboardList size={40} className={`mb-4 mx-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                                <p className={theme.textMuted}>No tasks available</p>
+                                <p className={`${theme.textSubtle} text-sm`}>Check back later for new exercises!</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                {filteredTasks.map(task => (
+                                    <TaskCard
+                                        key={task.taskId}
+                                        task={task}
+                                        onComplete={handleCompleteTask}
+                                        darkMode={darkMode}
+                                        accentColor={accentColor}
+                                        theme={theme}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </>
                 )}
             </main>
         </div>

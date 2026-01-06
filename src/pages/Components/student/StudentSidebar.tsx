@@ -16,6 +16,7 @@ import {
   Package,
   Swords,
   Map,
+  BookOpen,
 } from "lucide-react";
 
 const StudentSidebar = () => {
@@ -34,6 +35,7 @@ const StudentSidebar = () => {
     { name: "Focus Mode", path: "/dashboard/focus", icon: <Timer size={20} /> },
     { name: "Battle", path: "/dashboard/battle", icon: <Swords size={20} /> },
     { name: "World Map", path: "/dashboard/world-map", icon: <Map size={20} /> },
+    { name: "Courses", path: "/dashboard/courses", icon: <BookOpen size={20} /> },
     { name: "Stats", path: "/dashboard/stats", icon: <BarChart3 size={20} /> },
     {
       name: "Achievements",

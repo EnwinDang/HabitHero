@@ -3,7 +3,7 @@ import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
 import StudentLayout from "./pages/layouts/StudentLayout";
-import { ProfilePage, FocusModePage, StatsPage, CalendarPage, AchievementsPage, SettingsPage, DailyTasksPage, LootboxesPage, InventoryPage, BattlePage, WorldMapPage } from "./pages/student";
+import { ProfilePage, FocusModePage, StatsPage, CalendarPage, AchievementsPage, SettingsPage, DailyTasksPage, LootboxesPage, InventoryPage, BattlePage, WorldMapPage, CoursesPage } from "./pages/student";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
@@ -44,6 +44,7 @@ export default function App() {
               <Route path="inventory" element={<InventoryPage />} />
               <Route path="battle" element={<BattlePage />} />
               <Route path="world-map" element={<WorldMapPage />} />
+              <Route path="courses" element={<CoursesPage />} />
             </Route>
           </Routes>
         </PomodoroProvider>

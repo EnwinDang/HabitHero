@@ -10,3 +10,4 @@ export { default as LootboxesPage } from './LootboxesPage';
 export { default as InventoryPage } from './InventoryPage';
 export { default as BattlePage } from './BattlePage';
 export { default as WorldMapPage } from './WorldMapPage';
+export { default as CoursesPage } from './CoursesPage';
