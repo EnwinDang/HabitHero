@@ -700,7 +700,12 @@ export default function DailyTasksPage() {
                                     setCourseCode(e.target.value);
                                     setCodeError("");
                                 }}
-                                placeholder="e.g., PE1-2026"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && courseCode.trim() && enrollingCourse !== "code-enrollment") {
+                                        handleEnrollWithCode();
+                                    }
+                                }}
+                                placeholder="Enter course code..."
                                 className={`w-full px-4 py-3 rounded-xl font-mono text-lg ${theme.inputBg} ${theme.text} border-2 transition-colors`}
                                 style={{
                                     borderColor: codeError ? '#ef4444' : `${accentColor}30`,
@@ -736,7 +741,7 @@ export default function DailyTasksPage() {
                                     cursor: (!courseCode.trim() || enrollingCourse === "code-enrollment") ? 'not-allowed' : 'pointer'
                                 }}
                             >
-                                {enrollingCourse === "code-enrollment" ? "Enrolling..." : "Enroll"}
+                                {enrollingCourse === "code-enrollment" ? "Adding..." : "Add Course"}
                             </button>
                         </div>
                     </div>
