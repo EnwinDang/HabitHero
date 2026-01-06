@@ -167,6 +167,7 @@ export default function Modules() {
   const [name, setName] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [active, setActive] = useState<boolean>(true);
+  const [saving, setSaving] = useState<boolean>(false);
 
   function openCreate(courseId: string) {
     setEditingId(null);
@@ -189,7 +190,9 @@ export default function Modules() {
   async function save() {
     if (!name.trim()) return;
     if (!editingCourseId) return;
+    if (saving) return; // Prevent duplicate saves
 
+    setSaving(true);
     try {
       if (editingId) {
         await updateModule(editingCourseId, editingId, {
@@ -214,6 +217,8 @@ export default function Modules() {
     } catch (err) {
       console.error('Error saving module:', err);
       // Error is handled in the store
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -650,10 +655,11 @@ export default function Modules() {
                 <button
                   type="button"
                   onClick={save}
+                  disabled={saving}
                   className="hh-btn hh-btn-primary"
                   style={{ flex: editing ? 0 : 1 }}
                 >
-                  {editing ? 'Save Changes' : 'Create Module'}
+                  {saving ? 'Saving...' : editing ? 'Save Changes' : 'Create Module'}
                 </button>
               </div>
             </div>

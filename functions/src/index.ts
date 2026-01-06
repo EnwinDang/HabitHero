@@ -884,14 +884,15 @@ app.get("/leaderboards/global", async (req, res) => {
 /**
  * GET /courses
  */
-app.get("/courses", async (req, res) => {
+app.get("/courses", requireAuth, async (req, res) => {
   try {
+    const uid = (req as any).user.uid;
     const activeOnly = req.query.activeOnly === "true";
     const coursesRef = db.collection("courses");
-    let query = coursesRef;
+    let query = coursesRef.where("createdBy", "==", uid) as any;
     
     if (activeOnly) {
-      query = query.where("isActive", "==", true) as any;
+      query = query.where("isActive", "==", true);
     }
 
     const snap = await query.get();

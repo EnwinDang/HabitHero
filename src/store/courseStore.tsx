@@ -69,7 +69,7 @@ function mapCourseFromAPI(apiCourse: APICourse, modules: APIModule[] = []) {
     description: apiCourse.description || '',
     startDate: apiCourse.startDate || null,
     endDate: apiCourse.endDate || null,
-    createdBy: null, // API doesn't return this, backend handles it
+    createdBy: apiCourse.createdBy || null, // Get from API response
     modules: uiModules,
   };
 }
