@@ -1,3 +1,5 @@
+import React from 'react';
+
 // World Map data models
 
 export interface Level {
@@ -17,7 +19,7 @@ export interface Realm {
     requiredLevel: number;
     color: string; // Primary color for the realm
     gradient: string; // Gradient background
-    icon: string; // Emoji icon
+    icon: string | React.ReactNode; // Emoji or Icon component
     levels: Level[];
 }
 

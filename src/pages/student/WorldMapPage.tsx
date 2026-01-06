@@ -1,106 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { WorldsAPI } from "@/api/worlds.api";
 import { useNavigate } from "react-router-dom";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
-import { Map, Lock, ArrowLeft } from "lucide-react";
+import { Map, Lock, ArrowLeft, Flame, Snowflake, Mountain, Zap, HelpCircle } from "lucide-react";
 import type { Realm, Level } from "@/models/worldMap.model";
 import type { BattleEnemy } from "@/models/battle.model";
-
-// Base realm definitions (without completion states)
-const BASE_REALMS: Omit<Realm, "levels">[] = [
-    {
-        id: "fire-realm",
-        name: "Fire Realm",
-        element: "fire",
-        description: "A scorching land of molten lava and eternal flames",
-        requiredLevel: 1,
-        color: "#ff5722",
-        gradient: "linear-gradient(135deg, #ff5722 0%, #ff9800 100%)",
-        icon: "🔥",
-    },
-    {
-        id: "glacier-peaks",
-        name: "Glacier Peaks",
-        element: "ice",
-        description: "Frozen mountains where eternal winter reigns",
-        requiredLevel: 1,
-        color: "#00bcd4",
-        gradient: "linear-gradient(135deg, #00bcd4 0%, #03a9f4 100%)",
-        icon: "❄️",
-    },
-    {
-        id: "earth-caverns",
-        name: "Earth Caverns",
-        element: "earth",
-        description: "Deep underground caves filled with ancient power",
-        requiredLevel: 20,
-        color: "#795548",
-        gradient: "linear-gradient(135deg, #795548 0%, #8d6e63 100%)",
-        icon: "🌍",
-    },
-    {
-        id: "storm-peaks",
-        name: "Storm Peaks",
-        element: "lightning",
-        description: "Towering mountains crackling with lightning energy",
-        requiredLevel: 30,
-        color: "#9c27b0",
-        gradient: "linear-gradient(135deg, #9c27b0 0%, #673ab7 100%)",
-        icon: "⚡",
-    },
-];
-
-// Level names for each realm
-const REALM_LEVEL_NAMES: Record<string, string[]> = {
-    "fire-realm": [
-        "Ember Sprite",
-        "Lava Imp",
-        "Blaze Hound",
-        "Fire Serpent",
-        "Inferno Guardian",
-        "Flame Titan",
-        "Magma Colossus",
-        "Volcanic Drake",
-        "Phoenix Lord",
-        "Fire Primordial",
-    ],
-    "glacier-peaks": [
-        "Frost Wisp",
-        "Ice Sprite",
-        "Snow Leopard",
-        "Glacier Wolf",
-        "Frozen Sentinel",
-        "Ice Golem",
-        "Blizzard Beast",
-        "Frost Dragon",
-        "Winter King",
-        "Ice Primordial",
-    ],
-    "earth-caverns": [
-        "Stone Sprite",
-        "Rock Golem",
-        "Cave Troll",
-        "Crystal Guardian",
-        "Earth Elemental",
-        "Boulder Beast",
-        "Mountain Giant",
-        "Earthquake Titan",
-        "Terran Lord",
-        "Earth Primordial",
-    ],
-    "storm-peaks": [
-        "Spark Wisp",
-        "Thunder Imp",
-        "Lightning Wolf",
-        "Storm Hawk",
-        "Thunder Guardian",
-        "Lightning Titan",
-        "Storm Dragon",
-        "Thunder King",
-        "Lightning Lord",
-        "Storm Primordial",
-    ],
-};
 
 export default function WorldMapPage() {
     const { darkMode, accentColor } = useTheme();
@@ -113,37 +18,129 @@ export default function WorldMapPage() {
     const userXP = user?.stats?.xp || 0;
     const worldMapProgress = user?.worldMapProgress || {};
 
-    // Calculate which levels should be unlocked based on XP
-    // Each level requires 100 XP more than the previous
-    // Level 1: 0 XP, Level 2: 100 XP, Level 3: 200 XP, etc.
-    const getUnlockedLevelsByXP = (realmId: string): number => {
-        const baseXPPerLevel = 100;
-        return Math.min(10, Math.floor(userXP / baseXPPerLevel) + 1);
+    // State for API data
+    const [apiWorlds, setApiWorlds] = useState<any[]>([]);
+    const [realmStages, setRealmStages] = useState<Record<string, any[]>>({});
+    const [loading, setLoading] = useState(true);
+
+    // Fetch worlds on mount
+    useEffect(() => {
+        const fetchWorlds = async () => {
+            try {
+                const worlds = await WorldsAPI.list();
+                setApiWorlds(worlds);
+
+                // Fetch stages for all worlds
+                const stagesPromises = worlds.map(w => WorldsAPI.stages(w.worldId).then(stages => ({ worldId: w.worldId, stages })));
+                const stagesResults = await Promise.all(stagesPromises);
+
+                const newStages: Record<string, any[]> = {};
+                stagesResults.forEach(r => {
+                    newStages[r.worldId] = r.stages;
+                });
+                setRealmStages(newStages);
+
+            } catch (error) {
+                console.error("Failed to fetch worlds:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchWorlds();
+    }, []);
+
+    // Helper to determine realm visuals based on name/id/element
+    const getRealmTheme = (name: string, id: string, apiElement?: string): Partial<Realm> => {
+        const lowerName = name.toLowerCase();
+        const lowerId = id.toLowerCase();
+        const element = (apiElement || "").toLowerCase();
+
+        if (element === "fire" || lowerName.includes("fire") || lowerId.includes("fire") || lowerName.includes("inferno")) {
+            return {
+                element: "fire",
+                color: "#ff5722",
+                gradient: "linear-gradient(135deg, #ff5722 0%, #ff9800 100%)",
+                icon: <Flame size={48} />,
+            };
+        } else if (element === "ice" || lowerName.includes("ice") || lowerId.includes("ice") || lowerName.includes("frost") || lowerName.includes("glacier")) {
+            return {
+                element: "ice",
+                color: "#00bcd4",
+                gradient: "linear-gradient(135deg, #00bcd4 0%, #03a9f4 100%)",
+                icon: <Snowflake size={48} />,
+            };
+        } else if (element === "earth" || lowerName.includes("earth") || lowerId.includes("earth") || lowerName.includes("stone") || lowerName.includes("cave")) {
+            return {
+                element: "earth",
+                color: "#795548",
+                gradient: "linear-gradient(135deg, #795548 0%, #8d6e63 100%)",
+                icon: <Mountain size={48} />,
+            };
+        } else if (element === "lightning" || lowerName.includes("storm") || lowerId.includes("lightning") || lowerName.includes("thunder")) {
+            return {
+                element: "lightning",
+                color: "#9c27b0",
+                gradient: "linear-gradient(135deg, #9c27b0 0%, #673ab7 100%)",
+                icon: <Zap size={48} />,
+            };
+        }
+
+        // Default / Unknown
+        return {
+            element: "earth",
+            color: "#607d8b",
+            gradient: "linear-gradient(135deg, #607d8b 0%, #90a4ae 100%)",
+            icon: <HelpCircle size={48} />,
+        };
     };
 
-    // Build realms with dynamic completion and lock states
+    // Build realms from API data
     const realms: Realm[] = useMemo(() => {
-        return BASE_REALMS.map((baseRealm) => {
-            const completedLevels = worldMapProgress[baseRealm.id]?.completedLevels || [];
-            const unlockedCount = getUnlockedLevelsByXP(baseRealm.id);
-            const levelNames = REALM_LEVEL_NAMES[baseRealm.id] || [];
+        return apiWorlds.map((world) => {
+            const themeProps = getRealmTheme(world.name, world.worldId || world.id || "", world.element || world.elementType);
+            const completedLevels = worldMapProgress[world.worldId]?.completedLevels || [];
 
-            const levels: Level[] = Array.from({ length: 10 }, (_, i) => {
-                const levelId = i + 1;
+            const stages = realmStages[world.worldId] || [];
+            const levelCount = stages.length > 0 ? stages.length : 10;
+
+            const levels: Level[] = Array.from({ length: levelCount }, (_, i) => {
+                const stageData = stages[i];
+                const levelId = stageData?.stage || i + 1;
+                const name = stageData?.name || `Level ${levelId}`;
+
+                // Unlock logic
+                // Simple: Unlocked if previous is completed OR it's level 1
+                // We also check userXP based limit as before if desired, or just rely on completion.
+                // Let's stick to the previous XP logic combined with sequential unlock.
+                // Level 1: always unlocked.
+                // Level N: unlocked if Level N-1 completed.
+                // AND XP requirement.
+
+                const isCompleted = completedLevels.includes(levelId);
+                const prevCompleted = levelId === 1 || completedLevels.includes(levelId - 1);
+
+                // Required XP: Level * 100 (example)
+                // const xpReq = (levelId - 1) * 100;
+                // const xpUnlocked = userXP >= xpReq;
+
                 return {
                     id: levelId,
-                    name: levelNames[i] || `Level ${levelId}`,
-                    completed: completedLevels.includes(levelId),
-                    locked: levelId > unlockedCount,
+                    name: name,
+                    completed: isCompleted,
+                    locked: !prevCompleted // || !xpUnlocked
                 };
             });
 
             return {
-                ...baseRealm,
+                id: world.worldId,
+                name: world.name,
+                description: world.description || "Explore this mysterious realm",
+                requiredLevel: 1, // Could come from API
                 levels,
-            };
+                ...themeProps,
+            } as Realm;
         });
-    }, [worldMapProgress, userXP]);
+    }, [apiWorlds, realmStages, worldMapProgress, userXP]);
 
     // Calculate total progress
     const totalLevels = realms.reduce((sum, realm) => sum + realm.levels.length, 0);
@@ -314,22 +311,16 @@ export default function WorldMapPage() {
         const startBattle = (level: Level) => {
             if (level.locked || level.completed) return;
 
-            const enemy: BattleEnemy = {
-                id: `${realm.id}-${level.id}`,
-                name: level.name,
-                level: level.id,
-                element: realm.element,
-                hp: 50 + level.id * 30,
-                maxHP: 50 + level.id * 30,
-                attack: 5 + level.id * 3,
-                defense: 2 + level.id * 2,
-                speed: 40 + level.id * 2,
-                emoji: realm.icon,
-                realmId: realm.id,
-                levelId: level.id,
-            };
-
-            navigate('/dashboard/battle', { state: { enemy } });
+            // Navigate to battle page with world and level info
+            // The BattlePage will handle fetching the actual enemy via CombatAPI
+            navigate('/dashboard/battle', {
+                state: {
+                    worldId: realm.id,
+                    levelId: level.id,
+                    levelName: level.name,
+                    element: realm.element // Pass element for initial theming
+                }
+            });
         };
 
         return (

@@ -4,6 +4,9 @@ import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { Swords, Play, RotateCcw } from "lucide-react";
 import type { BattleEnemy, BattlePlayer, BattleState, BattleLog } from "@/models/battle.model";
+import { CombatAPI } from "@/api/combat.api";
+import { MonstersAPI } from "@/api/monsters.api";
+import { UsersAPI } from "@/api/users.api";
 
 export default function BattlePage() {
     const { darkMode, accentColor } = useTheme();
@@ -12,8 +15,9 @@ export default function BattlePage() {
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Get enemy data from navigation state
-    const enemy = location.state?.enemy as BattleEnemy | undefined;
+    // Get world data from navigation
+    const { worldId, levelId, element } = location.state || {};
+    // enemy is now fetched from API
 
     // Initialize player stats from user data
     const player: BattlePlayer = {
@@ -27,10 +31,15 @@ export default function BattlePage() {
         emoji: "⚔️",
     };
 
+    const [combatId, setCombatId] = useState<string | null>(null);
+    const [enemy, setEnemy] = useState<BattleEnemy | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
     // Battle state
     const [battleState, setBattleState] = useState<BattleState>({
         playerHP: player.hp,
-        enemyHP: enemy?.hp || 100,
+        enemyHP: 100, // Placeholder until enemy loads
         isActive: false,
         isPaused: false,
         winner: null,
@@ -39,6 +48,65 @@ export default function BattlePage() {
     });
 
     const battleInterval = useRef<number | null>(null);
+
+    // Initial setup: Start combat session and fetch monster
+    useEffect(() => {
+        const initBattle = async () => {
+            if (!worldId || !levelId) {
+                setError("Invalid battle configuration");
+                setLoading(false);
+                return;
+            }
+
+            try {
+                // 1. Start Combat Session
+                const combat = await CombatAPI.start({
+                    worldId,
+                    stage: Number(levelId)
+                });
+
+                setCombatId(combat.combatId);
+
+                // 2. Fetch Monster Details
+                if (combat.monsterId) {
+                    const monsterData = await MonstersAPI.get(combat.monsterId);
+
+                    // Map generic Monster to BattleEnemy
+                    const newEnemy: BattleEnemy = {
+                        id: monsterData.monsterId,
+                        name: monsterData.name,
+                        level: Number(levelId), // Assume monster level matches stage for now
+                        element: (monsterData.elementType as any) || element || 'fire',
+                        hp: (monsterData.baseStats?.hp || 100) + (Number(levelId) * 20),
+                        maxHP: (monsterData.baseStats?.hp || 100) + (Number(levelId) * 20),
+                        attack: (monsterData.baseStats?.attack || 10) + (Number(levelId) * 2), // Corrected prop name
+                        defense: (monsterData.baseStats?.defense || 5) + (Number(levelId) * 1), // Corrected prop name
+                        speed: (monsterData.baseStats?.speed || 10) + (Number(levelId) * 1), // Corrected prop name
+                        emoji: "👾", // Default emoji, could be mapped from type
+                        realmId: worldId,
+                        levelId: Number(levelId)
+                    };
+
+                    setEnemy(newEnemy);
+                    setBattleState(prev => ({ ...prev, enemyHP: newEnemy.maxHP }));
+                } else {
+                    // Fallback if no monster ID ? 
+                    setError("No monster found for this level.");
+                }
+
+            } catch (err: any) {
+                console.error("Battle Init Error:", err);
+                setError("Failed to initialize battle. " + (err.message || ""));
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (worldId && levelId && !combatId) {
+            initBattle();
+        }
+    }, [worldId, levelId]);
+
 
     // Add log entry
     const addLog = (message: string, type: BattleLog['type'] = 'info') => {
@@ -73,7 +141,7 @@ export default function BattlePage() {
         let currentEnemyHP = enemy.hp;
         let turn = 0;
 
-        battleInterval.current = setInterval(() => {
+        battleInterval.current = window.setInterval(() => {
             turn++;
 
             // Determine who attacks first based on speed
@@ -134,7 +202,7 @@ export default function BattlePage() {
     };
 
     // End battle
-    const endBattle = (winner: 'player' | 'enemy') => {
+    const endBattle = async (winner: 'player' | 'enemy') => {
         if (battleInterval.current) {
             clearInterval(battleInterval.current);
         }
@@ -147,7 +215,43 @@ export default function BattlePage() {
 
         if (winner === 'player') {
             addLog(`Victory! ${enemy?.name} has been defeated!`, 'victory');
-            // TODO: Update world map progress and award rewards
+
+            // Resolve on backend
+            if (combatId) {
+                try {
+                    addLog("Saving progress...", 'info');
+                    const result = await CombatAPI.resolve(combatId);
+                    if (result.reward) {
+                        addLog(`Rewards: ${result.reward.xpGained} XP`, 'victory'); // Corrected prop name
+                    }
+
+                    // Update local progress for immediate UI feedback if needed
+                    if (user && worldId && levelId) {
+                        const currentProgress = user.worldMapProgress?.[worldId]?.completedLevels || [];
+                        if (!currentProgress.includes(Number(levelId))) {
+                            const newCompleted = [...currentProgress, Number(levelId)];
+                            // We might want to patch this to backend if not automatically handled
+                            // Assuming UsersAPI.patch exists and works
+                            await UsersAPI.patch(user.uid, {
+                                // @ts-ignore - worldMapProgress is custom
+                                worldMapProgress: {
+                                    ...user.worldMapProgress,
+                                    [worldId]: {
+                                        realmId: worldId,
+                                        completedLevels: newCompleted,
+                                        totalLevels: 10 // assumption
+                                    }
+                                }
+                            });
+                        }
+                    }
+
+                } catch (err) {
+                    console.error("Failed to resolve combat:", err);
+                    addLog("Error saving results to server.", 'defeat');
+                }
+            }
+
         } else {
             addLog(`Defeat! ${player.name} has been defeated!`, 'defeat');
         }
@@ -165,21 +269,10 @@ export default function BattlePage() {
         }
     };
 
-    // Reset battle
+    // Reset battle (Retry)
     const resetBattle = () => {
-        if (battleInterval.current) {
-            clearInterval(battleInterval.current);
-        }
-
-        setBattleState({
-            playerHP: player.hp,
-            enemyHP: enemy?.hp || 100,
-            isActive: false,
-            isPaused: false,
-            winner: null,
-            logs: [],
-            turn: 0,
-        });
+        // Reload page to start fresh session
+        window.location.reload();
     };
 
     // Cleanup on unmount
@@ -191,17 +284,27 @@ export default function BattlePage() {
         };
     }, []);
 
-    // If no enemy, show error
-    if (!enemy) {
+    // Loading / Error States
+    if (loading) {
+        return (
+            <div className={`min-h-screen ${theme.bg} flex items-center justify-center`}>
+                <div className="text-center">
+                    <Swords size={64} className={`mx-auto mb-4 animate-pulse`} style={{ color: accentColor }} />
+                    <h2 className={`text-2xl font-bold ${theme.text}`}>Preparing Battle...</h2>
+                </div>
+            </div>
+        );
+    }
+
+    if (error || !enemy) {
         return (
             <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
                 <main className="p-8">
                     <div className={`${theme.card} rounded-2xl p-8 text-center`}>
                         <Swords size={64} className="mx-auto mb-4" style={{ color: accentColor }} />
-                        <h2 className={`text-2xl font-bold ${theme.text} mb-4`}>No Enemy Selected</h2>
-                        <p className={`${theme.textSubtle} mb-6`}>
-                            Please select an enemy from the World Map to start a battle.
-                        </p>
+                        <h2 className={`text-2xl font-bold ${theme.text} mb-4`}>
+                            {error || "No Enemy Loaded"}
+                        </h2>
                         <button
                             onClick={() => navigate('/dashboard/world-map')}
                             className="px-6 py-3 rounded-xl font-semibold transition-all"
@@ -210,7 +313,7 @@ export default function BattlePage() {
                                 color: 'white',
                             }}
                         >
-                            Go to World Map
+                            Back to World Map
                         </button>
                     </div>
                 </main>
@@ -231,7 +334,7 @@ export default function BattlePage() {
                         Battle Arena
                     </h2>
                     <p className={`${theme.textSubtle} mt-2`}>
-                        Fight monsters and earn rewards
+                        {worldId} - Level {levelId}
                     </p>
                 </div>
 
@@ -471,9 +574,7 @@ export default function BattlePage() {
                                     </div>
                                     <div className="mt-3 text-xs space-y-1">
                                         <p className={theme.textSubtle}>Damage: {enemy.attack}</p>
-                                        <p className={theme.textSubtle}>
-                                            Rewards: 💰 {enemy.level * 10} | ⭐ {enemy.level * 20}
-                                        </p>
+                                        {/* Rewards display could go here */}
                                     </div>
                                 </div>
                             )}
