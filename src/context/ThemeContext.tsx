@@ -18,7 +18,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
     const [accentColor, setAccentColor] = useState(() => {
         const saved = localStorage.getItem("habitHero_accentColor");
-        return saved || "#06b6d4"; // Default cyan
+        return saved || "#8b5cf6"; // Default violet-500
     });
 
     // Save to localStorage when values change
@@ -45,25 +45,48 @@ export function useTheme() {
     return context;
 }
 
-// Helper function to get theme classes
+// Helper function to get theme classes - Admin style with solid colors
 export function getThemeClasses(darkMode: boolean, accentColor: string) {
     return {
-        bg: darkMode ? 'bg-[#0a0a0f]' : 'bg-gray-100',
-        sidebar: darkMode ? 'bg-[#12121a]' : 'bg-white',
-        card: darkMode ? 'bg-[#12121a]' : 'bg-white',
-        cardGradient: darkMode ? 'from-[#1a1a2e] to-[#0f0f1a]' : 'from-blue-50 to-white',
-        text: darkMode ? 'text-white' : 'text-gray-800',
-        textMuted: darkMode ? 'text-gray-400' : 'text-gray-500',
-        textSubtle: darkMode ? 'text-gray-500' : 'text-gray-400',
-        borderStyle: { borderColor: `${accentColor}40` },
+        // Backgrounds
+        bg: darkMode ? 'bg-gray-900' : 'bg-violet-50',
+        sidebar: darkMode ? 'bg-gray-800' : 'bg-white',
+        card: darkMode ? 'bg-gray-800' : 'bg-white',
+        inputBg: darkMode ? 'bg-gray-700' : 'bg-white',
+
+        // Text
+        text: darkMode ? 'text-white' : 'text-slate-900',
+        textMuted: darkMode ? 'text-gray-400' : 'text-slate-600',
+        textSubtle: darkMode ? 'text-gray-500' : 'text-slate-500',
+
+        // Borders
+        border: darkMode ? 'border-gray-700' : 'border-violet-100',
+        borderHover: darkMode ? 'border-violet-600' : 'border-violet-300',
+
+        // Accent colors (inline styles)
         accentText: { color: accentColor },
         accentBg: { backgroundColor: accentColor },
-        glowStyle: { boxShadow: `0 0 20px ${accentColor}30` },
-        inputBg: darkMode ? 'bg-gray-800/30' : 'bg-gray-100',
-        gradientText: {
-            background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent'
-        },
+        accentLight: { backgroundColor: `${accentColor}20` },
+        accentBorder: { borderColor: `${accentColor}40` },
+
+        // Shadows
+        shadow: 'shadow-lg',
+        shadowXl: 'shadow-xl',
+
+        // Hover states
+        hoverAccent: darkMode ? 'hover:bg-gray-700' : 'hover:bg-violet-50',
+
+        // Backward compatibility (temporary - will be removed after full migration)
+        borderStyle: { borderColor: `${accentColor}40` },
+        gradientText: { color: accentColor }, // Simplified to solid color instead of gradient
+        glowStyle: { boxShadow: `0 0 20px ${accentColor}30` }, // Keep for now
     };
+}
+
+// Helper to generate accent color with opacity
+export function hexToRgba(hex: string, alpha: number): string {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }

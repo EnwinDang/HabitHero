@@ -1,6 +1,7 @@
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
+import { getCurrentLevelProgress, getXPForLevel, getXPToNextLevel, getLevelFromXP } from "@/utils/xpCurve";
 import {
   Sword,
   BarChart3,
@@ -38,13 +39,18 @@ export default function StatsPage() {
     return null;
   }
 
+
   // Real data from database only
-  const level = user.stats?.level || 1;
-  const xp = user.stats?.xp || 0;
+  const totalXP = user.stats?.xp || 0;
   const gold = user.stats?.gold || 0;
   const streak = user.stats?.streak || 0;
-  const maxXP = 1200;
-  const xpProgress = Math.round(((xp % maxXP) / maxXP) * 100);
+
+  // Calculate XP progress using exponential curve
+  const level = getLevelFromXP(totalXP);  // Auto-calculate level from XP
+  const levelProgress = getCurrentLevelProgress(totalXP, level);
+  const xp = levelProgress.current;
+  const maxXP = levelProgress.required;
+  const xpProgress = levelProgress.percentage;
 
   // Real task data from database
   const totalTasks = tasks.length;

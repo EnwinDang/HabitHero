@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
+import { getCurrentLevelProgress, getLevelFromXP } from "@/utils/xpCurve";
 import {
   ClipboardList,
   Gamepad2,
@@ -126,7 +127,7 @@ export default function ProfilePage() {
                       className="text-4xl font-bold"
                       style={theme.gradientText}
                     >
-                      Level {user.stats.level}
+                      Level {getLevelFromXP(user.stats.xp)}
                     </p>
                   </div>
 
@@ -140,7 +141,7 @@ export default function ProfilePage() {
                     </div>
                     <div className={`${theme.inputBg} rounded-lg p-2`}>
                       <p className="font-bold" style={theme.accentText}>
-                        {user.stats.xp}
+                        {getCurrentLevelProgress(user.stats.xp, getLevelFromXP(user.stats.xp)).current}
                       </p>
                       <p className={`${theme.textSubtle} text-xs`}>XP</p>
                     </div>

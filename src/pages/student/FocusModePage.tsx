@@ -1,6 +1,7 @@
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { usePomodoro } from "@/context/pomodoro";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
+import { getCurrentLevelProgress, getLevelFromXP } from "@/utils/xpCurve";
 import {
   Settings,
   Star,
@@ -166,10 +167,10 @@ export default function FocusModePage() {
                   <h3 className={`text-lg font-bold ${theme.text}`}>Your XP</h3>
                 </div>
                 <p className="text-3xl font-bold" style={{ color: accentColor }}>
-                  {user.stats.xp || 0} XP
+                  {getCurrentLevelProgress(user.stats.xp, getLevelFromXP(user.stats.xp)).current || 0} XP
                 </p>
                 <p className={`${theme.textMuted} text-sm`}>
-                  Level {user.stats.level || 1}
+                  Level {getLevelFromXP(user.stats.xp) || 1}
                 </p>
               </div>
             )}

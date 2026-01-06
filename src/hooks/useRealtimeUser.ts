@@ -33,6 +33,9 @@ export function useRealtimeUser() {
           setLoading(false);
           setError(null);
           console.log("👤 Realtime user updated:", userData.displayName);
+          console.log("📊 Full user data:", userData);
+          console.log("⭐ Stats object:", userData.stats);
+          console.log("💎 XP value:", userData.stats?.xp, "Type:", typeof userData.stats?.xp);
         }
       },
       (err) => {
