@@ -1543,7 +1543,7 @@ app.delete("/monsters/:id", requireAuth, async (req, res) => {
  */
 app.get("/lootboxes", async (req, res) => {
   try {
-    const lootboxesSnap = await db.collection("lootboxes").get();
+    const lootboxesSnap = await db.collection("lootboxes").where("enable", "==", true).get();
     const lootboxes = lootboxesSnap.docs.map((doc) => ({
       lootboxId: doc.id,
       ...doc.data(),
