@@ -1,126 +1,116 @@
-import React, { useEffect, useState } from 'react';
-import { Search, LayoutGrid, BookOpen, Users, Calendar, Loader2 } from 'lucide-react';
-import { CoursesAPI } from "../../api/courses.api";
-import { Course } from "../../models/course.model";
+import React, { useState, useEffect } from 'react';
+import { db } from '../../firebase';
+import { collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
+import { BookOpen, Users, User, X, GraduationCap, CheckCircle } from 'lucide-react';
 
-const CourseManagement: React.FC = () => {
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState<string>('');
-
-  const loadCourses = async (): Promise<void> => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await CoursesAPI.list(false);
-      setCourses(data || []);
-    } catch (error: any) {
-      const errorMsg = error?.message || "Failed to load courses";
-      console.error(error);
-      setError(errorMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
+const CourseManagement = () => {
+  const [courses, setCourses] = useState<any[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState<any>(null);
+  const [enrolledStudents, setEnrolledStudents] = useState<any[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    loadCourses();
+    const unsub = onSnapshot(collection(db, 'courses'), (snap) => {
+      setCourses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    return () => unsub();
   }, []);
 
-  const filteredCourses = courses.filter(
-    (c) =>
-      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.courseCode.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const fetchEnrolledStudents = async (course: any) => {
+    setSelectedCourse(course);
+    const q = query(collection(db, 'users'), where('role', '==', 'student'));
+    const snap = await getDocs(q);
+    
+    const list = snap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter((student: any) => student.enrolledCourses?.includes(course.id));
+    
+    setEnrolledStudents(list);
+    setIsModalOpen(true);
+  };
 
   return (
-    <div className="min-h-screen bg-violet-50 p-8 text-slate-900 font-sans">
+    <div className="p-8 bg-violet-50/40 min-h-screen font-sans">
       <div className="mb-10">
-        <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3 tracking-tight">
-          <LayoutGrid className="text-violet-500" size={32} />
-          Course Directory
-        </h1>
-        <p className="text-slate-500 font-medium mt-1">
-          Monitor all active EhB courses and student enrollments
-        </p>
+        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Course Management</h1>
+        <p className="text-slate-500 font-medium">Beheer cursussen</p>
       </div>
 
-      <div className="relative mb-10 group">
-        <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={22} />
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search by course name or code..."
-          className="w-full bg-white border border-violet-100 rounded-2xl py-4 pl-14 pr-6 text-slate-900 shadow-sm focus:ring-2 focus:ring-violet-400 outline-none transition-all"
-        />
-      </div>
-
-      {loading ? (
-        <div className="text-center py-20 text-violet-500 font-semibold italic">
-           <Loader2 className="animate-spin inline-block mr-2" size={20} /> Synchronizing Courses...
-        </div>
-      ) : error ? (
-        <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-8 text-center">
-          <p className="text-rose-700 font-semibold mb-4">⚠️ {error}</p>
-          <p className="text-rose-600 text-sm mb-6">Make sure you're logged in as an admin</p>
-          <button 
-            onClick={loadCourses}
-            className="px-6 py-3 bg-rose-500 text-white rounded-xl hover:bg-rose-600 transition-all font-semibold"
-          >
-            🔄 Retry Loading
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredCourses.map((course) => (
-            <div
-              key={course.courseId}
-              className="bg-white border border-violet-100 p-6 rounded-3xl group transition-all hover:border-violet-300 hover:shadow-md relative overflow-hidden"
-            >
-              <div className="flex justify-between items-start mb-4">
-                <span className={`text-[10px] font-semibold uppercase px-2.5 py-1 rounded-lg border ${
-                  course.isActive 
-                    ? 'text-emerald-600 bg-emerald-50 border-emerald-100' 
-                    : 'text-slate-400 bg-slate-50 border-slate-100'
-                }`}>
-                  {course.isActive ? 'Active' : 'Inactive'}
-                </span>
-              </div>
-              
-              <div className="flex items-center gap-4 mt-2 mb-6">
-                <div className="w-12 h-12 rounded-xl bg-violet-50 flex items-center justify-center font-bold text-violet-600 border border-violet-200 text-lg">
-                  {course.name[0]}
-                </div>
-                <div className="overflow-hidden">
-                  <h3 className="text-slate-900 font-semibold text-xl group-hover:text-violet-600 transition-colors truncate tracking-tight">
-                    {course.name}
-                  </h3>
-                  <p className="text-slate-500 text-xs flex items-center gap-1 mt-1 truncate font-medium">
-                    <BookOpen size={12} className="text-slate-400 shrink-0" /> {course.courseCode}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 flex gap-4">
-                 <p className="text-slate-400 text-[10px] flex items-center gap-1 font-semibold uppercase">
-                    <Users size={12} /> 
-                    {Object.keys((course as any).students || {}).length} Students
-                 </p>
-                 <p className="text-slate-400 text-[10px] flex items-center gap-1 font-semibold uppercase">
-                    <Calendar size={12} /> {course.startDate || 'No date'}
-                 </p>
-              </div>
-
-              <div className="flex items-center gap-2 mt-6 pt-4 border-t border-slate-200">
-                <div className="w-2 h-2 rounded-full bg-violet-400"></div>
-                <span className="text-[10px] font-semibold text-slate-500 uppercase">
-                  Managed by {(course as any).createdBy || 'Faculty Staff'}
-                </span>
-              </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {courses.map((course) => (
+          <div key={course.id} className="bg-white rounded-[2.5rem] p-8 border border-violet-100 shadow-sm relative overflow-hidden transition-all hover:shadow-md">
+            <div className={`absolute top-6 left-6 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${course.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'}`}>
+              {course.status || 'ACTIVE'}
             </div>
-          ))}
+
+            <div className="flex flex-col items-center mt-8 mb-6 text-center">
+              <div className="w-16 h-16 bg-violet-50 rounded-2xl flex items-center justify-center text-violet-600 font-black text-2xl mb-4">
+                {course.name?.charAt(0).toUpperCase()}
+              </div>
+              <h2 className="text-xl font-black text-slate-900">{course.name}</h2>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1 flex items-center gap-1">
+                <BookOpen size={12} /> {course.code || 'ID-TBA'}
+              </p>
+            </div>
+
+            <div className="space-y-4 border-t border-slate-50 pt-6">
+              {/* Leerkracht informatie */}
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center text-slate-400">
+                  <User size={14} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Creator</p>
+                  <p className="text-sm font-bold text-slate-700">{course.createdBy || 'Faculty Staff'}</p>
+                </div>
+              </div>
+
+              {/* Studentenoverzicht knop */}
+              <button 
+                onClick={() => fetchEnrolledStudents(course)}
+                className="w-full group flex items-center justify-between p-4 bg-slate-50 rounded-2xl hover:bg-violet-50 transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <Users size={18} className="text-violet-500" />
+                  <span className="text-sm font-bold text-slate-600 group-hover:text-violet-700">Enrolled Students</span>
+                </div>
+                <span className="text-xs font-black text-violet-400">{course.studentCount || 0}</span>
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Modal voor Studentenlijst */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] p-10 max-w-lg w-full shadow-2xl animate-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3">
+                <GraduationCap className="text-violet-500" /> Students in {selectedCourse?.name}
+              </h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={24} /></button>
+            </div>
+            
+            <div className="max-h-96 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+              {enrolledStudents.length > 0 ? enrolledStudents.map((s) => (
+                <div key={s.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center text-violet-600 font-bold text-xs">
+                      {s.displayName?.substring(0,2).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">{s.displayName}</p>
+                      <p className="text-[10px] font-medium text-slate-400">{s.email}</p>
+                    </div>
+                  </div>
+                  <CheckCircle size={16} className="text-emerald-500" />
+                </div>
+              )) : (
+                <p className="text-center py-10 text-slate-400 font-medium">Nog geen studenten ingeschreven voor dit vak.</p>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
