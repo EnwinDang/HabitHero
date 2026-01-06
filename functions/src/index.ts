@@ -23,6 +23,54 @@ app.options("*", cors());
 app.use(express.json());
 
 /**
+ * Calculate current level from total XP using Firestore level definitions
+ */
+async function calculateLevelFromXP(totalXP: number): Promise<{
+  level: number;
+  currentXP: number;
+  nextLevelXP: number;
+  rewards?: any;
+}> {
+  try {
+    const levelsSnap = await db.collection("levels").doc("definitions").get();
+    if (!levelsSnap.exists) {
+      console.error("Level definitions not found in Firestore");
+      return { level: 1, currentXP: 0, nextLevelXP: 100 };
+    }
+
+    const levelsData = levelsSnap.data() || {};
+    const levels = levelsData.levels || [];
+
+    let currentLevel = 1;
+    let currentXP = totalXP;
+    let nextLevelXP = 100;
+    let rewards = undefined;
+
+    // Find current level
+    for (let i = 0; i < levels.length; i++) {
+      const levelDef = levels[i];
+      if (totalXP >= levelDef.xpRequiredTotal) {
+        currentLevel = levelDef.level;
+        currentXP = totalXP - levelDef.xpRequiredTotal;
+        
+        // Get next level XP if exists
+        if (i + 1 < levels.length) {
+          nextLevelXP = levels[i + 1].xpRequiredTotal - levelDef.xpRequiredTotal;
+          rewards = levels[i + 1].rewards;
+        }
+      } else {
+        break;
+      }
+    }
+
+    return { level: currentLevel, currentXP, nextLevelXP, rewards };
+  } catch (error) {
+    console.error("Error calculating level from XP:", error);
+    return { level: 1, currentXP: 0, nextLevelXP: 100 };
+  }
+}
+
+/**
  * Auth middleware
  */
 async function requireAuth(
@@ -60,6 +108,10 @@ app.get("/auth/me", requireAuth, async (req, res) => {
     const snap = await userRef.get();
 
     if (!snap.exists) {
+      // Get defaultPlayer template from Firestore
+      const templateSnap = await db.collection("templates").doc("defaultPlayer").get();
+      const defaultPlayer = templateSnap.data()?.player || {};
+
       const newUser = {
         uid,
         email: decoded.email,
@@ -70,44 +122,7 @@ app.get("/auth/me", requireAuth, async (req, res) => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
         lastLoginAt: Date.now(),
-        stats: {
-          // XP & Level
-          level: 1,
-          xp: 0,
-          nextLevelXP: 100,
-          totalXP: 0,
-          // Currency
-          gold: 100,
-          gems: 0,
-          // Combat stats
-          attack: 10,
-          defense: 5,
-          health: 100,
-          maxHealth: 100,
-          magicAttack: 0,
-          magicDefense: 0,
-          critChance: 0.05,
-          critDamage: 1.5,
-          // Streaks
-          streak: 0,
-          maxStreak: 0,
-        },
-        progression: {
-          currentWorldId: "world_1",
-          currentStage: 1,
-          bossesDefeated: 0,
-          monstersDefeated: 0,
-        },
-        lootboxes: {
-          basic: 0,
-          advanced: 0,
-          epic: 0,
-          legendary: 0,
-        },
-        streaks: {
-          daily: { current: 0, best: 0 },
-          pomodoro: { current: 0, best: 0 },
-        },
+        ...defaultPlayer,
         settings: {
           notificationsEnabled: true,
           theme: "dark",
@@ -289,13 +304,28 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
     const user = userSnap.data() || {};
     const task = taskSnap.data() || {};
 
-    const newXP = (user.stats?.xp || 0) + (task.xp || 0);
-    const newGold = (user.stats?.gold || 0) + (task.gold || 0);
+    const oldLevel = user.stats?.level || 1;
+    const newTotalXP = (user.stats?.totalXP || 0) + (task.xp || 0);
+    let newGold = (user.stats?.gold || 0) + (task.gold || 0);
+
+    // Calculate new level from total XP
+    const levelData = await calculateLevelFromXP(newTotalXP);
+    const leveledUp = levelData.level > oldLevel;
+
+    // Add level-up rewards if leveled up
+    let levelUpRewards = undefined;
+    if (leveledUp && levelData.rewards) {
+      newGold += levelData.rewards.gold || 0;
+      levelUpRewards = levelData.rewards;
+    }
 
     const statsUpdate = {
-      "stats.xp": newXP,
+      "stats.level": levelData.level,
+      "stats.xp": levelData.currentXP,
+      "stats.nextLevelXP": levelData.nextLevelXP,
+      "stats.totalXP": newTotalXP,
       "stats.gold": newGold,
-      "stats.totalXP": (user.stats?.totalXP || 0) + (task.xp || 0),
+      updatedAt: Date.now(),
     };
 
     await userRef.update(statsUpdate);
@@ -310,6 +340,11 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
         xp: task.xp,
         gold: task.gold,
       },
+      leveledUp,
+      newLevel: levelData.level,
+      currentXP: levelData.currentXP,
+      nextLevelXP: levelData.nextLevelXP,
+      levelUpRewards,
     });
   } catch (e: any) {
     console.error("Error in POST /tasks/:taskId/complete:", e);
@@ -477,6 +512,140 @@ app.get("/world-config", async (req, res) => {
     return res.status(200).json(configs);
   } catch (e: any) {
     console.error("Error in GET /world-config:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /templates/:templateId
+ * Get template data
+ */
+app.get("/templates/:templateId", async (req, res) => {
+  try {
+    const { templateId } = req.params;
+    const templateSnap = await db.collection("templates").doc(templateId).get();
+    
+    if (!templateSnap.exists) {
+      return res.status(404).json({ error: "Template not found" });
+    }
+
+    return res.status(200).json(templateSnap.data());
+  } catch (e: any) {
+    console.error("Error in GET /templates/:templateId:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /game-rules
+ * Get all game rules (combat, elements, scaling, etc)
+ */
+app.get("/game-rules", async (req, res) => {
+  try {
+    const rulesSnap = await db.collection("gameRules").doc("main").get();
+    
+    if (!rulesSnap.exists) {
+      return res.status(404).json({ error: "Game rules not found" });
+    }
+
+    return res.status(200).json(rulesSnap.data());
+  } catch (e: any) {
+    console.error("Error in GET /game-rules:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /game-rules/combat
+ * Get combat-specific rules
+ */
+app.get("/game-rules/combat", async (req, res) => {
+  try {
+    const rulesSnap = await db.collection("gameRules").doc("main").get();
+    
+    if (!rulesSnap.exists) {
+      return res.status(404).json({ error: "Game rules not found" });
+    }
+
+    const rules = rulesSnap.data() || {};
+    
+    return res.status(200).json({
+      combatRules: rules.combatRules || {},
+      caps: rules.caps || {},
+      difficultyMultipliers: rules.difficultyMultipliers || {},
+    });
+  } catch (e: any) {
+    console.error("Error in GET /game-rules/combat:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /game-rules/elements
+ * Get element effectiveness matrix and properties
+ */
+app.get("/game-rules/elements", async (req, res) => {
+  try {
+    const rulesSnap = await db.collection("gameRules").doc("main").get();
+    
+    if (!rulesSnap.exists) {
+      return res.status(404).json({ error: "Game rules not found" });
+    }
+
+    const rules = rulesSnap.data() || {};
+    
+    return res.status(200).json(rules.elements || {});
+  } catch (e: any) {
+    console.error("Error in GET /game-rules/elements:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /levels/definitions
+ * Get all level definitions with XP requirements and rewards
+ */
+app.get("/levels/definitions", async (req, res) => {
+  try {
+    const levelsSnap = await db.collection("levels").doc("definitions").get();
+    
+    if (!levelsSnap.exists) {
+      return res.status(404).json({ error: "Level definitions not found" });
+    }
+
+    return res.status(200).json(levelsSnap.data());
+  } catch (e: any) {
+    console.error("Error in GET /levels/definitions:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /levels/:level
+ * Get specific level definition
+ */
+app.get("/levels/:level", async (req, res) => {
+  try {
+    const { level } = req.params;
+    const levelNum = parseInt(level);
+    
+    const levelsSnap = await db.collection("levels").doc("definitions").get();
+    
+    if (!levelsSnap.exists) {
+      return res.status(404).json({ error: "Level definitions not found" });
+    }
+
+    const levelsData = levelsSnap.data() || {};
+    const levels = levelsData.levels || [];
+    const levelDef = levels.find((l: any) => l.level === levelNum);
+
+    if (!levelDef) {
+      return res.status(404).json({ error: `Level ${levelNum} not found` });
+    }
+
+    return res.status(200).json(levelDef);
+  } catch (e: any) {
+    console.error("Error in GET /levels/:level:", e);
     return res.status(500).json({ error: e?.message });
   }
 });
@@ -1277,6 +1446,53 @@ app.post("/combat/results", requireAuth, async (req, res) => {
       achievementTriggers,
     } = req.body;
 
+    // Update user stats if victory
+    let leveledUp = false;
+    let newLevel = 1;
+    let levelUpRewards = undefined;
+    let updatedProgressUpdate = { ...progressUpdate };
+
+    if (battle.result === "win") {
+      const userRef = db.collection("users").doc(uid);
+      const userSnap = await userRef.get();
+      const user = userSnap.data() || {};
+
+      const oldLevel = user.stats?.level || 1;
+      const newTotalXP = (user.stats?.totalXP || 0) + (rewards?.xpGained || 0);
+      let newGold = (user.stats?.gold || 0) + (rewards?.goldGained || 0);
+
+      // Calculate new level from total XP
+      const levelData = await calculateLevelFromXP(newTotalXP);
+      leveledUp = levelData.level > oldLevel;
+      newLevel = levelData.level;
+
+      // Add level-up rewards if leveled up
+      if (leveledUp && levelData.rewards) {
+        newGold += levelData.rewards.gold || 0;
+        levelUpRewards = levelData.rewards;
+      }
+
+      // Update user stats with level data
+      await userRef.update({
+        "stats.level": levelData.level,
+        "stats.xp": levelData.currentXP,
+        "stats.nextLevelXP": levelData.nextLevelXP,
+        "stats.totalXP": newTotalXP,
+        "stats.gold": newGold,
+        updatedAt: Date.now(),
+      });
+
+      // Update progress update with level-up info
+      updatedProgressUpdate = {
+        ...progressUpdate,
+        totalXPAfter: newTotalXP,
+        totalGoldAfter: newGold,
+        leveledUp,
+        newLevel: levelData.level,
+        levelUpRewards,
+      };
+    }
+
     // Create combat result document
     const resultRef = db.collection("combat_results").doc();
     const combatResult = {
@@ -1303,12 +1519,7 @@ app.post("/combat/results", requireAuth, async (req, res) => {
           items: rewards?.loot?.items || [],
         },
       },
-      progressUpdate: {
-        totalXPAfter: progressUpdate?.totalXPAfter || 0,
-        totalGoldAfter: progressUpdate?.totalGoldAfter || 0,
-        stageUnlocked: progressUpdate?.stageUnlocked || null,
-        worldUnlocked: progressUpdate?.worldUnlocked || false,
-      },
+      progressUpdate: updatedProgressUpdate,
       achievementTriggers: {
         monstersDefeated: achievementTriggers?.monstersDefeated || 0,
         tasksCompleted: achievementTriggers?.tasksCompleted || 0,
@@ -1317,19 +1528,6 @@ app.post("/combat/results", requireAuth, async (req, res) => {
     };
 
     await resultRef.set(combatResult);
-
-    // Update user stats if victory
-    if (battle.result === "win") {
-      const userRef = db.collection("users").doc(uid);
-      const userSnap = await userRef.get();
-      const user = userSnap.data() || {};
-
-      await userRef.update({
-        "stats.xp": (user.stats?.xp || 0) + (rewards?.xpGained || 0),
-        "stats.gold": (user.stats?.gold || 0) + (rewards?.goldGained || 0),
-        "stats.totalXP": (user.stats?.totalXP || 0) + (rewards?.xpGained || 0),
-      });
-    }
 
     return res.status(201).json({
       resultId: resultRef.id,
@@ -1520,14 +1718,14 @@ app.patch("/worlds/:worldId", requireAuth, async (req, res) => {
 /**
  * DELETE /worlds/:worldId
  */
-app.delete("/worlds/:id", requireAuth, async (req, res) => {
+app.delete("/worlds/:worldId", requireAuth, async (req, res) => {
   try {
-    const { id } = req.params;
+    const { worldId } = req.params;
     
-    await db.collection("worlds").doc(id).delete();
+    await db.collection("worlds").doc(worldId).delete();
 
     return res.status(200).json({ 
-      message: `World ${id} has been destroyed` 
+      message: `World ${worldId} has been destroyed` 
     });
   } catch (e: any) {
     console.error("Error in DELETE /worlds:", e);
@@ -1830,14 +2028,14 @@ app.patch("/monsters/:monsterId", requireAuth, async (req, res) => {
 /**
  * DELETE /monsters/:monsterId
  */
-app.delete("/monsters/:id", requireAuth, async (req, res) => {
+app.delete("/monsters/:monsterId", requireAuth, async (req, res) => {
   try {
-    const { id } = req.params;
+    const { monsterId } = req.params;
     
-    await db.collection("monsters").doc(id).delete();
+    await db.collection("monsters").doc(monsterId).delete();
 
     return res.status(200).json({ 
-      message: `Entity ${id} successfully banished from the bestiary` 
+      message: `Entity ${monsterId} successfully banished from the bestiary` 
     });
   } catch (e: any) {
     console.error("Error in DELETE /monsters:", e);

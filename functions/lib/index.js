@@ -55,6 +55,45 @@ app.use((0, cors_1.default)({
 app.options("*", (0, cors_1.default)());
 app.use(express_1.default.json());
 /**
+ * Calculate current level from total XP using Firestore level definitions
+ */
+async function calculateLevelFromXP(totalXP) {
+    try {
+        const levelsSnap = await db.collection("levels").doc("definitions").get();
+        if (!levelsSnap.exists) {
+            console.error("Level definitions not found in Firestore");
+            return { level: 1, currentXP: 0, nextLevelXP: 100 };
+        }
+        const levelsData = levelsSnap.data() || {};
+        const levels = levelsData.levels || [];
+        let currentLevel = 1;
+        let currentXP = totalXP;
+        let nextLevelXP = 100;
+        let rewards = undefined;
+        // Find current level
+        for (let i = 0; i < levels.length; i++) {
+            const levelDef = levels[i];
+            if (totalXP >= levelDef.xpRequiredTotal) {
+                currentLevel = levelDef.level;
+                currentXP = totalXP - levelDef.xpRequiredTotal;
+                // Get next level XP if exists
+                if (i + 1 < levels.length) {
+                    nextLevelXP = levels[i + 1].xpRequiredTotal - levelDef.xpRequiredTotal;
+                    rewards = levels[i + 1].rewards;
+                }
+            }
+            else {
+                break;
+            }
+        }
+        return { level: currentLevel, currentXP, nextLevelXP, rewards };
+    }
+    catch (error) {
+        console.error("Error calculating level from XP:", error);
+        return { level: 1, currentXP: 0, nextLevelXP: 100 };
+    }
+}
+/**
  * Auth middleware
  */
 async function requireAuth(req, res, next) {
@@ -83,6 +122,9 @@ app.get("/auth/me", requireAuth, async (req, res) => {
         const userRef = db.collection("users").doc(uid);
         const snap = await userRef.get();
         if (!snap.exists) {
+            // Get defaultPlayer template from Firestore
+            const templateSnap = await db.collection("templates").doc("defaultPlayer").get();
+            const defaultPlayer = templateSnap.data()?.player || {};
             const newUser = {
                 uid,
                 email: decoded.email,
@@ -93,16 +135,7 @@ app.get("/auth/me", requireAuth, async (req, res) => {
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
                 lastLoginAt: Date.now(),
-                stats: {
-                    level: 1,
-                    xp: 0,
-                    nextLevelXP: 100,
-                    totalXP: 0,
-                    gold: 0,
-                    gems: 0,
-                    streak: 0,
-                    maxStreak: 0,
-                },
+                ...defaultPlayer,
                 settings: {
                     notificationsEnabled: true,
                     theme: "dark",
@@ -262,12 +295,25 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
         }
         const user = userSnap.data() || {};
         const task = taskSnap.data() || {};
-        const newXP = (user.stats?.xp || 0) + (task.xp || 0);
-        const newGold = (user.stats?.gold || 0) + (task.gold || 0);
+        const oldLevel = user.stats?.level || 1;
+        const newTotalXP = (user.stats?.totalXP || 0) + (task.xp || 0);
+        let newGold = (user.stats?.gold || 0) + (task.gold || 0);
+        // Calculate new level from total XP
+        const levelData = await calculateLevelFromXP(newTotalXP);
+        const leveledUp = levelData.level > oldLevel;
+        // Add level-up rewards if leveled up
+        let levelUpRewards = undefined;
+        if (leveledUp && levelData.rewards) {
+            newGold += levelData.rewards.gold || 0;
+            levelUpRewards = levelData.rewards;
+        }
         const statsUpdate = {
-            "stats.xp": newXP,
+            "stats.level": levelData.level,
+            "stats.xp": levelData.currentXP,
+            "stats.nextLevelXP": levelData.nextLevelXP,
+            "stats.totalXP": newTotalXP,
             "stats.gold": newGold,
-            "stats.totalXP": (user.stats?.totalXP || 0) + (task.xp || 0),
+            updatedAt: Date.now(),
         };
         await userRef.update(statsUpdate);
         await taskRef.update({
@@ -280,6 +326,11 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
                 xp: task.xp,
                 gold: task.gold,
             },
+            leveledUp,
+            newLevel: levelData.level,
+            currentXP: levelData.currentXP,
+            nextLevelXP: levelData.nextLevelXP,
+            levelUpRewards,
         });
     }
     catch (e) {
@@ -392,6 +443,160 @@ app.patch("/users/:uid/inventory", requireAuth, async (req, res) => {
     }
     catch (e) {
         console.error("Error in PATCH /users/:uid/inventory:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+// ============ GAME CONFIG & RULES ============
+/**
+ * GET /game-config
+ * Get game configuration (economy, stamina, leaderboards, etc)
+ */
+app.get("/game-config", async (req, res) => {
+    try {
+        const configSnap = await db.collection("gameConfig").get();
+        const configs = {};
+        configSnap.docs.forEach((doc) => {
+            configs[doc.id] = doc.data();
+        });
+        return res.status(200).json(configs);
+    }
+    catch (e) {
+        console.error("Error in GET /game-config:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /world-config
+ * Get world configuration (monster scaling, player scaling, stage structure, etc)
+ */
+app.get("/world-config", async (req, res) => {
+    try {
+        const configSnap = await db.collection("worldConfig").get();
+        const configs = {};
+        configSnap.docs.forEach((doc) => {
+            configs[doc.id] = doc.data();
+        });
+        return res.status(200).json(configs);
+    }
+    catch (e) {
+        console.error("Error in GET /world-config:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /templates/:templateId
+ * Get template data
+ */
+app.get("/templates/:templateId", async (req, res) => {
+    try {
+        const { templateId } = req.params;
+        const templateSnap = await db.collection("templates").doc(templateId).get();
+        if (!templateSnap.exists) {
+            return res.status(404).json({ error: "Template not found" });
+        }
+        return res.status(200).json(templateSnap.data());
+    }
+    catch (e) {
+        console.error("Error in GET /templates/:templateId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /game-rules
+ * Get all game rules (combat, elements, scaling, etc)
+ */
+app.get("/game-rules", async (req, res) => {
+    try {
+        const rulesSnap = await db.collection("gameRules").doc("main").get();
+        if (!rulesSnap.exists) {
+            return res.status(404).json({ error: "Game rules not found" });
+        }
+        return res.status(200).json(rulesSnap.data());
+    }
+    catch (e) {
+        console.error("Error in GET /game-rules:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /game-rules/combat
+ * Get combat-specific rules
+ */
+app.get("/game-rules/combat", async (req, res) => {
+    try {
+        const rulesSnap = await db.collection("gameRules").doc("main").get();
+        if (!rulesSnap.exists) {
+            return res.status(404).json({ error: "Game rules not found" });
+        }
+        const rules = rulesSnap.data() || {};
+        return res.status(200).json({
+            combatRules: rules.combatRules || {},
+            caps: rules.caps || {},
+            difficultyMultipliers: rules.difficultyMultipliers || {},
+        });
+    }
+    catch (e) {
+        console.error("Error in GET /game-rules/combat:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /game-rules/elements
+ * Get element effectiveness matrix and properties
+ */
+app.get("/game-rules/elements", async (req, res) => {
+    try {
+        const rulesSnap = await db.collection("gameRules").doc("main").get();
+        if (!rulesSnap.exists) {
+            return res.status(404).json({ error: "Game rules not found" });
+        }
+        const rules = rulesSnap.data() || {};
+        return res.status(200).json(rules.elements || {});
+    }
+    catch (e) {
+        console.error("Error in GET /game-rules/elements:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /levels/definitions
+ * Get all level definitions with XP requirements and rewards
+ */
+app.get("/levels/definitions", async (req, res) => {
+    try {
+        const levelsSnap = await db.collection("levels").doc("definitions").get();
+        if (!levelsSnap.exists) {
+            return res.status(404).json({ error: "Level definitions not found" });
+        }
+        return res.status(200).json(levelsSnap.data());
+    }
+    catch (e) {
+        console.error("Error in GET /levels/definitions:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /levels/:level
+ * Get specific level definition
+ */
+app.get("/levels/:level", async (req, res) => {
+    try {
+        const { level } = req.params;
+        const levelNum = parseInt(level);
+        const levelsSnap = await db.collection("levels").doc("definitions").get();
+        if (!levelsSnap.exists) {
+            return res.status(404).json({ error: "Level definitions not found" });
+        }
+        const levelsData = levelsSnap.data() || {};
+        const levels = levelsData.levels || [];
+        const levelDef = levels.find((l) => l.level === levelNum);
+        if (!levelDef) {
+            return res.status(404).json({ error: `Level ${levelNum} not found` });
+        }
+        return res.status(200).json(levelDef);
+    }
+    catch (e) {
+        console.error("Error in GET /levels/:level:", e);
         return res.status(500).json({ error: e?.message });
     }
 });
@@ -920,6 +1125,112 @@ app.delete("/modules/:moduleId", requireAuth, async (req, res) => {
 });
 // ============ COMBAT ============
 /**
+ * GET /combat/player-stats/:level
+ * Calculate player stats based on level from worldConfig
+ */
+app.get("/combat/player-stats/:level", requireAuth, async (req, res) => {
+    try {
+        const { level } = req.params;
+        const playerLevel = parseInt(level);
+        // Get worldConfig
+        const configSnap = await db.collection("worldConfig").doc("playerScaling").get();
+        if (!configSnap.exists) {
+            return res.status(404).json({ error: "Player scaling config not found" });
+        }
+        const config = configSnap.data() || {};
+        const baseStats = config.baseStats || {};
+        const perLevel = config.perLevel || {};
+        // Calculate stats: baseStats + (perLevel × (level - 1))
+        const playerStats = {
+            level: playerLevel,
+            attack: Math.round(baseStats.attack + (perLevel.attack * (playerLevel - 1))),
+            defense: Math.round(baseStats.defense + (perLevel.defense * (playerLevel - 1))),
+            health: Math.round(baseStats.health + (perLevel.health * (playerLevel - 1))),
+            magic: Math.round(baseStats.magic + (perLevel.magic * (playerLevel - 1))),
+            magicResist: Math.round(baseStats.magicResist + (perLevel.magicResist * (playerLevel - 1))),
+        };
+        return res.status(200).json(playerStats);
+    }
+    catch (e) {
+        console.error("Error in GET /combat/player-stats:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /combat/stage-multipliers/:stageType
+ * Get enemy and reward multipliers for a stage type
+ */
+app.get("/combat/stage-multipliers/:stageType", async (req, res) => {
+    try {
+        const { stageType } = req.params;
+        // Get worldConfig
+        const configSnap = await db.collection("worldConfig").doc("stageTypes").get();
+        if (!configSnap.exists) {
+            return res.status(404).json({ error: "Stage types config not found" });
+        }
+        const config = configSnap.data() || {};
+        const typeConfig = config[stageType];
+        if (!typeConfig) {
+            return res.status(404).json({ error: `Stage type '${stageType}' not found` });
+        }
+        return res.status(200).json({
+            stageType,
+            enemy: {
+                damageMultiplier: typeConfig.enemy?.damageMultiplier || 1,
+                hpMultiplier: typeConfig.enemy?.hpMultiplier || 1,
+            },
+            rewards: {
+                goldMultiplier: typeConfig.rewards?.goldMultiplier || 1,
+                xpMultiplier: typeConfig.rewards?.xpMultiplier || 1,
+            },
+        });
+    }
+    catch (e) {
+        console.error("Error in GET /combat/stage-multipliers:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /combat/stage-type/:stage
+ * Determine stage type based on stageStructure config
+ */
+app.get("/combat/stage-type/:stage", async (req, res) => {
+    try {
+        const { stage } = req.params;
+        const stageNum = parseInt(stage);
+        // Get worldConfig
+        const configSnap = await db.collection("worldConfig").doc("stageStructure").get();
+        if (!configSnap.exists) {
+            return res.status(404).json({ error: "Stage structure config not found" });
+        }
+        const config = configSnap.data() || {};
+        const bossStage = config.bossStage || 10;
+        const miniBossStage = config.miniBossStage || 5;
+        const eliteStages = config.eliteStages || [];
+        let stageType = "normal";
+        if (stageNum === bossStage) {
+            stageType = "boss";
+        }
+        else if (stageNum === miniBossStage) {
+            stageType = "miniBoss";
+        }
+        else if (eliteStages.includes(stageNum)) {
+            stageType = "elite";
+        }
+        return res.status(200).json({
+            stage: stageNum,
+            type: stageType,
+            bossStage,
+            miniBossStage,
+            eliteStages,
+        });
+    }
+    catch (e) {
+        console.error("Error in GET /combat/stage-type:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
  * POST /combat/start
  */
 app.post("/combat/start", requireAuth, async (req, res) => {
@@ -962,6 +1273,135 @@ app.get("/combat/:combatId", requireAuth, async (req, res) => {
     }
     catch (e) {
         console.error("Error in GET /combat/:combatId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /combat/monster-stats/:worldId/:stage
+ * Calculate monster stats based on worldConfig
+ */
+app.get("/combat/monster-stats/:worldId/:stage", async (req, res) => {
+    try {
+        const { worldId, stage } = req.params;
+        const stageNum = parseInt(stage);
+        // Get worldConfig
+        const configSnap = await db.collection("worldConfig").doc("monsterScaling").get();
+        if (!configSnap.exists) {
+            return res.status(404).json({ error: "Monster scaling config not found" });
+        }
+        const config = configSnap.data() || {};
+        const baseStats = config.basePerWorld?.[worldId];
+        const multipliers = config.perStageMultiplier || [];
+        if (!baseStats) {
+            return res.status(404).json({ error: `No base stats found for ${worldId}` });
+        }
+        // Get stage multiplier (array is 0-indexed, stage 1 = index 1)
+        const stageMultiplier = multipliers[stageNum] || 1;
+        const monsterStats = {
+            worldId,
+            stage: stageNum,
+            baseAttack: baseStats.attack,
+            baseHp: baseStats.hp,
+            multiplier: stageMultiplier,
+            attack: Math.round(baseStats.attack * stageMultiplier),
+            hp: Math.round(baseStats.hp * stageMultiplier),
+        };
+        return res.status(200).json(monsterStats);
+    }
+    catch (e) {
+        console.error("Error in GET /combat/monster-stats:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * POST /combat/results
+ * Save combat results with full battle data, rewards, and achievement triggers
+ */
+app.post("/combat/results", requireAuth, async (req, res) => {
+    try {
+        const uid = req.user.uid;
+        const { battle, context, rewards, progressUpdate, achievementTriggers, } = req.body;
+        // Update user stats if victory
+        let leveledUp = false;
+        let newLevel = 1;
+        let levelUpRewards = undefined;
+        let updatedProgressUpdate = { ...progressUpdate };
+        if (battle.result === "win") {
+            const userRef = db.collection("users").doc(uid);
+            const userSnap = await userRef.get();
+            const user = userSnap.data() || {};
+            const oldLevel = user.stats?.level || 1;
+            const newTotalXP = (user.stats?.totalXP || 0) + (rewards?.xpGained || 0);
+            let newGold = (user.stats?.gold || 0) + (rewards?.goldGained || 0);
+            // Calculate new level from total XP
+            const levelData = await calculateLevelFromXP(newTotalXP);
+            leveledUp = levelData.level > oldLevel;
+            newLevel = levelData.level;
+            // Add level-up rewards if leveled up
+            if (leveledUp && levelData.rewards) {
+                newGold += levelData.rewards.gold || 0;
+                levelUpRewards = levelData.rewards;
+            }
+            // Update user stats with level data
+            await userRef.update({
+                "stats.level": levelData.level,
+                "stats.xp": levelData.currentXP,
+                "stats.nextLevelXP": levelData.nextLevelXP,
+                "stats.totalXP": newTotalXP,
+                "stats.gold": newGold,
+                updatedAt: Date.now(),
+            });
+            // Update progress update with level-up info
+            updatedProgressUpdate = {
+                ...progressUpdate,
+                totalXPAfter: newTotalXP,
+                totalGoldAfter: newGold,
+                leveledUp,
+                newLevel: levelData.level,
+                levelUpRewards,
+            };
+        }
+        // Create combat result document
+        const resultRef = db.collection("combat_results").doc();
+        const combatResult = {
+            userId: uid,
+            timestamp: new Date().toISOString(),
+            battle: {
+                worldId: battle.worldId,
+                stage: battle.stage,
+                monsterId: battle.monsterId,
+                monsterType: battle.monsterType || "normal",
+                result: battle.result, // "win" or "loss"
+                turns: battle.turns || 0,
+            },
+            context: {
+                source: context?.source || "combat",
+                courseId: context?.courseId || null,
+                moduleId: context?.moduleId || null,
+                taskId: context?.taskId || null,
+            },
+            rewards: {
+                xpGained: rewards?.xpGained || 0,
+                goldGained: rewards?.goldGained || 0,
+                loot: {
+                    items: rewards?.loot?.items || [],
+                },
+            },
+            progressUpdate: updatedProgressUpdate,
+            achievementTriggers: {
+                monstersDefeated: achievementTriggers?.monstersDefeated || 0,
+                tasksCompleted: achievementTriggers?.tasksCompleted || 0,
+                moduleProgress: achievementTriggers?.moduleProgress || {},
+            },
+        };
+        await resultRef.set(combatResult);
+        return res.status(201).json({
+            resultId: resultRef.id,
+            ...combatResult,
+        });
+    }
+    catch (e) {
+        console.error("Error in POST /combat/results:", e);
         return res.status(500).json({ error: e?.message });
     }
 });
@@ -1125,12 +1565,12 @@ app.patch("/worlds/:worldId", requireAuth, async (req, res) => {
 /**
  * DELETE /worlds/:worldId
  */
-app.delete("/worlds/:id", requireAuth, async (req, res) => {
+app.delete("/worlds/:worldId", requireAuth, async (req, res) => {
     try {
-        const { id } = req.params;
-        await db.collection("worlds").doc(id).delete();
+        const { worldId } = req.params;
+        await db.collection("worlds").doc(worldId).delete();
         return res.status(200).json({
-            message: `World ${id} has been destroyed`
+            message: `World ${worldId} has been destroyed`
         });
     }
     catch (e) {
@@ -1410,12 +1850,12 @@ app.patch("/monsters/:monsterId", requireAuth, async (req, res) => {
 /**
  * DELETE /monsters/:monsterId
  */
-app.delete("/monsters/:id", requireAuth, async (req, res) => {
+app.delete("/monsters/:monsterId", requireAuth, async (req, res) => {
     try {
-        const { id } = req.params;
-        await db.collection("monsters").doc(id).delete();
+        const { monsterId } = req.params;
+        await db.collection("monsters").doc(monsterId).delete();
         return res.status(200).json({
-            message: `Entity ${id} successfully banished from the bestiary`
+            message: `Entity ${monsterId} successfully banished from the bestiary`
         });
     }
     catch (e) {
@@ -1429,7 +1869,7 @@ app.delete("/monsters/:id", requireAuth, async (req, res) => {
  */
 app.get("/lootboxes", async (req, res) => {
     try {
-        const lootboxesSnap = await db.collection("lootboxes").get();
+        const lootboxesSnap = await db.collection("lootboxes").where("enable", "==", true).get();
         const lootboxes = lootboxesSnap.docs.map((doc) => ({
             lootboxId: doc.id,
             ...doc.data(),
