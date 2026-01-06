@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { UsersAPI } from "@/api/users.api";
+import { db } from "@/firebase";
+import { doc, updateDoc, increment } from "firebase/firestore";
 import {
   clampInt,
   DEFAULTS,
@@ -161,14 +163,26 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
             const newSessionCount = sessionsCompleted + 1;
             console.log(`🎯 Focus session completed! New count: ${newSessionCount}`);
 
+            // Update Firestore with the new session count
+            const userRef = doc(db, "users", authUser.uid);
+            updateDoc(userRef, {
+              "stats.focusSessionsCompleted": increment(1)
+            }).then(() => {
+              console.log(`✅ Firestore updated: focusSessionsCompleted incremented`);
+            }).catch((error) => {
+              console.error(`❌ Failed to update Firestore:`, error);
+            });
+
+            // Update focus achievements FIRST (before backend call)
+            // This ensures achievements work even if backend is offline
+            onFocusSessionCompleted(newSessionCount).catch((error) => {
+              console.error("Failed to update focus achievements:", error);
+            });
+
+            // Then try to award XP via backend
             UsersAPI.completeFocusSession(authUser.uid, settings.focusDuration)
               .then((result) => {
                 setXpGained(result.xpGained);
-
-                // Update focus achievements with the correct count
-                onFocusSessionCompleted(newSessionCount).catch((error) => {
-                  console.error("Failed to update focus achievements:", error);
-                });
               })
               .catch((error) => {
                 console.error("Failed to complete focus session:", error);

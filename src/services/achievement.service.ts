@@ -47,6 +47,12 @@ export async function updateAchievementProgress(
 
     const achievementRef = doc(db, "users", user.uid, "achievements", achievementId);
 
+    console.log(`  📝 Updating achievement: ${achievementId}`);
+    console.log(`     User: ${user.uid}`);
+    console.log(`     Progress: ${newProgress}/${target}`);
+    console.log(`     Unlocked: ${isUnlocked}`);
+    console.log(`     Path: users/${user.uid}/achievements/${achievementId}`);
+
     try {
         await setDoc(achievementRef, {
             achievementId,
@@ -61,7 +67,7 @@ export async function updateAchievementProgress(
             console.log(`📈 Achievement progress: ${achievementId} - ${newProgress}/${target}`);
         }
     } catch (error) {
-        console.error("Failed to update achievement:", error);
+        console.error(`❌ Failed to update achievement ${achievementId}:`, error);
     }
 }
 
@@ -111,12 +117,18 @@ export async function onTaskCompleted(totalCompletedTasks: number) {
  * Call this when a focus session is completed
  */
 export async function onFocusSessionCompleted(totalFocusSessions: number) {
+    console.log(`📊 onFocusSessionCompleted called with count: ${totalFocusSessions}`);
+
     if (totalFocusSessions >= 1) {
+        console.log(`  → Updating focus_first with progress: ${totalFocusSessions}`);
         await updateAchievementProgress("focus_first", totalFocusSessions);
     }
     if (totalFocusSessions >= 1) {
+        console.log(`  → Updating focus_10 with progress: ${totalFocusSessions}`);
         await updateAchievementProgress("focus_10", totalFocusSessions);
     }
+
+    console.log(`✅ Focus achievements updated successfully`);
 }
 
 /**

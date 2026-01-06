@@ -22,6 +22,7 @@ export interface UserStats {
   streak: number;
   maxStreak?: number;
   gems?: number;
+  focusSessionsCompleted?: number;
 }
 
 export interface UserSettings {

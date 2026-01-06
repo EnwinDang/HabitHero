@@ -6,10 +6,12 @@ import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/firebase";
 import { doc, updateDoc, increment } from "firebase/firestore";
+import { getLevelFromXP } from "@/utils/xpCurve";
 import {
   onStreakUpdated,
   onLevelUp,
   onTaskCompleted,
+  onFocusSessionCompleted,
 } from "@/services/achievement.service";
 import { AchievementsAPI } from "@/api/achievements.api";
 import { Trophy, Star, TrendingUp, Coins, Lock, Check, Gift } from "lucide-react";
@@ -89,9 +91,17 @@ export default function AchievementsPage() {
         onStreakUpdated(user.stats.streak);
       }
 
-      // Update level achievements
-      if (user.stats.level > 0) {
-        onLevelUp(user.stats.level);
+      // Update level achievements - use calculated level from XP
+      const calculatedLevel = getLevelFromXP(user.stats.xp);
+      if (calculatedLevel > 0) {
+        onLevelUp(calculatedLevel);
+      }
+
+      // Update focus session achievements - use Firestore value
+      const focusSessions = user.stats.focusSessionsCompleted || 0;
+      if (focusSessions > 0) {
+        console.log(`🔄 Syncing focus achievements with ${focusSessions} sessions`);
+        onFocusSessionCompleted(focusSessions);
       }
     }
   }, [user, userLoading]);
@@ -182,7 +192,7 @@ export default function AchievementsPage() {
               <TrendingUp size={18} />
               <span className="font-medium">Your Level</span>
             </div>
-            <p className="text-3xl font-bold">{user.stats.level}</p>
+            <p className="text-3xl font-bold">{getLevelFromXP(user.stats.xp)}</p>
             <p className="text-green-200 text-sm">Keep going!</p>
           </div>
         </div>
