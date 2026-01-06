@@ -12,7 +12,6 @@ import {
   BookOpen,
   Zap,
   Gift,
-  Flame,
   Shield,
   Heart,
   CalendarDays,
@@ -32,7 +31,7 @@ const avatarIcons = [
   { icon: Shield, name: "Shield" },
   { icon: Target, name: "Bow" },
   { icon: Wand2, name: "Wand" },
-  { icon: Flame, name: "Dragon" },
+  { icon: Zap, name: "Dragon" },
   { icon: Crown, name: "Crown" },
   { icon: Skull, name: "Skull" },
   { icon: Zap, name: "Lightning" },
@@ -218,7 +217,7 @@ export default function HomePage() {
 
                 {/* Streak */}
                 <div className="flex items-center gap-2">
-                  <Flame size={16} style={{ color: "#f97316" }} />
+                  <span style={{ color: "#f97316" }}>🔥</span>
                   <span className={`text-sm ${theme.textMuted}`}>
                     {user.stats.streak} day streak
                   </span>
@@ -466,7 +465,7 @@ export default function HomePage() {
                     boxShadow: "0 0 15px rgba(249, 115, 22, 0.3)",
                   }}
                 >
-                  <Flame size={24} className="text-white" />
+                  <span className="text-3xl">🔥</span>
                 </div>
 
                 <div>
