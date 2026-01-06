@@ -43,29 +43,29 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-6">
+    <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6">
       {/* HEADER */}
-      <header className="flex justify-between items-center mb-8">
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8">
         <div>
-          <h1 className="text-3xl font-bold">
+          <h1 className="text-2xl sm:text-3xl font-bold">
             Welkom, {user.displayName}
           </h1>
-          <p className="text-gray-400">
+          <p className="text-gray-400 text-sm sm:text-base">
             Level {user.stats.level}
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <button
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded"
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded text-sm sm:text-base flex-1 sm:flex-none"
           >
             {isRefreshing ? "Laden..." : "Vernieuwen"}
           </button>
           <button
             onClick={handleLogout}
-            className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded"
+            className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm sm:text-base flex-1 sm:flex-none"
           >
             Uitloggen
           </button>
@@ -74,14 +74,14 @@ export default function HomePage() {
 
       {/* ERROR MESSAGE */}
       {(error || userError || tasksError) && (
-        <div className="bg-yellow-900 border-l-4 border-yellow-500 text-yellow-200 p-4 mb-6 rounded">
+        <div className="bg-yellow-900 border-l-4 border-yellow-500 text-yellow-200 p-3 sm:p-4 mb-4 sm:mb-6 rounded text-sm sm:text-base">
           <p className="font-semibold">⚠️ Waarschuwing</p>
-          <p className="text-sm">{error || userError || tasksError}</p>
+          <p className="text-xs sm:text-sm">{error || userError || tasksError}</p>
         </div>
       )}
 
       {/* STATS */}
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <section className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
         <StatCard label="XP" value={user.stats.xp} />
         <StatCard label="Gold" value={user.stats.gold} />
         <StatCard label="Streak" value={user.stats.streak} />
@@ -90,29 +90,29 @@ export default function HomePage() {
 
       {/* TASKS */}
       <section>
-        <h2 className="text-2xl font-semibold mb-4">
+        <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">
           Taken van vandaag {tasksLoading && "🔄"}
         </h2>
 
         {tasksLoading && tasks.length === 0 ? (
-          <p className="text-gray-400">Laden...</p>
+          <p className="text-gray-400 text-sm sm:text-base">Laden...</p>
         ) : tasks.length === 0 ? (
-          <p className="text-gray-400">Geen taken 🎉</p>
+          <p className="text-gray-400 text-sm sm:text-base">Geen taken 🎉</p>
         ) : (
-          <ul className="space-y-3">
+          <ul className="space-y-2 sm:space-y-3">
             {tasks.map(task => (
               <li
                 key={task.taskId}
-                className="bg-gray-800 p-4 rounded flex justify-between items-center hover:bg-gray-700 transition"
+                className="bg-gray-800 p-3 sm:p-4 rounded flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4 hover:bg-gray-700 transition"
               >
-                <div>
-                  <strong className="text-lg">{task.title}</strong>
-                  <p className="text-sm text-gray-400">
+                <div className="flex-1 min-w-0">
+                  <strong className="text-base sm:text-lg block truncate">{task.title}</strong>
+                  <p className="text-xs sm:text-sm text-gray-400">
                     Moeilijkheid: {task.difficulty}
                   </p>
                 </div>
 
-                <span className="text-yellow-400">
+                <span className="text-yellow-400 text-sm sm:text-base whitespace-nowrap">
                   {task.xp} XP • {task.gold} Gold
                 </span>
               </li>
@@ -133,9 +133,9 @@ function StatCard({
   value: number | string;
 }) {
   return (
-    <div className="bg-gray-800 rounded p-4 text-center">
-      <p className="text-gray-400 text-sm">{label}</p>
-      <p className="text-2xl font-bold">{value}</p>
+    <div className="bg-gray-800 rounded p-3 sm:p-4 text-center">
+      <p className="text-gray-400 text-xs sm:text-sm">{label}</p>
+      <p className="text-xl sm:text-2xl font-bold">{value}</p>
     </div>
   );
 }

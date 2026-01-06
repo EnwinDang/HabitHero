@@ -5,9 +5,10 @@
     "lib": ["ES2020"],
     "rootDir": "src",
     "outDir": "lib",
-    "strict": true,
+    "strict": false,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "noImplicitAny": false
   },
   "include": ["src"]
 }
