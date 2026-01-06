@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { Map, Lock, ArrowLeft, Flame, Snowflake, Mountain, Zap, HelpCircle } from "lucide-react";
+import { getLevelFromXP, getCurrentLevelProgress } from "@/utils/xpCurve";
 import type { Realm, Level } from "@/models/worldMap.model";
 import type { BattleEnemy } from "@/models/battle.model";
 
@@ -14,9 +15,14 @@ export default function WorldMapPage() {
     const navigate = useNavigate();
     const [selectedRealm, setSelectedRealm] = useState<Realm | null>(null);
 
-    const userLevel = user?.stats?.level || 1;
+    const userLevel = user?.stats?.xp ? getLevelFromXP(user.stats.xp) : 1;
     const userXP = user?.stats?.xp || 0;
     const worldMapProgress = user?.worldMapProgress || {};
+
+    // Debug logging
+    console.log("🗺️ WorldMapPage - User XP:", userXP);
+    console.log("🗺️ WorldMapPage - Calculated level from XP:", userLevel);
+    console.log("🗺️ WorldMapPage - Stored level (may be outdated):", user?.stats?.level);
 
     // State for API data
     const [apiWorlds, setApiWorlds] = useState<any[]>([]);
@@ -177,7 +183,10 @@ export default function WorldMapPage() {
                     <div>
                         <h3 className={`text-xl font-bold ${theme.text}`}>Your Progress</h3>
                         <p className={`${theme.textSubtle} text-sm mt-1`}>
-                            Hero Level {userLevel} • {userXP} XP
+                            Hero Level {userLevel} • {(() => {
+                                const progress = getCurrentLevelProgress(userXP, userLevel);
+                                return `${progress.current} / ${progress.required} XP`;
+                            })()}
                         </p>
                     </div>
                     <div className="text-right">
