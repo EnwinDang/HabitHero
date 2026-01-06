@@ -44,6 +44,7 @@ export default function DailyTasksPage() {
     const [courseCode, setCourseCode] = useState("");
     const [codeError, setCodeError] = useState("");
     const [courseSearchQuery, setCourseSearchQuery] = useState("");
+    const [moduleSortOrder, setModuleSortOrder] = useState<"order" | "a-z" | "z-a">("order");
 
     useEffect(() => {
         loadCoursesAndTasks();
@@ -313,6 +314,20 @@ export default function DailyTasksPage() {
     const hardTasks = useMemo(() => tasks.filter(t => t.difficulty === "hard"), [tasks]);
     const extremeTasks = useMemo(() => tasks.filter(t => t.difficulty === "extreme"), [tasks]);
 
+    // Sort modules based on selected sort order
+    const sortedModules = useMemo(() => {
+        const modulesCopy = [...modules];
+        switch (moduleSortOrder) {
+            case "a-z":
+                return modulesCopy.sort((a, b) => a.title.localeCompare(b.title));
+            case "z-a":
+                return modulesCopy.sort((a, b) => b.title.localeCompare(a.title));
+            case "order":
+            default:
+                return modulesCopy.sort((a, b) => a.order - b.order);
+        }
+    }, [modules, moduleSortOrder]);
+
     if (userLoading || loading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
@@ -548,8 +563,43 @@ export default function DailyTasksPage() {
                             <Layers size={20} style={{ color: accentColor }} />
                             Modules
                         </h3>
+                        <div className="flex gap-2 mb-3">
+                            <button
+                                onClick={() => setModuleSortOrder("order")}
+                                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                                    moduleSortOrder === "order" ? "text-white" : theme.textMuted
+                                }`}
+                                style={{
+                                    backgroundColor: moduleSortOrder === "order" ? accentColor : darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)'
+                                }}
+                            >
+                                Order
+                            </button>
+                            <button
+                                onClick={() => setModuleSortOrder("a-z")}
+                                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                                    moduleSortOrder === "a-z" ? "text-white" : theme.textMuted
+                                }`}
+                                style={{
+                                    backgroundColor: moduleSortOrder === "a-z" ? accentColor : darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)'
+                                }}
+                            >
+                                A-Z
+                            </button>
+                            <button
+                                onClick={() => setModuleSortOrder("z-a")}
+                                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                                    moduleSortOrder === "z-a" ? "text-white" : theme.textMuted
+                                }`}
+                                style={{
+                                    backgroundColor: moduleSortOrder === "z-a" ? accentColor : darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)'
+                                }}
+                            >
+                                Z-A
+                            </button>
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {modules.map((module) => (
+                            {sortedModules.map((module) => (
                                 <button
                                     key={module.moduleId}
                                     onClick={() => selectModule(module)}
