@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { MonstersAPI } from "../../api/monsters.api";
 import { Monster, MonsterTier } from "../../models/monster.model";
-import CreateMonsterModal from './createMonsterModal';
+import CreateMonsterModal from './CreateMonsterModal';
 import { Ghost, Plus, Search, Trash2, Edit3, Shield, Sword, X, Save, Loader2 } from 'lucide-react';
 
 const MonsterManagement: React.FC = () => {

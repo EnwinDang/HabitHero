@@ -1033,15 +1033,24 @@ app.get("/worlds", async (req, res) => {
  */
 app.post("/worlds", requireAuth, async (req, res) => {
     try {
-        const worldRef = db.collection("worlds").doc();
-        const world = {
-            ...req.body,
-            createdAt: Date.now(),
+        const worldData = req.body;
+        if (!worldData.name) {
+            return res.status(400).json({ error: "World name is required" });
+        }
+        const slug = worldData.name.toLowerCase().trim().replace(/\s+/g, '_');
+        const customId = `world_${slug}`;
+        const worldRef = db.collection("worlds").doc(customId);
+        const newWorld = {
+            ...worldData,
+            worldId: customId,
+            description: worldData.description || "",
+            element: worldData.element || "neutral",
+            stages: worldData.stages || [null],
+            createdAt: Date.now()
         };
-        await worldRef.set(world);
+        await worldRef.set(newWorld);
         return res.status(201).json({
-            worldId: worldRef.id,
-            ...world,
+            data: newWorld
         });
     }
     catch (e) {
@@ -1116,14 +1125,16 @@ app.patch("/worlds/:worldId", requireAuth, async (req, res) => {
 /**
  * DELETE /worlds/:worldId
  */
-app.delete("/worlds/:worldId", requireAuth, async (req, res) => {
+app.delete("/worlds/:id", requireAuth, async (req, res) => {
     try {
-        const { worldId } = req.params;
-        await db.collection("worlds").doc(worldId).delete();
-        return res.status(200).json({ success: true });
+        const { id } = req.params;
+        await db.collection("worlds").doc(id).delete();
+        return res.status(200).json({
+            message: `World ${id} has been destroyed`
+        });
     }
     catch (e) {
-        console.error("Error in DELETE /worlds/:worldId:", e);
+        console.error("Error in DELETE /worlds:", e);
         return res.status(500).json({ error: e?.message });
     }
 });
@@ -1296,15 +1307,35 @@ app.get("/monsters", async (req, res) => {
  */
 app.post("/monsters", requireAuth, async (req, res) => {
     try {
-        const monsterRef = db.collection("monsters").doc();
-        const monster = {
-            ...req.body,
+        const monsterData = req.body;
+        if (!monsterData.name) {
+            return res.status(400).json({ error: "Name is required" });
+        }
+        const slug = monsterData.name.toLowerCase().trim().replace(/\s+/g, '_');
+        const customId = `mon_${slug}`;
+        const monsterRef = db.collection("monsters").doc(customId);
+        const newMonster = {
+            ...monsterData,
+            monsterId: customId,
+            isActive: monsterData.isActive || false,
+            tier: monsterData.tier || 'normal',
+            elementType: monsterData.elementType || 'physical',
+            baseStats: {
+                hp: monsterData.baseStats?.hp || 100,
+                attack: monsterData.baseStats?.attack || 10,
+                defense: monsterData.baseStats?.defense || 5,
+                magic: monsterData.baseStats?.magic || 0,
+                magicResist: monsterData.baseStats?.magicResist || 0,
+                speed: monsterData.baseStats?.speed || 5
+            },
+            attacks: monsterData.attacks || [],
+            behaviour: monsterData.behaviour || { fleeBelowHpPct: 0, pattern: [], style: "patterned" },
+            skills: monsterData.skills || [],
             createdAt: Date.now(),
         };
-        await monsterRef.set(monster);
+        await monsterRef.set(newMonster);
         return res.status(201).json({
-            monsterId: monsterRef.id,
-            ...monster,
+            data: newMonster
         });
     }
     catch (e) {
@@ -1379,14 +1410,16 @@ app.patch("/monsters/:monsterId", requireAuth, async (req, res) => {
 /**
  * DELETE /monsters/:monsterId
  */
-app.delete("/monsters/:monsterId", requireAuth, async (req, res) => {
+app.delete("/monsters/:id", requireAuth, async (req, res) => {
     try {
-        const { monsterId } = req.params;
-        await db.collection("monsters").doc(monsterId).delete();
-        return res.status(200).json({ success: true });
+        const { id } = req.params;
+        await db.collection("monsters").doc(id).delete();
+        return res.status(200).json({
+            message: `Entity ${id} successfully banished from the bestiary`
+        });
     }
     catch (e) {
-        console.error("Error in DELETE /monsters/:monsterId:", e);
+        console.error("Error in DELETE /monsters:", e);
         return res.status(500).json({ error: e?.message });
     }
 });

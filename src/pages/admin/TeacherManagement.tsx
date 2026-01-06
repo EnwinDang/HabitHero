@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { UsersAPI } from "../../api/users.api";
 import { User } from "../../models/user.model";
-import { Search, Trash2, X, ShieldCheck, Mail, UserPlus } from 'lucide-react';
+import { Search, ShieldCheck, Mail, Loader2 } from 'lucide-react';
 
 const TeacherManagement: React.FC = () => {
   const [teachers, setTeachers] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -25,17 +24,6 @@ const TeacherManagement: React.FC = () => {
     loadData();
   }, []);
 
-  const handleDelete = async (uid: string) => {
-    if (window.confirm("Delete teacher?")) {
-      try {
-        await UsersAPI.delete(uid);
-        setTeachers(prev => prev.filter(t => t.uid !== uid));
-      } catch (error) {
-        console.error(error);
-      }
-    }
-  };
-
   const filtered = teachers.filter(t => 
     t.displayName.toLowerCase().includes(searchTerm.toLowerCase()) || 
     t.email?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -43,17 +31,14 @@ const TeacherManagement: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-violet-50 p-8 text-slate-900">
-      <div className="flex justify-between items-center mb-10">
+      <div className="mb-10">
         <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3 tracking-tight">
           <ShieldCheck className="text-violet-500" size={32} />
           Teacher Management
         </h1>
-        <button 
-          onClick={() => setIsModalOpen(true)} 
-          className="bg-violet-600 hover:bg-violet-500 text-white px-6 py-3 rounded-2xl font-bold shadow-md shadow-violet-200 flex items-center gap-2"
-        >
-          <UserPlus size={22} /> New Teacher
-        </button>
+        <p className="text-slate-500 font-medium mt-1">
+          Manage and monitor faculty accounts
+        </p>
       </div>
 
       <div className="relative mb-10">
@@ -63,12 +48,14 @@ const TeacherManagement: React.FC = () => {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder="Search teachers..." 
-          className="w-full bg-white border border-violet-100 rounded-2xl py-4 pl-14 pr-6 text-slate-900 shadow-sm focus:ring-2 focus:ring-violet-400 focus:border-violet-400 outline-none"
+          className="w-full bg-white border border-violet-100 rounded-2xl py-4 pl-14 pr-6 text-slate-900 shadow-sm focus:ring-2 focus:ring-violet-400 focus:border-violet-400 outline-none transition-all"
         />
       </div>
 
       {loading ? (
-        <div className="text-center p-20 text-violet-500 animate-pulse font-semibold italic">Loading...</div>
+        <div className="text-center py-20 text-violet-500 font-semibold animate-pulse">
+          <Loader2 className="animate-spin inline-block mr-2" /> Loading Faculty...
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filtered.map((teacher) => (
@@ -76,28 +63,22 @@ const TeacherManagement: React.FC = () => {
               key={teacher.uid}
               className="bg-white border border-violet-100 p-6 rounded-3xl group transition-all hover:border-violet-300 hover:shadow-md"
             >
-              <div className="flex justify-between items-start">
+              <div className="flex justify-between items-start mb-4">
                 <span className="text-[10px] font-semibold text-emerald-600 uppercase bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
                   {teacher.status || 'Active'}
                 </span>
-                <button
-                  onClick={() => handleDelete(teacher.uid)}
-                  className="text-slate-400 hover:text-rose-500 transition-colors"
-                >
-                  <Trash2 size={18} />
-                </button>
               </div>
               
-              <div className="flex items-center gap-4 mt-4">
-                <div className="w-12 h-12 rounded-xl bg-violet-50 flex items-center justify-center font-bold text-violet-600 border border-violet-200">
+              <div className="flex items-center gap-4 mt-2">
+                <div className="w-12 h-12 rounded-xl bg-violet-50 flex items-center justify-center font-bold text-violet-600 border border-violet-200 text-lg">
                   {teacher.displayName[0]}
                 </div>
-                <div>
-                  <h3 className="text-slate-900 font-semibold text-xl group-hover:text-violet-600 transition-colors">
+                <div className="overflow-hidden">
+                  <h3 className="text-slate-900 font-semibold text-xl group-hover:text-violet-600 transition-colors truncate">
                     {teacher.displayName}
                   </h3>
-                  <p className="text-slate-500 text-xs flex items-center gap-1 mt-1">
-                    <Mail size={12} className="text-slate-400" /> {teacher.email}
+                  <p className="text-slate-500 text-xs flex items-center gap-1 mt-1 truncate">
+                    <Mail size={12} className="text-slate-400 shrink-0" /> {teacher.email}
                   </p>
                 </div>
               </div>
@@ -111,25 +92,9 @@ const TeacherManagement: React.FC = () => {
         </div>
       )}
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/10 backdrop-blur-md">
-          <div className="bg-white border border-violet-100 w-full max-w-md rounded-[2.5rem] p-8 text-center shadow-xl">
-            <h2 className="text-2xl font-bold text-slate-900 mb-4">Add Teacher</h2>
-            <p className="text-slate-500 mb-6 text-sm">Promote a student to teacher via the Student Management page.</p>
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="w-full bg-violet-600 hover:bg-violet-500 text-white font-bold py-4 rounded-2xl shadow-md"
-            >
-              Close
-            </button>
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="mt-3 inline-flex items-center gap-2 text-slate-400 hover:text-slate-600 text-xs"
-            >
-              <X size={14} />
-              Cancel
-            </button>
-          </div>
+      {filtered.length === 0 && !loading && (
+        <div className="text-center py-20 text-slate-400 italic">
+          No teachers found matching your search.
         </div>
       )}
     </div>

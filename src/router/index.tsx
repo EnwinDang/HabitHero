@@ -49,7 +49,6 @@ export const AppRoutes = () => {
         <Route path="worlds" element={<WorldList />} />
         <Route path="monsters" element={<MonsterManagement/>} />
         <Route path="items" element={<ItemManagement />} />
-        <Route path="settings" element={<GlobalSettings />} />
       </Route>
     </Routes>
   );
