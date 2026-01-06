@@ -4,8 +4,11 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { TasksAPI } from "@/api/tasks.api";
 import { CoursesAPI } from "@/api/courses.api";
+import { db } from "@/firebase";
+import { collection, query, where, getDocs, doc, setDoc } from "firebase/firestore";
 import type { Task } from "@/models/task.model";
 import type { Course } from "@/models/course.model";
+import type { Module } from "@/models/module.model";
 import {
     ClipboardList,
     BookOpen,
@@ -15,6 +18,8 @@ import {
     Plus,
     ChevronDown,
     GraduationCap,
+    Key,
+    Layers,
 } from "lucide-react";
 
 export default function DailyTasksPage() {
@@ -26,11 +31,16 @@ export default function DailyTasksPage() {
     const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
     const [availableCourses, setAvailableCourses] = useState<Course[]>([]);
     const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+    const [modules, setModules] = useState<Module[]>([]);
+    const [selectedModule, setSelectedModule] = useState<Module | null>(null);
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedDifficulty, setSelectedDifficulty] = useState<string>("all");
     const [showCourseDropdown, setShowCourseDropdown] = useState(false);
     const [enrollingCourse, setEnrollingCourse] = useState<string | null>(null);
+    const [showCodeInput, setShowCodeInput] = useState(false);
+    const [courseCode, setCourseCode] = useState("");
+    const [codeError, setCodeError] = useState("");
 
     useEffect(() => {
         loadCoursesAndTasks();
@@ -80,13 +90,61 @@ export default function DailyTasksPage() {
         setShowCourseDropdown(false);
         
         try {
-            const courseTasks = await TasksAPI.list({
-                courseId: course.courseId,
-                activeOnly: true
-            });
-            setTasks(courseTasks);
+            // Load modules for the course
+            const courseModules = await CoursesAPI.listModules(course.courseId);
+            setModules(courseModules.sort((a, b) => a.order - b.order));
+            
+            // Select first module by default
+            if (courseModules.length > 0) {
+                await selectModule(courseModules[0], course.courseId);
+            } else {
+                // No modules, load all course tasks directly from Firestore
+                const tasksRef = collection(db, "tasks");
+                const q = query(
+                    tasksRef,
+                    where("courseId", "==", course.courseId),
+                    where("isActive", "==", true)
+                );
+                
+                const snapshot = await getDocs(q);
+                const courseTasks = snapshot.docs.map(doc => ({
+                    taskId: doc.id,
+                    ...doc.data()
+                })) as Task[];
+                
+                setTasks(courseTasks);
+                setSelectedModule(null);
+            }
         } catch (error) {
-            console.error("Error loading tasks:", error);
+            console.error("Error loading modules:", error);
+            setModules([]);
+            setTasks([]);
+        }
+    }
+
+    async function selectModule(module: Module, courseId?: string) {
+        setSelectedModule(module);
+        
+        try {
+            // Load tasks directly from Firestore
+            const tasksRef = collection(db, "tasks");
+            const q = query(
+                tasksRef,
+                where("courseId", "==", courseId || selectedCourse?.courseId),
+                where("moduleId", "==", module.moduleId),
+                where("isActive", "==", true)
+            );
+            
+            const snapshot = await getDocs(q);
+            const moduleTasks = snapshot.docs.map(doc => ({
+                taskId: doc.id,
+                ...doc.data()
+            })) as Task[];
+            
+            console.log('Loaded tasks for module:', module.title, moduleTasks);
+            setTasks(moduleTasks);
+        } catch (error) {
+            console.error("Error loading module tasks:", error);
             setTasks([]);
         }
     }
@@ -115,13 +173,94 @@ export default function DailyTasksPage() {
         }
     }
 
+    async function handleEnrollWithCode() {
+        if (!firebaseUser || !courseCode.trim()) {
+            setCodeError("Please enter a course code");
+            return;
+        }
+
+        try {
+            setEnrollingCourse("code-enrollment");
+            setCodeError("");
+
+            // Find course by courseCode (exact match - case sensitive)
+            const allCourses = await CoursesAPI.list(true);
+            const foundCourse = allCourses.find(
+                c => c.courseCode === courseCode.trim()
+            );
+
+            if (!foundCourse) {
+                setCodeError("Invalid course code. Please check and try again.");
+                setEnrollingCourse(null);
+                return;
+            }
+
+            // Check if already enrolled
+            const students = await CoursesAPI.listStudents(foundCourse.courseId);
+            if (students.some(s => s.uid === firebaseUser.uid)) {
+                setCodeError("You are already enrolled in this course.");
+                setEnrollingCourse(null);
+                return;
+            }
+
+            // Enroll in the course directly in Firestore
+            const studentRef = doc(db, `courses/${foundCourse.courseId}/students/${firebaseUser.uid}`);
+            await setDoc(studentRef, {
+                uid: firebaseUser.uid,
+                enrolledAt: Date.now(),
+            });
+
+            console.log("✅ Enrolled in course:", foundCourse.name);
+
+            // Update state
+            setAvailableCourses(availableCourses.filter(c => c.courseId !== foundCourse.courseId));
+            setEnrolledCourses([...enrolledCourses, foundCourse]);
+            
+            // Select the newly enrolled course
+            await selectCourse(foundCourse);
+            
+            // Close modal and reset
+            setShowCodeInput(false);
+            setCourseCode("");
+            setCodeError("");
+        } catch (error) {
+            console.error("Error enrolling with code:", error);
+            setCodeError("Error enrolling in course. Please try again.");
+        } finally {
+            setEnrollingCourse(null);
+        }
+    }
+
     async function handleCompleteTask(taskId: string) {
         try {
-            await TasksAPI.complete(taskId);
+            const result = await TasksAPI.complete(taskId, {
+                completedAt: Date.now()
+            });
+            
             // Remove completed task from list
             setTasks(tasks.filter(t => t.taskId !== taskId));
+            
+            // Show reward notification
+            if (result.reward) {
+                const messages = [];
+                if (result.reward.xpGained) messages.push(`+${result.reward.xpGained} XP`);
+                if (result.reward.goldGained) messages.push(`+${result.reward.goldGained} Gold`);
+                if (result.reward.leveledUp) messages.push(`🎉 Level Up! Now level ${result.reward.newLevel}`);
+                if (result.reward.achievementsUnlocked?.length) {
+                    messages.push(`🏆 Achievement unlocked: ${result.reward.achievementsUnlocked.join(', ')}`);
+                }
+                if (result.reward.lootboxGranted) messages.push(`🎁 Lootbox received!`);
+                
+                if (messages.length > 0) {
+                    alert(messages.join('\n'));
+                }
+            }
+            
+            // Refresh user data to update stats
+            window.location.reload();
         } catch (error) {
             console.error("Error completing task:", error);
+            alert("Error completing task. Please try again.");
         }
     }
 
@@ -171,6 +310,18 @@ export default function DailyTasksPage() {
                         >
                             <BookOpen size={18} />
                             Change Course
+                        </button>
+                    )}
+                    {!selectedCourse && (
+                        <button
+                            onClick={() => setShowCodeInput(true)}
+                            className="px-4 py-2 rounded-xl font-medium transition-all flex items-center gap-2 text-white"
+                            style={{
+                                backgroundColor: accentColor
+                            }}
+                        >
+                            <Key size={18} />
+                            Enter Course Code
                         </button>
                     )}
                 </div>
@@ -287,33 +438,16 @@ export default function DailyTasksPage() {
                         <div className={`${theme.card} rounded-2xl p-8 text-center`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
                             <GraduationCap size={48} className="mx-auto mb-4" style={{ color: accentColor }} />
                             <h3 className={`text-xl font-bold ${theme.text} mb-2`}>No Courses Enrolled</h3>
-                            <p className={theme.textMuted}>Enroll in a course to start completing tasks!</p>
-                            {availableCourses.length > 0 && (
-                                <div className="mt-6 space-y-2">
-                                    {availableCourses.map((course) => (
-                                        <button
-                                            key={course.courseId}
-                                            onClick={() => handleEnrollCourse(course)}
-                                            disabled={enrollingCourse === course.courseId}
-                                            className="w-full p-4 rounded-xl text-left transition-all flex items-center gap-3"
-                                            style={{
-                                                backgroundColor: `${accentColor}10`,
-                                                borderWidth: '1px',
-                                                borderStyle: 'solid',
-                                                borderColor: `${accentColor}30`,
-                                                opacity: enrollingCourse === course.courseId ? 0.6 : 1
-                                            }}
-                                        >
-                                            <BookOpen size={20} style={{ color: accentColor }} />
-                                            <div className="flex-1">
-                                                <p className={`font-bold ${theme.text}`}>{course.name}</p>
-                                                <p className={`text-sm ${theme.textSubtle}`}>{course.courseCode}</p>
-                                            </div>
-                                            <Plus size={20} style={{ color: accentColor }} />
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
+                            <p className={theme.textMuted} mb-4>Enter a course code from your teacher to get started!</p>
+                            
+                            <button
+                                onClick={() => setShowCodeInput(true)}
+                                className="px-6 py-3 rounded-xl font-bold transition-all text-white inline-flex items-center gap-2 mt-4"
+                                style={{ backgroundColor: accentColor }}
+                            >
+                                <Key size={20} />
+                                Enter Course Code
+                            </button>
                         </div>
                     ) : null}
                 </div>
@@ -325,11 +459,75 @@ export default function DailyTasksPage() {
                     </div>
                 )}
 
+                {/* Modules */}
+                {selectedCourse && modules.length > 0 && (
+                    <div className="mb-6">
+                        <h3 className={`text-lg font-bold ${theme.text} mb-3 flex items-center gap-2`}>
+                            <Layers size={20} style={{ color: accentColor }} />
+                            Modules
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {modules.map((module) => (
+                                <button
+                                    key={module.moduleId}
+                                    onClick={() => selectModule(module)}
+                                    className={`${theme.card} rounded-xl p-4 text-left transition-all hover:scale-105`}
+                                    style={{
+                                        ...theme.borderStyle,
+                                        borderWidth: '2px',
+                                        borderStyle: 'solid',
+                                        borderColor: selectedModule?.moduleId === module.moduleId ? accentColor : 'transparent',
+                                        backgroundColor: selectedModule?.moduleId === module.moduleId 
+                                            ? `${accentColor}10` 
+                                            : undefined
+                                    }}
+                                >
+                                    <div className="flex items-start gap-3">
+                                        <div
+                                            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                                            style={{
+                                                backgroundColor: selectedModule?.moduleId === module.moduleId 
+                                                    ? `${accentColor}20` 
+                                                    : darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)'
+                                            }}
+                                        >
+                                            <span className="font-bold" style={{ color: accentColor }}>
+                                                {module.order}
+                                            </span>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className={`font-bold ${theme.text} mb-1 truncate`}>
+                                                {module.title}
+                                            </h4>
+                                            {module.description && (
+                                                <p className={`text-xs ${theme.textSubtle} line-clamp-2`}>
+                                                    {module.description}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Only show filters and tasks if a course is selected */}
                 {selectedCourse && (
                     <>
-                        {/* Difficulty Filter */}
-                        <div className="flex gap-2 mb-6 flex-wrap">
+                        {/* Module selection message */}
+                        {modules.length > 0 && !selectedModule && (
+                            <div className={`${theme.card} rounded-xl p-6 text-center mb-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+                                <Layers size={40} className="mx-auto mb-3" style={{ color: accentColor }} />
+                                <p className={`${theme.text} font-medium`}>Select a module above to view tasks</p>
+                            </div>
+                        )}
+
+                        {/* Show filters and tasks only if module is selected or no modules exist */}
+                        {(selectedModule || modules.length === 0) && (
+                            <>
+                                {/* Difficulty Filter */}
+                                <div className="flex gap-2 mb-6 flex-wrap">
                             <button
                                 onClick={() => setSelectedDifficulty("all")}
                                 className={`px-4 py-2 rounded-xl font-medium transition-all ${selectedDifficulty === "all"
@@ -380,10 +578,19 @@ export default function DailyTasksPage() {
 
                         {/* Tasks */}
                         {filteredTasks.length === 0 ? (
-                            <div className="text-center py-12">
-                                <ClipboardList size={40} className={`mb-4 mx-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
-                                <p className={theme.textMuted}>No tasks available</p>
-                                <p className={`${theme.textSubtle} text-sm`}>Check back later for new exercises!</p>
+                            <div className={`${theme.card} rounded-xl text-center py-12`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+                                <ClipboardList size={48} className={`mb-4 mx-auto`} style={{ color: accentColor, opacity: 0.5 }} />
+                                <p className={`${theme.text} font-medium mb-2`}>No tasks available</p>
+                                <p className={`${theme.textSubtle} text-sm`}>
+                                    {selectedModule 
+                                        ? `No tasks found in ${selectedModule.title}` 
+                                        : 'No tasks found in this course'}
+                                </p>
+                                {selectedDifficulty !== "all" && (
+                                    <p className={`${theme.textMuted} text-xs mt-2`}>
+                                        Try selecting "All" difficulty
+                                    </p>
+                                )}
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -399,9 +606,90 @@ export default function DailyTasksPage() {
                                 ))}
                             </div>
                         )}
+                            </>
+                        )}
                     </>
                 )}
             </main>
+
+            {/* Course Code Input Modal */}
+            {showCodeInput && (
+                <div 
+                    className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+                    onClick={() => {
+                        setShowCodeInput(false);
+                        setCourseCode("");
+                        setCodeError("");
+                    }}
+                >
+                    <div 
+                        className={`${theme.card} rounded-2xl p-8 max-w-md w-full`}
+                        style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center gap-3 mb-4">
+                            <div
+                                className="w-12 h-12 rounded-xl flex items-center justify-center"
+                                style={{ backgroundColor: `${accentColor}20` }}
+                            >
+                                <Key size={24} style={{ color: accentColor }} />
+                            </div>
+                            <div>
+                                <h3 className={`text-2xl font-bold ${theme.text}`}>Enter Course Code</h3>
+                                <p className={`text-sm ${theme.textMuted}`}>Get the code from your teacher</p>
+                            </div>
+                        </div>
+
+                        <div className="mb-4">
+                            <input
+                                type="text"
+                                value={courseCode}
+                                onChange={(e) => {
+                                    setCourseCode(e.target.value);
+                                    setCodeError("");
+                                }}
+                                placeholder="e.g., PE1-2026"
+                                className={`w-full px-4 py-3 rounded-xl font-mono text-lg ${theme.inputBg} ${theme.text} border-2 transition-colors`}
+                                style={{
+                                    borderColor: codeError ? '#ef4444' : `${accentColor}30`,
+                                    outline: 'none'
+                                }}
+                                onFocus={(e) => e.target.style.borderColor = accentColor}
+                                onBlur={(e) => e.target.style.borderColor = codeError ? '#ef4444' : `${accentColor}30`}
+                                autoFocus
+                            />
+                            {codeError && (
+                                <p className="text-red-500 text-sm mt-2">{codeError}</p>
+                            )}
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => {
+                                    setShowCodeInput(false);
+                                    setCourseCode("");
+                                    setCodeError("");
+                                }}
+                                className={`flex-1 px-4 py-3 rounded-xl font-medium transition-colors ${theme.inputBg} ${theme.text}`}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleEnrollWithCode}
+                                disabled={!courseCode.trim() || enrollingCourse === "code-enrollment"}
+                                className="flex-1 px-4 py-3 rounded-xl font-medium transition-all text-white"
+                                style={{
+                                    backgroundColor: (!courseCode.trim() || enrollingCourse === "code-enrollment") ? '#6b7280' : accentColor,
+                                    opacity: (!courseCode.trim() || enrollingCourse === "code-enrollment") ? 0.6 : 1,
+                                    cursor: (!courseCode.trim() || enrollingCourse === "code-enrollment") ? 'not-allowed' : 'pointer'
+                                }}
+                            >
+                                {enrollingCourse === "code-enrollment" ? "Enrolling..." : "Enroll"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -463,6 +751,18 @@ function TaskCard({
 
             {task.description && (
                 <p className={`${theme.textMuted} text-sm mb-4`}>{task.description}</p>
+            )}
+
+            {task.dueAt && (
+                <div className="mb-3">
+                    <p className={`text-xs ${theme.textSubtle} flex items-center gap-1`}>
+                        📅 Due: {new Date(task.dueAt).toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric',
+                            year: 'numeric'
+                        })}
+                    </p>
+                </div>
             )}
 
             <div className="flex items-center justify-between">
