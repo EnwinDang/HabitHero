@@ -33,7 +33,10 @@ export const TasksAPI = {
     return res.data;
   },
 
-  async complete(taskId: string, req?: CompleteTaskRequest): Promise<TaskCompletionResult> {
+  async complete(
+    taskId: string,
+    req?: CompleteTaskRequest
+  ): Promise<TaskCompletionResult> {
     const res = await api.post<TaskCompletionResult>(
       `/tasks/${taskId}/complete`,
       req || {}

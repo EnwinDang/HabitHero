@@ -23,7 +23,10 @@ export const ItemsAPI = {
   },
 
   create(item: Item): Promise<Item> {
-    return apiFetch<Item>("/items", { method: "POST", body: JSON.stringify(item) });
+    return apiFetch<Item>("/items", {
+      method: "POST",
+      body: JSON.stringify(item),
+    });
   },
 
   get(itemId: string): Promise<Item> {
@@ -31,11 +34,17 @@ export const ItemsAPI = {
   },
 
   replace(itemId: string, item: Item): Promise<Item> {
-    return apiFetch<Item>(`/items/${itemId}`, { method: "PUT", body: JSON.stringify(item) });
+    return apiFetch<Item>(`/items/${itemId}`, {
+      method: "PUT",
+      body: JSON.stringify(item),
+    });
   },
 
   patch(itemId: string, patch: Partial<Item>): Promise<Item> {
-    return apiFetch<Item>(`/items/${itemId}`, { method: "PATCH", body: JSON.stringify(patch) });
+    return apiFetch<Item>(`/items/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
   },
 
   delete(itemId: string): Promise<void> {
