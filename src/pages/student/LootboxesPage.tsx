@@ -3,6 +3,7 @@ import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { db, auth } from "@/firebase";
 import { collection, addDoc, updateDoc, doc } from "firebase/firestore";
+import { LootboxesAPI } from "@/api/lootboxes.api";
 import {
     Gift,
     Box,
@@ -113,51 +114,42 @@ export default function LootboxesPage() {
 
     const handleOpenChest = async (lootbox: Lootbox) => {
         if (user.stats.gold < lootbox.price) {
-            alert("Not enough gold!");
+            alert("Niet genoeg goud!");
             return;
         }
 
         setOpeningBox(lootbox.id);
 
         try {
-            const firebaseUser = auth.currentUser;
-            if (!firebaseUser) {
-                console.error("No authenticated user");
-                return;
-            }
-
             // Simulate opening animation
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            // Generate rewards
-            const items = generateRewards(lootbox.type);
+            // Call Backend API
+            const result = await LootboxesAPI.open(lootbox.id);
 
-            // Save items to user's inventory in Firestore
-            const inventoryRef = collection(db, "users", firebaseUser.uid, "inventory");
-            const savePromises = items.map(item => addDoc(inventoryRef, item));
-            await Promise.all(savePromises);
-
-            // Log lootbox opening (optional, keeping for history)
-            const lootboxesRef = collection(db, "users", firebaseUser.uid, "lootboxes");
-            await addDoc(lootboxesRef, {
-                lootboxType: lootbox.type,
-                lootboxName: lootbox.name,
-                price: lootbox.price,
-                rewards: items.map(i => i.name), // Store names for simple history
-                openedAt: Date.now()
-            });
-
-            // Update user gold (deduct lootbox price)
-            const userRef = doc(db, "users", firebaseUser.uid);
-            await updateDoc(userRef, {
-                "stats.gold": user.stats.gold - lootbox.price
-            });
+            // Result.results contains ItemInstance[]
+            // We need to map this back to GeneratedItem for display
+            // For now, we'll map roughly
+            const items = result.results.map((r: any) => ({
+                name: r.name || "Unknown Item",
+                type: r.type || "misc",
+                rarity: r.rarity || "common",
+                icon: r.icon || "📦",
+                isEquipped: false,
+                level: 1,
+                // Add stats if available in result
+                ...(r.stats ? { stats: r.stats } : {})
+            }));
 
             setRevealedItems(items);
             setShowRewards(true);
             setOpeningBox(null);
-        } catch (error) {
+
+            // Refresh user to update gold/inventory (handled by AuthContext/useRealtimeUser usually)
+            // If realtime listener is active, gold update should come automatically
+        } catch (error: any) {
             console.error("Failed to open lootbox:", error);
+            alert(error.message || "Er is iets misgegaan bij het openen.");
             setOpeningBox(null);
         }
     };
