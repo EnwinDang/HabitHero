@@ -983,6 +983,123 @@ app.delete("/modules/:moduleId", requireAuth, async (req, res) => {
 // ============ COMBAT ============
 
 /**
+ * GET /combat/player-stats/:level
+ * Calculate player stats based on level from worldConfig
+ */
+app.get("/combat/player-stats/:level", requireAuth, async (req, res) => {
+  try {
+    const { level } = req.params;
+    const playerLevel = parseInt(level);
+
+    // Get worldConfig
+    const configSnap = await db.collection("worldConfig").doc("playerScaling").get();
+    if (!configSnap.exists) {
+      return res.status(404).json({ error: "Player scaling config not found" });
+    }
+
+    const config = configSnap.data() || {};
+    const baseStats = config.baseStats || {};
+    const perLevel = config.perLevel || {};
+
+    // Calculate stats: baseStats + (perLevel × (level - 1))
+    const playerStats = {
+      level: playerLevel,
+      attack: Math.round(baseStats.attack + (perLevel.attack * (playerLevel - 1))),
+      defense: Math.round(baseStats.defense + (perLevel.defense * (playerLevel - 1))),
+      health: Math.round(baseStats.health + (perLevel.health * (playerLevel - 1))),
+      magic: Math.round(baseStats.magic + (perLevel.magic * (playerLevel - 1))),
+      magicResist: Math.round(baseStats.magicResist + (perLevel.magicResist * (playerLevel - 1))),
+    };
+
+    return res.status(200).json(playerStats);
+  } catch (e: any) {
+    console.error("Error in GET /combat/player-stats:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /combat/stage-multipliers/:stageType
+ * Get enemy and reward multipliers for a stage type
+ */
+app.get("/combat/stage-multipliers/:stageType", async (req, res) => {
+  try {
+    const { stageType } = req.params;
+
+    // Get worldConfig
+    const configSnap = await db.collection("worldConfig").doc("stageTypes").get();
+    if (!configSnap.exists) {
+      return res.status(404).json({ error: "Stage types config not found" });
+    }
+
+    const config = configSnap.data() || {};
+    const typeConfig = config[stageType];
+
+    if (!typeConfig) {
+      return res.status(404).json({ error: `Stage type '${stageType}' not found` });
+    }
+
+    return res.status(200).json({
+      stageType,
+      enemy: {
+        damageMultiplier: typeConfig.enemy?.damageMultiplier || 1,
+        hpMultiplier: typeConfig.enemy?.hpMultiplier || 1,
+      },
+      rewards: {
+        goldMultiplier: typeConfig.rewards?.goldMultiplier || 1,
+        xpMultiplier: typeConfig.rewards?.xpMultiplier || 1,
+      },
+    });
+  } catch (e: any) {
+    console.error("Error in GET /combat/stage-multipliers:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /combat/stage-type/:stage
+ * Determine stage type based on stageStructure config
+ */
+app.get("/combat/stage-type/:stage", async (req, res) => {
+  try {
+    const { stage } = req.params;
+    const stageNum = parseInt(stage);
+
+    // Get worldConfig
+    const configSnap = await db.collection("worldConfig").doc("stageStructure").get();
+    if (!configSnap.exists) {
+      return res.status(404).json({ error: "Stage structure config not found" });
+    }
+
+    const config = configSnap.data() || {};
+    const bossStage = config.bossStage || 10;
+    const miniBossStage = config.miniBossStage || 5;
+    const eliteStages = config.eliteStages || [];
+
+    let stageType = "normal";
+    
+    if (stageNum === bossStage) {
+      stageType = "boss";
+    } else if (stageNum === miniBossStage) {
+      stageType = "miniBoss";
+    } else if (eliteStages.includes(stageNum)) {
+      stageType = "elite";
+    }
+
+    return res.status(200).json({
+      stage: stageNum,
+      type: stageType,
+      bossStage,
+      miniBossStage,
+      eliteStages,
+    });
+  } catch (e: any) {
+    console.error("Error in GET /combat/stage-type:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
  * POST /combat/start
  */
 app.post("/combat/start", requireAuth, async (req, res) => {
@@ -1028,6 +1145,128 @@ app.get("/combat/:combatId", requireAuth, async (req, res) => {
     });
   } catch (e: any) {
     console.error("Error in GET /combat/:combatId:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /combat/monster-stats/:worldId/:stage
+ * Calculate monster stats based on worldConfig
+ */
+app.get("/combat/monster-stats/:worldId/:stage", async (req, res) => {
+  try {
+    const { worldId, stage } = req.params;
+    const stageNum = parseInt(stage);
+
+    // Get worldConfig
+    const configSnap = await db.collection("worldConfig").doc("monsterScaling").get();
+    if (!configSnap.exists) {
+      return res.status(404).json({ error: "Monster scaling config not found" });
+    }
+
+    const config = configSnap.data() || {};
+    const baseStats = config.basePerWorld?.[worldId];
+    const multipliers = config.perStageMultiplier || [];
+
+    if (!baseStats) {
+      return res.status(404).json({ error: `No base stats found for ${worldId}` });
+    }
+
+    // Get stage multiplier (array is 0-indexed, stage 1 = index 1)
+    const stageMultiplier = multipliers[stageNum] || 1;
+
+    const monsterStats = {
+      worldId,
+      stage: stageNum,
+      baseAttack: baseStats.attack,
+      baseHp: baseStats.hp,
+      multiplier: stageMultiplier,
+      attack: Math.round(baseStats.attack * stageMultiplier),
+      hp: Math.round(baseStats.hp * stageMultiplier),
+    };
+
+    return res.status(200).json(monsterStats);
+  } catch (e: any) {
+    console.error("Error in GET /combat/monster-stats:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * POST /combat/results
+ * Save combat results with full battle data, rewards, and achievement triggers
+ */
+app.post("/combat/results", requireAuth, async (req, res) => {
+  try {
+    const uid = (req as any).user.uid;
+    const {
+      battle,
+      context,
+      rewards,
+      progressUpdate,
+      achievementTriggers,
+    } = req.body;
+
+    // Create combat result document
+    const resultRef = db.collection("combat_results").doc();
+    const combatResult = {
+      userId: uid,
+      timestamp: new Date().toISOString(),
+      battle: {
+        worldId: battle.worldId,
+        stage: battle.stage,
+        monsterId: battle.monsterId,
+        monsterType: battle.monsterType || "normal",
+        result: battle.result, // "win" or "loss"
+        turns: battle.turns || 0,
+      },
+      context: {
+        source: context?.source || "combat",
+        courseId: context?.courseId || null,
+        moduleId: context?.moduleId || null,
+        taskId: context?.taskId || null,
+      },
+      rewards: {
+        xpGained: rewards?.xpGained || 0,
+        goldGained: rewards?.goldGained || 0,
+        loot: {
+          items: rewards?.loot?.items || [],
+        },
+      },
+      progressUpdate: {
+        totalXPAfter: progressUpdate?.totalXPAfter || 0,
+        totalGoldAfter: progressUpdate?.totalGoldAfter || 0,
+        stageUnlocked: progressUpdate?.stageUnlocked || null,
+        worldUnlocked: progressUpdate?.worldUnlocked || false,
+      },
+      achievementTriggers: {
+        monstersDefeated: achievementTriggers?.monstersDefeated || 0,
+        tasksCompleted: achievementTriggers?.tasksCompleted || 0,
+        moduleProgress: achievementTriggers?.moduleProgress || {},
+      },
+    };
+
+    await resultRef.set(combatResult);
+
+    // Update user stats if victory
+    if (battle.result === "win") {
+      const userRef = db.collection("users").doc(uid);
+      const userSnap = await userRef.get();
+      const user = userSnap.data() || {};
+
+      await userRef.update({
+        "stats.xp": (user.stats?.xp || 0) + (rewards?.xpGained || 0),
+        "stats.gold": (user.stats?.gold || 0) + (rewards?.goldGained || 0),
+        "stats.totalXP": (user.stats?.totalXP || 0) + (rewards?.xpGained || 0),
+      });
+    }
+
+    return res.status(201).json({
+      resultId: resultRef.id,
+      ...combatResult,
+    });
+  } catch (e: any) {
+    console.error("Error in POST /combat/results:", e);
     return res.status(500).json({ error: e?.message });
   }
 });
