@@ -53,6 +53,18 @@ service cloud.firestore {
         allow read: if isAuthenticated() && request.auth.uid == uid;
         allow write: if isAuthenticated() && request.auth.uid == uid;
       }
+      
+      // Inventory subcollection (items owned by user)
+      match /inventory/{itemId} {
+        allow read: if isAuthenticated() && request.auth.uid == uid;
+        allow write: if isAuthenticated() && request.auth.uid == uid;
+      }
+      
+      // Lootboxes subcollection (lootbox opening history)
+      match /lootboxes/{lootboxId} {
+        allow read: if isAuthenticated() && request.auth.uid == uid;
+        allow write: if isAuthenticated() && request.auth.uid == uid;
+      }
     }
     
     // Courses collection

@@ -48,34 +48,79 @@ const MOCK_STAGES = Array.from({ length: 10 }, (_, i) => ({
 }));
 
 export const WorldsAPI = {
-  list(): Promise<World[]> {
-    // return apiFetch<World[]>("/worlds");
-    return Promise.resolve(MOCK_WORLDS);
-  },
-  create(world: Partial<World>): Promise<World> {
-    // return apiFetch<World>("/worlds", { method: "POST", body: JSON.stringify(world) });
-    return Promise.resolve({ ...MOCK_WORLDS[0], ...world } as World);
-  },
-  get(worldId: string): Promise<World> {
-    // return apiFetch<World>(`/worlds/${worldId}`);
-    const world = MOCK_WORLDS.find(w => w.worldId === worldId);
-    if (!world) throw new Error("World not found");
-    return Promise.resolve(world);
-  },
-  replace(worldId: string, world: World): Promise<World> {
-    return Promise.resolve(world);
-  },
-  patch(worldId: string, patch: Partial<World>): Promise<World> {
-    const world = MOCK_WORLDS.find(w => w.worldId === worldId);
-    if (!world) throw new Error("World not found");
-    return Promise.resolve({ ...world, ...patch } as World);
-  },
-  delete(worldId: string): Promise<void> {
-    return Promise.resolve();
+  async list(): Promise<World[]> {
+    try {
+      return await apiFetch<World[]>("/worlds");
+    } catch (error) {
+      console.warn("Backend offline, using mock worlds data:", error);
+      return Promise.resolve(MOCK_WORLDS);
+    }
   },
 
-  stages(worldId: string): Promise<Record<string, any>[]> {
-    // return apiFetch<Record<string, any>[]>(`/worlds/${worldId}/stages`);
-    return Promise.resolve(MOCK_STAGES);
+  async create(world: Partial<World>): Promise<World> {
+    try {
+      return await apiFetch<World>("/worlds", {
+        method: "POST",
+        body: JSON.stringify(world)
+      });
+    } catch (error) {
+      console.warn("Backend offline, using mock create:", error);
+      return Promise.resolve({ ...MOCK_WORLDS[0], ...world } as World);
+    }
+  },
+
+  async get(worldId: string): Promise<World> {
+    try {
+      return await apiFetch<World>(`/worlds/${worldId}`);
+    } catch (error) {
+      console.warn("Backend offline, using mock world:", error);
+      const world = MOCK_WORLDS.find(w => w.worldId === worldId);
+      if (!world) throw new Error("World not found");
+      return Promise.resolve(world);
+    }
+  },
+
+  async replace(worldId: string, world: World): Promise<World> {
+    try {
+      return await apiFetch<World>(`/worlds/${worldId}`, {
+        method: "PUT",
+        body: JSON.stringify(world)
+      });
+    } catch (error) {
+      console.warn("Backend offline, using mock replace:", error);
+      return Promise.resolve(world);
+    }
+  },
+
+  async patch(worldId: string, patch: Partial<World>): Promise<World> {
+    try {
+      return await apiFetch<World>(`/worlds/${worldId}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch)
+      });
+    } catch (error) {
+      console.warn("Backend offline, using mock patch:", error);
+      const world = MOCK_WORLDS.find(w => w.worldId === worldId);
+      if (!world) throw new Error("World not found");
+      return Promise.resolve({ ...world, ...patch } as World);
+    }
+  },
+
+  async delete(worldId: string): Promise<void> {
+    try {
+      return await apiFetch<void>(`/worlds/${worldId}`, { method: "DELETE" });
+    } catch (error) {
+      console.warn("Backend offline, mock delete (no-op):", error);
+      return Promise.resolve();
+    }
+  },
+
+  async stages(worldId: string): Promise<Record<string, any>[]> {
+    try {
+      return await apiFetch<Record<string, any>[]>(`/worlds/${worldId}/stages`);
+    } catch (error) {
+      console.warn("Backend offline, using mock stages:", error);
+      return Promise.resolve(MOCK_STAGES);
+    }
   },
 };
