@@ -16,7 +16,9 @@ export default function LoginPage() {
   // Redirect based on role after login or if already logged in
   useEffect(() => {
     if (user && !authLoading) {
-      if (user.role === 'teacher' || user.role === 'admin') {
+      if (user.role === 'admin') {
+        navigate('/admin', { replace: true });
+      } else if (user.role === 'teacher') {
         navigate('/teacher', { replace: true });
       } else {
         navigate('/dashboard', { replace: true });

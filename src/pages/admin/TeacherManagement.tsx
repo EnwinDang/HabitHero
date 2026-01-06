@@ -6,15 +6,19 @@ import { Search, ShieldCheck, Mail, Loader2 } from 'lucide-react';
 const TeacherManagement: React.FC = () => {
   const [teachers, setTeachers] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
 
   const loadData = async () => {
     setLoading(true);
+    setError(null);
     try {
       const response = await UsersAPI.list({ role: 'teacher' });
       setTeachers(response.data || []);
-    } catch (error) {
+    } catch (error: any) {
+      const errorMsg = error?.message || "Failed to load teachers";
       console.error(error);
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -55,6 +59,17 @@ const TeacherManagement: React.FC = () => {
       {loading ? (
         <div className="text-center py-20 text-violet-500 font-semibold animate-pulse">
           <Loader2 className="animate-spin inline-block mr-2" /> Loading Faculty...
+        </div>
+      ) : error ? (
+        <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-8 text-center">
+          <p className="text-rose-700 font-semibold mb-4">⚠️ {error}</p>
+          <p className="text-rose-600 text-sm mb-6">Make sure you're logged in as an admin</p>
+          <button 
+            onClick={loadData}
+            className="px-6 py-3 bg-rose-500 text-white rounded-xl hover:bg-rose-600 transition-all font-semibold"
+          >
+            🔄 Retry Loading
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

@@ -7,12 +7,14 @@ import AddItemModal from './AddItemModal';
 const ItemManagement: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'items' | 'pets' | 'lootboxes' | 'achievements'>('items');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<{item: any, collection: string} | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
+    setError(null);
     try {
       if (activeTab === 'items') {
         const [weaponsRes, armorRes, arcaneRes] = await Promise.all([
@@ -51,8 +53,10 @@ const ItemManagement: React.FC = () => {
         const finalData = Array.isArray(response) ? response : (response as any).data || [];
         setData(finalData);
       }
-    } catch (e) {
+    } catch (e: any) {
+      const errorMsg = e?.message || "Failed to load items";
       console.error(e);
+      setError(errorMsg);
       setData([]);
     }
     setLoading(false);
@@ -115,6 +119,17 @@ const ItemManagement: React.FC = () => {
       {loading ? (
         <div className="flex justify-center p-20">
           <Loader2 className="animate-spin text-violet-500" size={40} />
+        </div>
+      ) : error ? (
+        <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-8 text-center">
+          <p className="text-rose-700 font-semibold mb-4">⚠️ {error}</p>
+          <p className="text-rose-600 text-sm mb-6">Make sure you're logged in as an admin</p>
+          <button 
+            onClick={fetchData}
+            className="px-6 py-3 bg-rose-500 text-white rounded-xl hover:bg-rose-600 transition-all font-semibold"
+          >
+            🔄 Retry Loading
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

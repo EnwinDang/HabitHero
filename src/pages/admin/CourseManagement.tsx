@@ -6,15 +6,19 @@ import { Course } from "../../models/course.model";
 const CourseManagement: React.FC = () => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
 
   const loadCourses = async (): Promise<void> => {
     setLoading(true);
+    setError(null);
     try {
       const data = await CoursesAPI.list(false);
       setCourses(data || []);
-    } catch (error) {
+    } catch (error: any) {
+      const errorMsg = error?.message || "Failed to load courses";
       console.error(error);
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -56,6 +60,17 @@ const CourseManagement: React.FC = () => {
       {loading ? (
         <div className="text-center py-20 text-violet-500 font-semibold italic">
            <Loader2 className="animate-spin inline-block mr-2" size={20} /> Synchronizing Courses...
+        </div>
+      ) : error ? (
+        <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-8 text-center">
+          <p className="text-rose-700 font-semibold mb-4">⚠️ {error}</p>
+          <p className="text-rose-600 text-sm mb-6">Make sure you're logged in as an admin</p>
+          <button 
+            onClick={loadCourses}
+            className="px-6 py-3 bg-rose-500 text-white rounded-xl hover:bg-rose-600 transition-all font-semibold"
+          >
+            🔄 Retry Loading
+          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

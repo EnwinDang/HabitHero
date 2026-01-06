@@ -25,9 +25,9 @@ export default defineConfig({
         secure: false,
         timeout: 120000,
         rewrite: (path) => {
-          const newPath = path.replace(/^\/api/, "");
-  console.log("[Vite Proxy]", path, "→", newPath);
-  return newPath;
+          // Don't remove /api - the Cloud Function is named "api"
+          console.log("[Vite Proxy]", path, "→", path);
+          return path;
         },
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {

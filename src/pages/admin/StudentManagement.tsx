@@ -6,15 +6,19 @@ import type { User } from '../../models/user.model';
 const StudentManagement: React.FC = () => {
   const [students, setStudents] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
 
   const loadStudents = async (): Promise<void> => {
     setLoading(true);
+    setError(null);
     try {
       const response = await UsersAPI.list({ role: 'student' });
       setStudents(response.data || []);
-    } catch (error) {
+    } catch (error: any) {
+      const errorMsg = error?.message || "Failed to load students";
       console.error("Fout bij het laden van studenten:", error);
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -66,6 +70,17 @@ const StudentManagement: React.FC = () => {
       {loading ? (
         <div className="text-center p-20 text-violet-500 animate-pulse font-semibold">
           <Loader2 className="animate-spin inline-block mr-2" size={20} /> Loading academy data...
+        </div>
+      ) : error ? (
+        <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-8 text-center">
+          <p className="text-rose-700 font-semibold mb-4">⚠️ {error}</p>
+          <p className="text-rose-600 text-sm mb-6">Make sure you're logged in as an admin</p>
+          <button 
+            onClick={loadStudents}
+            className="px-6 py-3 bg-rose-500 text-white rounded-xl hover:bg-rose-600 transition-all font-semibold"
+          >
+            🔄 Retry Loading
+          </button>
         </div>
       ) : (
         <div className="flex flex-col gap-4">
