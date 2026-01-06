@@ -650,7 +650,7 @@ export default function DailyTasksPage() {
                                 count={extremeTasks.length}
                                 isSelected={selectedDifficulty === "extreme"}
                                 onClick={() => setSelectedDifficulty("extreme")}
-                                color="#a855f7"
+                                color={accentColor}
                                 darkMode={darkMode}
                             />
                         </div>
@@ -798,7 +798,7 @@ function TaskCard({
         easy: { bg: darkMode ? 'rgba(34, 197, 94, 0.1)' : 'rgba(220, 252, 231, 1)', text: '#22c55e', border: 'rgba(34, 197, 94, 0.3)' },
         medium: { bg: darkMode ? 'rgba(245, 158, 11, 0.1)' : 'rgba(254, 243, 199, 1)', text: '#f59e0b', border: 'rgba(245, 158, 11, 0.3)' },
         hard: { bg: darkMode ? 'rgba(239, 68, 68, 0.1)' : 'rgba(254, 226, 226, 1)', text: '#ef4444', border: 'rgba(239, 68, 68, 0.3)' },
-        extreme: { bg: darkMode ? 'rgba(168, 85, 247, 0.1)' : 'rgba(243, 232, 255, 1)', text: '#a855f7', border: 'rgba(168, 85, 247, 0.3)' }
+        extreme: { bg: darkMode ? `${accentColor}10` : `${accentColor}05`, text: accentColor, border: `${accentColor}30` }
     };
 
     const colors = difficultyColors[task.difficulty];

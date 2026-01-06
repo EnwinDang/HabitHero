@@ -106,12 +106,17 @@ const StudentSidebar = () => {
               className={({ isActive }) => `
                 flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200
                 ${isActive
-                  ? darkMode
-                    ? "bg-violet-900/30 text-violet-400 border border-violet-800"
-                    : "bg-violet-100 text-violet-700 border border-violet-200"
-                  : `${theme.textMuted} ${theme.hoverAccent} hover:text-violet-700 dark:hover:text-violet-400`
+                  ? ""
+                  : `${theme.textMuted} hover:opacity-80`
                 }
               `}
+              style={({ isActive }) => isActive ? {
+                backgroundColor: darkMode ? `${accentColor}20` : `${accentColor}10`,
+                color: accentColor,
+                borderWidth: '1px',
+                borderStyle: 'solid',
+                borderColor: darkMode ? `${accentColor}50` : `${accentColor}30`
+              } : {}}
             >
               {item.icon}
               <span>{item.name}</span>
