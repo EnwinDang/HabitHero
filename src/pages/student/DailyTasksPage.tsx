@@ -54,28 +54,32 @@ export default function DailyTasksPage() {
         try {
             setLoading(true);
             
-            // Only load enrolled courses by checking Firestore directly
+            // Only load enrolled courses by checking where student is enrolled
             const enrolled: Course[] = [];
-            const allCoursesSnapshot = await getDocs(collection(db, "courses"));
+            const coursesSnapshot = await getDocs(collection(db, "courses"));
             
-            for (const courseDoc of allCoursesSnapshot.docs) {
-                // Check if student is enrolled by looking at subcollection
+            // Use Promise.all to check enrollments in parallel instead of sequentially
+            const enrollmentChecks = coursesSnapshot.docs.map(async (courseDoc) => {
                 const studentDoc = await getDoc(doc(db, `courses/${courseDoc.id}/students/${firebaseUser.uid}`));
                 
                 if (studentDoc.exists()) {
-                    enrolled.push({
+                    return {
                         courseId: courseDoc.id,
                         ...courseDoc.data()
-                    } as Course);
+                    } as Course;
                 }
-            }
+                return null;
+            });
             
-            setEnrolledCourses(enrolled);
+            const results = await Promise.all(enrollmentChecks);
+            const enrolledCourses = results.filter((course): course is Course => course !== null);
+            
+            setEnrolledCourses(enrolledCourses);
             setAvailableCourses([]); // No courses shown as "available" - only via code
             
             // Select first enrolled course by default if any
-            if (enrolled.length > 0) {
-                await selectCourse(enrolled[0]);
+            if (enrolledCourses.length > 0) {
+                await selectCourse(enrolledCourses[0]);
             }
         } catch (error) {
             console.error("Error loading courses:", error);
