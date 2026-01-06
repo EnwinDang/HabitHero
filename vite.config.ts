@@ -25,8 +25,9 @@ export default defineConfig({
         secure: false,
         timeout: 120000,
         rewrite: (path) => {
-          console.log("[Vite Proxy]", path, "→", `${path}`);
-          return path;
+          const newPath = path.replace(/^\/api/, "");
+  console.log("[Vite Proxy]", path, "→", newPath);
+  return newPath;
         },
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {

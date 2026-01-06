@@ -1,8 +1,7 @@
-import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import { onRequest } from "firebase-functions/v1/https";
 import express from "express";
 import cors from "cors";
-import { z } from "zod";
 
 // Initialize Admin SDK
 admin.initializeApp();
@@ -46,170 +45,6 @@ async function requireAuth(
     return res.status(401).json({ error: "Invalid token" });
   }
 }
-
-// Request validation schemas
-const taskCreateSchema = z
-  .object({
-    title: z.string().min(1),
-    description: z.string().min(1).optional().nullable(),
-    difficulty: z.enum(["easy", "medium", "hard", "extreme"]),
-    xp: z.number().int().nonnegative(),
-    gold: z.number().int().nonnegative(),
-    date: z.string().optional(),
-    dueAt: z.number().int().optional(),
-    achievementTag: z.string().optional().nullable(),
-    isRepeatable: z.boolean().optional().default(false),
-    isActive: z.boolean().optional().default(true),
-  })
-  .catchall(z.any());
-
-const taskUpdateSchema = taskCreateSchema.partial();
-
-const itemsQuerySchema = z
-  .object({
-    type: z.string().optional(),
-    rarity: z.string().optional(),
-    activeOnly: z.enum(["true", "false"]).optional(),
-  })
-  .catchall(z.any());
-
-const statsSchema = z
-  .object({
-    hp: z.number().optional(),
-    attack: z.number().optional(),
-    defense: z.number().optional(),
-    crit: z.number().optional(),
-    speed: z.number().optional(),
-  })
-  .partial();
-
-const itemSchema = z
-  .object({
-    name: z.string().min(1),
-    description: z.string().optional().nullable(),
-    type: z.string().min(1),
-    rarity: z.string().min(1),
-    element: z.string().optional().nullable(),
-    icon: z.string().optional().nullable(),
-    stats: statsSchema.optional(),
-    valueGold: z.number().nonnegative().optional(),
-    isActive: z.boolean().optional().default(true),
-  })
-  .catchall(z.any());
-
-const itemUpdateSchema = itemSchema.partial();
-
-const courseSchema = z
-  .object({
-    name: z.string().min(1),
-    description: z.string().optional().nullable(),
-    courseCode: z.string().min(1),
-    startDate: z.string().optional(),
-    endDate: z.string().optional(),
-    isActive: z.boolean().optional().default(true),
-  })
-  .catchall(z.any());
-
-const courseUpdateSchema = courseSchema.partial();
-
-const courseEnrollmentSchema = z
-  .object({
-    uid: z.string().min(1),
-  })
-  .catchall(z.any());
-
-const moduleSchema = z
-  .object({
-    courseId: z.string().optional(),
-    title: z.string().min(1),
-    description: z.string().optional().nullable(),
-    order: z.number().int().nonnegative(),
-    achievementId: z.string().optional().nullable(),
-    isActive: z.boolean().optional().default(true),
-  })
-  .catchall(z.any());
-
-const moduleUpdateSchema = moduleSchema.partial();
-
-const achievementSchema = z
-  .object({
-    name: z.string().min(1),
-    description: z.string().optional().nullable(),
-    icon: z.string().optional().nullable(),
-    reward: z
-      .object({
-        xp: z.number().int().nonnegative().optional(),
-        gold: z.number().int().nonnegative().optional(),
-      })
-      .catchall(z.any())
-      .optional(),
-  })
-  .catchall(z.any());
-
-const notificationSchema = z
-  .object({
-    title: z.string().min(1),
-    message: z.string().min(1),
-    type: z.string().min(1),
-  })
-  .catchall(z.any());
-
-const itemInstanceSchema = z
-  .object({
-    instanceId: z.string().optional(),
-    itemId: z.string().min(1),
-    quantity: z.number().int().nonnegative(),
-    obtainedAt: z.number().int().optional(),
-    meta: z.record(z.string(), z.any()).optional(),
-  })
-  .catchall(z.any());
-
-const inventorySchema = z
-  .object({
-    gold: z.number().int().nonnegative().optional(),
-    items: z.array(itemInstanceSchema).optional(),
-    materials: z.record(z.string(), z.number().int().nonnegative()).optional(),
-    lastUpdatedAt: z.number().int().optional(),
-  })
-  .catchall(z.any());
-
-const worldSchema = z
-  .object({
-    name: z.string().min(1),
-    description: z.string().optional().nullable(),
-    order: z.number().int().nonnegative(),
-    isActive: z.boolean().optional().default(true),
-  })
-  .catchall(z.any());
-
-const worldUpdateSchema = worldSchema.partial();
-
-const petSchema = z
-  .object({
-    name: z.string().min(1),
-    rarity: z.string().min(1),
-    element: z.string().optional().nullable(),
-    baseStats: statsSchema.optional(),
-    abilities: z.array(z.string()).optional(),
-    isActive: z.boolean().optional().default(true),
-  })
-  .catchall(z.any());
-
-const petUpdateSchema = petSchema.partial();
-
-const lootboxOpenSchema = z
-  .object({
-    count: z.number().int().positive().optional().default(1),
-  })
-  .catchall(z.any());
-
-const combatStartSchema = z
-  .object({
-    worldId: z.string().min(1),
-    stage: z.number().int().nonnegative(),
-    seed: z.string().optional(),
-  })
-  .catchall(z.any());
 
 // ============ AUTH ============
 
@@ -269,29 +104,11 @@ app.get("/auth/me", requireAuth, async (req, res) => {
 
 /**
  * GET /tasks
- * Supports query parameters: courseId, moduleId
- * If courseId and moduleId are provided, queries from courses/{courseId}/modules/{moduleId}/tasks
- * Otherwise, queries from users/{uid}/tasks
  */
 app.get("/tasks", requireAuth, async (req, res) => {
   try {
-    const { courseId, moduleId } = req.query;
-    
-    let tasksRef;
-    if (courseId && moduleId) {
-      // Query tasks from course/module
-      tasksRef = db
-        .collection("courses")
-        .doc(courseId as string)
-        .collection("modules")
-        .doc(moduleId as string)
-        .collection("tasks");
-    } else {
-      // Query tasks from user (backward compatibility)
-      const uid = (req as any).user.uid;
-      tasksRef = db.collection("users").doc(uid).collection("tasks");
-    }
-    
+    const uid = (req as any).user.uid;
+    const tasksRef = db.collection("users").doc(uid).collection("tasks");
     const snap = await tasksRef.get();
 
     const tasks = snap.docs.map((doc) => ({
@@ -308,123 +125,54 @@ app.get("/tasks", requireAuth, async (req, res) => {
 
 /**
  * POST /tasks
- * If courseId and moduleId are provided in body, saves to courses/{courseId}/modules/{moduleId}/tasks
- * Otherwise, saves to users/{uid}/tasks (backward compatibility)
  */
 app.post("/tasks", requireAuth, async (req, res) => {
   try {
     const uid = (req as any).user.uid;
-    const parsed = taskCreateSchema.safeParse(req.body);
+    const { title, description, difficulty, xp, gold, dueAt, isRepeatable } = req.body;
 
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid task payload", issues: parsed.error.issues });
-    }
-
-    const data = parsed.data;
-    const { title, description, difficulty, xp, gold, dueAt, isRepeatable, courseId, moduleId } = data;
-
-    console.log('📝 [POST /tasks] Received request:', { title, courseId, moduleId, hasCourseId: !!courseId, hasModuleId: !!moduleId });
-
-    let tasksRef;
-    // Check for valid (non-empty) courseId and moduleId
-    if (courseId && courseId.trim() && moduleId && moduleId.trim()) {
-      // Save to course/module tasks
-      const path = `courses/${courseId}/modules/${moduleId}/tasks`;
-      console.log('✅ [POST /tasks] Saving to course/module path:', path);
-      tasksRef = db
-        .collection("courses")
-        .doc(courseId.trim())
-        .collection("modules")
-        .doc(moduleId.trim())
-        .collection("tasks");
-    } else {
-      // Save to user tasks (backward compatibility)
-      const uid = (req as any).user.uid;
-      console.log('⚠️ [POST /tasks] No valid courseId/moduleId, saving to user tasks:', { courseId, moduleId, uid });
-      tasksRef = db.collection("users").doc(uid).collection("tasks");
-    }
-    
+    const tasksRef = db.collection("users").doc(uid).collection("tasks");
     const newTaskRef = tasksRef.doc();
 
-    // Calculate XP and gold based on difficulty if not provided
-    let finalXP = xp;
-    let finalGold = gold;
-    
-    if (!finalXP || !finalGold) {
-      const difficultyMultipliers: Record<string, { xp: number; gold: number }> = {
-        easy: { xp: 100, gold: 50 },
-        medium: { xp: 125, gold: 63 },      // 25% increase from easy
-        hard: { xp: 156, gold: 78 },        // 25% increase from medium
-        extreme: { xp: 195, gold: 98 },     // 25% increase from hard
-      };
-      
-      const normalizedDifficulty = (difficulty || 'medium').toLowerCase();
-      const rewards = difficultyMultipliers[normalizedDifficulty] || difficultyMultipliers.medium;
-      
-      finalXP = finalXP || rewards.xp;
-      finalGold = finalGold || rewards.gold;
-    }
-
     const task = {
-      ...data,
-      xp: finalXP,
-      gold: finalGold,
-      dueAt: data.dueAt ?? null,
-      isRepeatable: data.isRepeatable ?? false,
-      isActive: data.isActive ?? true,
+      title,
+      description,
+      difficulty,
+      xp,
+      gold,
+      dueAt: dueAt || null,
+      isRepeatable: isRepeatable || false,
+      isActive: true,
       createdAt: Date.now(),
       completedAt: null,
-      ...(courseId && { courseId }),
-      ...(moduleId && { moduleId }),
     };
 
-    console.log('💾 [POST /tasks] Saving task to Firebase:', { taskId: newTaskRef.id, path: tasksRef.path, task });
     await newTaskRef.set(task);
-    console.log('✅ [POST /tasks] Task saved successfully:', newTaskRef.id);
 
     return res.status(201).json({
       taskId: newTaskRef.id,
       ...task,
     });
   } catch (e: any) {
-    console.error("❌ [POST /tasks] Error:", e);
+    console.error("Error in POST /tasks:", e);
     return res.status(500).json({ error: e?.message });
   }
 });
 
 /**
  * GET /tasks/{taskId}
- * Checks both course/module tasks and user tasks
  */
 app.get("/tasks/:taskId", requireAuth, async (req, res) => {
   try {
+    const uid = (req as any).user.uid;
     const { taskId } = req.params;
-    const { courseId, moduleId } = req.query;
 
-    let taskSnap;
-    
-    if (courseId && moduleId) {
-      // Try course/module tasks first
-      taskSnap = await db
-        .collection("courses")
-        .doc(courseId as string)
-        .collection("modules")
-        .doc(moduleId as string)
-        .collection("tasks")
-        .doc(taskId)
-        .get();
-    }
-    
-    if (!taskSnap || !taskSnap.exists) {
-      // Fallback to user tasks
-      const uid = (req as any).user.uid;
-      taskSnap = await db
-        .collection("users")
-        .doc(uid)
-        .collection("tasks")
-        .doc(taskId)
-        .get();
-    }
+    const taskSnap = await db
+      .collection("users")
+      .doc(uid)
+      .collection("tasks")
+      .doc(taskId)
+      .get();
 
     if (!taskSnap.exists) {
       return res.status(404).json({ error: "Task not found" });
@@ -442,54 +190,24 @@ app.get("/tasks/:taskId", requireAuth, async (req, res) => {
 
 /**
  * PATCH /tasks/{taskId}
- * Updates task in course/module if courseId and moduleId are in body, otherwise updates user task
  */
 app.patch("/tasks/:taskId", requireAuth, async (req, res) => {
   try {
+    const uid = (req as any).user.uid;
     const { taskId } = req.params;
-    const { courseId, moduleId } = req.body;
 
-    const parsed = taskUpdateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid task update", issues: parsed.error.issues });
-    }
-
-    let taskRef;
-    
-    if (courseId && moduleId) {
-      // Update course/module task
-      taskRef = db
-        .collection("courses")
-        .doc(courseId)
-        .collection("modules")
-        .doc(moduleId)
-        .collection("tasks")
-        .doc(taskId);
-    } else {
-      // Update user task (backward compatibility)
-      const uid = (req as any).user.uid;
-      taskRef = db
-        .collection("users")
-        .doc(uid)
-        .collection("tasks")
-        .doc(taskId);
-    }
-
-    // Remove courseId and moduleId from update data if present (they're path params, not data)
-    const updateData = { ...parsed.data };
-    delete updateData.courseId;
-    delete updateData.moduleId;
+    const taskRef = db
+      .collection("users")
+      .doc(uid)
+      .collection("tasks")
+      .doc(taskId);
 
     await taskRef.update({
-      ...updateData,
+      ...req.body,
       updatedAt: Date.now(),
     });
 
     const updated = await taskRef.get();
-    if (!updated.exists) {
-      return res.status(404).json({ error: "Task not found" });
-    }
-
     return res.status(200).json({
       taskId: updated.id,
       ...updated.data(),
@@ -502,33 +220,18 @@ app.patch("/tasks/:taskId", requireAuth, async (req, res) => {
 
 /**
  * DELETE /tasks/{taskId}
- * Deletes task from course/module if courseId and moduleId are in query, otherwise deletes user task
  */
 app.delete("/tasks/:taskId", requireAuth, async (req, res) => {
   try {
+    const uid = (req as any).user.uid;
     const { taskId } = req.params;
-    const { courseId, moduleId } = req.query;
 
-    if (courseId && moduleId) {
-      // Delete from course/module tasks
-      await db
-        .collection("courses")
-        .doc(courseId as string)
-        .collection("modules")
-        .doc(moduleId as string)
-        .collection("tasks")
-        .doc(taskId)
-        .delete();
-    } else {
-      // Delete from user tasks (backward compatibility)
-      const uid = (req as any).user.uid;
-      await db
-        .collection("users")
-        .doc(uid)
-        .collection("tasks")
-        .doc(taskId)
-        .delete();
-    }
+    await db
+      .collection("users")
+      .doc(uid)
+      .collection("tasks")
+      .doc(taskId)
+      .delete();
 
     return res.status(200).json({ success: true });
   } catch (e: any) {
@@ -621,7 +324,7 @@ app.get("/achievements", async (req, res) => {
       ...doc.data(),
     }));
 
-    return res.status(200).json(achievements);
+    return res.status(200).json({ data: achievements });
   } catch (e: any) {
     console.error("Error in GET /achievements:", e);
     return res.status(500).json({ error: e?.message });
@@ -633,29 +336,36 @@ app.get("/achievements", async (req, res) => {
  */
 app.post("/achievements", requireAuth, async (req, res) => {
   try {
-    const parsed = achievementSchema.safeParse(req.body);
+    const { title, description, reward, category } = req.body;
 
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid achievement payload", issues: parsed.error.issues });
-    }
+    const slug = title.toLowerCase().trim().replace(/\s+/g, '_');
+    const customId = `ach_${slug}`;
 
-    const { name, description, icon, reward } = parsed.data;
+    const achievementRef = db.collection("achievements").doc(customId);
 
-    const newAchievementRef = db.collection("achievements").doc();
-    await newAchievementRef.set({
-      name,
-      description,
-      icon,
-      reward,
+    const achievement = {
+      achievementId: customId,
+      title,
+      category: category || "general",
+      condition: {
+        description: description,
+        operator: ">=",
+        type: "counter",
+        value: 10
+      },
+      reward: {
+        gold: reward?.gold || 0,
+        xp: reward?.xp || 0
+      },
+      iconLocked: "lock",
+      iconUnlocked: "trophy",
       createdAt: Date.now(),
-    });
+    };
+
+    await achievementRef.set(achievement);
 
     return res.status(201).json({
-      achievementId: newAchievementRef.id,
-      name,
-      description,
-      icon,
-      reward,
+      data: achievement
     });
   } catch (e: any) {
     console.error("Error in POST /achievements:", e);
@@ -689,17 +399,12 @@ app.patch("/users/:uid/inventory", requireAuth, async (req, res) => {
     const { uid } = req.params;
     const userRef = db.collection("users").doc(uid);
 
-    const parsed = inventorySchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid inventory payload", issues: parsed.error.issues });
-    }
-
     await userRef.update({
-      inventory: parsed.data,
+      inventory: req.body,
       updatedAt: Date.now(),
     });
 
-    return res.status(200).json(parsed.data);
+    return res.status(200).json(req.body);
   } catch (e: any) {
     console.error("Error in PATCH /users/:uid/inventory:", e);
     return res.status(500).json({ error: e?.message });
@@ -752,6 +457,43 @@ app.patch("/users/:uid", requireAuth, async (req, res) => {
     console.error("Error in PATCH /users/:uid:", e);
     return res.status(500).json({ error: e?.message });
   }
+});
+
+/**
+ * GET /users
+ */
+app.get("/users", requireAuth, async (req, res) => {
+    try {
+        const { role, status, limit = 50 } = req.query;
+        let query: any = db.collection("users");
+
+        if (role) {
+            query = query.where("role", "==", role);
+        }
+
+        if (status) {
+            query = query.where("status", "==", status);
+        }
+
+        // We halen de data op zonder de complexe sortering die indexen vereist
+        const snap = await query.limit(parseInt(limit as string, 10) || 50).get();
+
+        const users = snap.docs.map((doc: any) => ({
+            uid: doc.id,
+            ...doc.data(),
+        }));
+
+        return res.status(200).json({
+            data: users,
+            pagination: {
+                total: snap.size,
+                limit: parseInt(limit as string, 10) || 50
+            },
+        });
+    } catch (e: any) {
+        console.error("Error in GET /users:", e);
+        return res.status(500).json({ error: e?.message });
+    }
 });
 
 /**
@@ -819,20 +561,13 @@ app.get("/users/:uid/notifications", requireAuth, async (req, res) => {
 app.post("/users/:uid/notifications", requireAuth, async (req, res) => {
   try {
     const { uid } = req.params;
-
-    const parsed = notificationSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid notification payload", issues: parsed.error.issues });
-    }
-
-    const { title, message, type, ...rest } = parsed.data;
+    const { title, message, type } = req.body;
 
     const notifRef = db.collection("users").doc(uid).collection("notifications").doc();
     await notifRef.set({
       title,
       message,
       type,
-      ...rest,
       read: false,
       createdAt: Date.now(),
     });
@@ -884,15 +619,14 @@ app.get("/leaderboards/global", async (req, res) => {
 /**
  * GET /courses
  */
-app.get("/courses", requireAuth, async (req, res) => {
+app.get("/courses", async (req, res) => {
   try {
-    const uid = (req as any).user.uid;
     const activeOnly = req.query.activeOnly === "true";
     const coursesRef = db.collection("courses");
-    let query = coursesRef.where("createdBy", "==", uid) as any;
+    let query = coursesRef;
     
     if (activeOnly) {
-      query = query.where("isActive", "==", true);
+      query = query.where("isActive", "==", true) as any;
     }
 
     const snap = await query.get();
@@ -913,19 +647,9 @@ app.get("/courses", requireAuth, async (req, res) => {
  */
 app.post("/courses", requireAuth, async (req, res) => {
   try {
-    const uid = (req as any).user.uid;
-    const parsed = courseSchema.safeParse(req.body);
-
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid course payload", issues: parsed.error.issues });
-    }
-
     const newCourseRef = db.collection("courses").doc();
     const course = {
-      ...parsed.data,
-      createdBy: uid,
-      students: {},
-      isActive: parsed.data.isActive ?? true,
+      ...req.body,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -969,15 +693,9 @@ app.get("/courses/:courseId", async (req, res) => {
 app.put("/courses/:courseId", requireAuth, async (req, res) => {
   try {
     const { courseId } = req.params;
-
-    const parsed = courseSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid course payload", issues: parsed.error.issues });
-    }
     const courseRef = db.collection("courses").doc(courseId);
     const course = {
-      ...parsed.data,
-      isActive: parsed.data.isActive ?? true,
+      ...req.body,
       updatedAt: Date.now(),
     };
     await courseRef.set(course, { merge: false });
@@ -998,14 +716,9 @@ app.put("/courses/:courseId", requireAuth, async (req, res) => {
 app.patch("/courses/:courseId", requireAuth, async (req, res) => {
   try {
     const { courseId } = req.params;
-
-    const parsed = courseUpdateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid course update", issues: parsed.error.issues });
-    }
     const courseRef = db.collection("courses").doc(courseId);
     await courseRef.update({
-      ...parsed.data,
+      ...req.body,
       updatedAt: Date.now(),
     });
 
@@ -1036,176 +749,22 @@ app.delete("/courses/:courseId", requireAuth, async (req, res) => {
 
 /**
  * GET /courses/:courseId/students
- * 
- * Students can be stored in multiple ways:
- * 1. courses/{courseId}/students/{studentId} subcollection (new structure)
- * 2. courses/{courseId} document with students: { studentId: true } field (current structure) - PRIMARY
- * 3. users/{uid}/enrollments/{enrollmentId} with courseId (alternative structure)
  */
 app.get("/courses/:courseId/students", requireAuth, async (req, res) => {
   try {
     const { courseId } = req.params;
-    
-    let studentIds: string[] = [];
-    let enrollmentMap: { [uid: string]: any } = {};
-
-    // First, try to get students from subcollection (if it exists as a reverse index)
     const studentsSnap = await db
       .collection("courses")
       .doc(courseId)
       .collection("students")
       .get();
 
-    if (studentsSnap.size > 0) {
-      // Use subcollection structure (reverse index)
-      studentIds = studentsSnap.docs.map((doc) => doc.id);
-      // Get enrollment data from subcollection documents
-      studentsSnap.docs.forEach((doc) => {
-        enrollmentMap[doc.id] = doc.data();
-      });
-    } else {
-      // Check course document for students field (current structure: students: { studentId: true })
-      const courseDoc = await db.collection("courses").doc(courseId).get();
-      if (courseDoc.exists) {
-        const courseData = courseDoc.data();
-        const studentsField = courseData?.students;
-        
-        if (studentsField && typeof studentsField === "object" && !Array.isArray(studentsField)) {
-          // Extract student IDs from map like { student_001: true, student_002: true }
-          studentIds = Object.keys(studentsField).filter(
-            (key) => studentsField[key] === true || studentsField[key] === "true"
-          );
-        }
-      }
+    const students = studentsSnap.docs.map((doc) => ({
+      uid: doc.id,
+      ...doc.data(),
+    }));
 
-      // If still no students found, try querying by enrollments (alternative structure)
-      if (studentIds.length === 0) {
-        const usersSnap = await db
-          .collection("users")
-          .where("role", "==", "student")
-          .get();
-
-        // Filter users who have an enrollment for this course
-        const enrolledUsers: Array<{ uid: string; enrollmentData: any }> = [];
-        
-        usersSnap.docs.forEach((userDoc) => {
-          const userData = userDoc.data();
-          const enrollments = userData?.enrollments || {};
-          
-          // Check if any enrollment has this courseId
-          for (const [enrollmentId, enrollment] of Object.entries(enrollments)) {
-            const enrollmentData = enrollment as any;
-            if (enrollmentData?.courseId === courseId) {
-              enrolledUsers.push({
-                uid: userDoc.id,
-                enrollmentData: {
-                  ...enrollmentData,
-                  enrollmentId: enrollmentId,
-                },
-              });
-              break; // Found enrollment for this course, no need to check others
-            }
-          }
-        });
-
-        // Extract student IDs and enrollment data
-        studentIds = enrolledUsers.map((u) => u.uid);
-        enrollmentMap = enrolledUsers.reduce((acc, u) => {
-          acc[u.uid] = u.enrollmentData;
-          return acc;
-        }, {} as { [uid: string]: any });
-      }
-    }
-
-    if (studentIds.length === 0) {
-      return res.status(200).json([]);
-    }
-
-    // Fetch user data for each enrolled student to get full student info
-    const studentsPromises = studentIds.map(async (uid) => {
-      try {
-        // Fetch user data to get displayName, stats, etc.
-        const userDoc = await db.collection("users").doc(uid).get();
-        const userData = userDoc.exists ? userDoc.data() : null;
-        
-        if (!userData) {
-          // User doesn't exist, skip
-          return null;
-        }
-        
-        // Get enrollment data from map or try to find in user's enrollments
-        let enrollmentData: any = enrollmentMap[uid] || {};
-        if (!enrollmentData || Object.keys(enrollmentData).length === 0) {
-          // Try to find enrollment in user's enrollments
-          const enrollments = userData?.enrollments || {};
-          for (const [enrollmentId, enrollment] of Object.entries(enrollments)) {
-            const enrollmentInfo = enrollment as any;
-            if (enrollmentInfo?.courseId === courseId) {
-              enrollmentData = {
-                ...enrollmentInfo,
-                enrollmentId: enrollmentId,
-              };
-              break;
-            }
-          }
-        }
-        
-        // Calculate tasks completed from user's tasks subcollection
-        // Count tasks where isActive is false (completed tasks)
-        let tasksCompleted = 0;
-        try {
-          const tasksSnap = await db
-            .collection("users")
-            .doc(uid)
-            .collection("tasks")
-            .where("isActive", "==", false)
-            .get();
-          tasksCompleted = tasksSnap.size;
-        } catch (taskErr) {
-          // If task counting fails, try to get from stats
-          tasksCompleted = userData?.stats?.tasksCompleted || 0;
-        }
-        
-        const stats = userData?.stats || {};
-        const totalXP = stats.totalXP || 0;
-        
-        // Get joinedAt from enrollment data (it's stored as joinedAt in enrollments)
-        const enrolledAt = enrollmentData?.joinedAt || enrollmentData?.enrolledAt || null;
-        
-        return {
-          uid: uid,
-          displayName: userData?.displayName || uid,
-          currentModule: enrollmentData.currentModule || "",
-          lastActive: userData?.lastLoginAt 
-            ? new Date(userData.lastLoginAt).toISOString() 
-            : enrolledAt
-              ? new Date(enrolledAt).toISOString()
-              : "",
-          tasksCompleted: tasksCompleted,
-          totalXP: totalXP,
-          enrolledAt: enrolledAt,
-        };
-      } catch (userErr) {
-        // If user data fetch fails, return basic enrollment data
-        console.error(`Error fetching user data for ${uid}:`, userErr);
-        return {
-          uid: uid,
-          displayName: uid,
-          currentModule: "",
-          lastActive: "",
-          tasksCompleted: 0,
-          totalXP: 0,
-          enrolledAt: null,
-        };
-      }
-    });
-
-    const students = await Promise.all(studentsPromises);
-    
-    // Filter out null values (users that don't exist)
-    const validStudents = students.filter((s) => s !== null);
-
-    return res.status(200).json(validStudents);
+    return res.status(200).json(students);
   } catch (e: any) {
     console.error("Error in GET /courses/:courseId/students:", e);
     return res.status(500).json({ error: e?.message });
@@ -1218,29 +777,16 @@ app.get("/courses/:courseId/students", requireAuth, async (req, res) => {
 app.post("/courses/:courseId/students", requireAuth, async (req, res) => {
   try {
     const { courseId } = req.params;
-
-    const parsed = courseEnrollmentSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid student payload", issues: parsed.error.issues });
-    }
-
-    const { uid } = parsed.data;
-    const courseRef = db.collection("courses").doc(courseId);
-    
-    // Update students subcollection
-    await courseRef
+    const { uid } = req.body;
+    await db
+      .collection("courses")
+      .doc(courseId)
       .collection("students")
       .doc(uid)
       .set({
-        ...parsed.data,
+        ...req.body,
         enrolledAt: Date.now(),
       });
-    
-    // Update course document students map
-    await courseRef.update({
-      [`students.${uid}`]: true,
-      updatedAt: Date.now(),
-    });
 
     return res.status(200).json({ success: true });
   } catch (e: any) {
@@ -1255,26 +801,13 @@ app.post("/courses/:courseId/students", requireAuth, async (req, res) => {
 app.delete("/courses/:courseId/students", requireAuth, async (req, res) => {
   try {
     const { courseId } = req.params;
-
-    const parsed = courseEnrollmentSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid student payload", issues: parsed.error.issues });
-    }
-
-    const { uid } = parsed.data;
-    const courseRef = db.collection("courses").doc(courseId);
-    
-    // Delete from students subcollection
-    await courseRef
+    const { uid } = req.body;
+    await db
+      .collection("courses")
+      .doc(courseId)
       .collection("students")
       .doc(uid)
       .delete();
-    
-    // Remove from course document students map
-    await courseRef.update({
-      [`students.${uid}`]: admin.firestore.FieldValue.delete(),
-      updatedAt: Date.now(),
-    });
 
     return res.status(200).json({ success: true });
   } catch (e: any) {
@@ -1295,14 +828,10 @@ app.get("/courses/:courseId/modules", async (req, res) => {
       .collection("modules")
       .get();
 
-    const modules = modulesSnap.docs.map((doc) => {
-      const data = doc.data();
-      // Ensure moduleId is always set to the document ID (don't let data.moduleId override it)
-      return {
-        ...data,
-        moduleId: doc.id, // Always use document ID, even if data has moduleId field
-      };
-    });
+    const modules = modulesSnap.docs.map((doc) => ({
+      moduleId: doc.id,
+      ...doc.data(),
+    }));
 
     return res.status(200).json(modules);
   } catch (e: any) {
@@ -1317,12 +846,6 @@ app.get("/courses/:courseId/modules", async (req, res) => {
 app.post("/courses/:courseId/modules", requireAuth, async (req, res) => {
   try {
     const { courseId } = req.params;
-
-    const parsed = moduleSchema.safeParse({ ...req.body, courseId });
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid module payload", issues: parsed.error.issues });
-    }
-
     const newModuleRef = db
       .collection("courses")
       .doc(courseId)
@@ -1330,8 +853,7 @@ app.post("/courses/:courseId/modules", requireAuth, async (req, res) => {
       .doc();
 
     const module = {
-      ...parsed.data,
-      courseId,
+      ...req.body,
       createdAt: Date.now(),
     };
     await newModuleRef.set(module);
@@ -1379,19 +901,13 @@ app.put("/modules/:moduleId", requireAuth, async (req, res) => {
   try {
     const { moduleId } = req.params;
     const coursesSnap = await db.collection("courses").get();
-
-    const parsed = moduleSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid module payload", issues: parsed.error.issues });
-    }
     
     for (const courseDoc of coursesSnap.docs) {
       const moduleRef = courseDoc.ref.collection("modules").doc(moduleId);
       const moduleSnap = await moduleRef.get();
       if (moduleSnap.exists) {
         const module = {
-          ...parsed.data,
-          isActive: parsed.data.isActive ?? true,
+          ...req.body,
           updatedAt: Date.now(),
         };
         await moduleRef.set(module, { merge: false });
@@ -1416,18 +932,13 @@ app.patch("/modules/:moduleId", requireAuth, async (req, res) => {
   try {
     const { moduleId } = req.params;
     const coursesSnap = await db.collection("courses").get();
-
-    const parsed = moduleUpdateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid module update", issues: parsed.error.issues });
-    }
     
     for (const courseDoc of coursesSnap.docs) {
       const moduleRef = courseDoc.ref.collection("modules").doc(moduleId);
       const moduleSnap = await moduleRef.get();
       if (moduleSnap.exists) {
         await moduleRef.update({
-          ...parsed.data,
+          ...req.body,
           updatedAt: Date.now(),
         });
         const updated = await moduleRef.get();
@@ -1477,13 +988,7 @@ app.delete("/modules/:moduleId", requireAuth, async (req, res) => {
 app.post("/combat/start", requireAuth, async (req, res) => {
   try {
     const uid = (req as any).user.uid;
-
-    const parsed = combatStartSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid combat payload", issues: parsed.error.issues });
-    }
-
-    const { worldId, stage, seed } = parsed.data;
+    const { worldId, stage, seed } = req.body;
 
     const combatRef = db.collection("combats").doc();
     const combat = {
@@ -1604,22 +1109,30 @@ app.get("/worlds", async (req, res) => {
  */
 app.post("/worlds", requireAuth, async (req, res) => {
   try {
-    const parsed = worldSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid world payload", issues: parsed.error.issues });
+    const worldData = req.body;
+
+    if (!worldData.name) {
+      return res.status(400).json({ error: "World name is required" });
     }
 
-    const worldRef = db.collection("worlds").doc();
-    const world = {
-      ...parsed.data,
-      isActive: parsed.data.isActive ?? true,
-      createdAt: Date.now(),
+    const slug = worldData.name.toLowerCase().trim().replace(/\s+/g, '_');
+    const customId = `world_${slug}`;
+
+    const worldRef = db.collection("worlds").doc(customId);
+    
+    const newWorld = {
+      ...worldData,
+      worldId: customId,
+      description: worldData.description || "",
+      element: worldData.element || "neutral",
+      stages: worldData.stages || [null],
+      createdAt: Date.now()
     };
-    await worldRef.set(world);
+
+    await worldRef.set(newWorld);
 
     return res.status(201).json({
-      worldId: worldRef.id,
-      ...world,
+      data: newWorld
     });
   } catch (e: any) {
     console.error("Error in POST /worlds:", e);
@@ -1655,15 +1168,9 @@ app.get("/worlds/:worldId", async (req, res) => {
 app.put("/worlds/:worldId", requireAuth, async (req, res) => {
   try {
     const { worldId } = req.params;
-
-    const parsed = worldSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid world payload", issues: parsed.error.issues });
-    }
     const worldRef = db.collection("worlds").doc(worldId);
     const world = {
-      ...parsed.data,
-      isActive: parsed.data.isActive ?? true,
+      ...req.body,
       updatedAt: Date.now(),
     };
     await worldRef.set(world, { merge: false });
@@ -1684,14 +1191,9 @@ app.put("/worlds/:worldId", requireAuth, async (req, res) => {
 app.patch("/worlds/:worldId", requireAuth, async (req, res) => {
   try {
     const { worldId } = req.params;
-
-    const parsed = worldUpdateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid world update", issues: parsed.error.issues });
-    }
     const worldRef = db.collection("worlds").doc(worldId);
     await worldRef.update({
-      ...parsed.data,
+      ...req.body,
       updatedAt: Date.now(),
     });
 
@@ -1709,13 +1211,17 @@ app.patch("/worlds/:worldId", requireAuth, async (req, res) => {
 /**
  * DELETE /worlds/:worldId
  */
-app.delete("/worlds/:worldId", requireAuth, async (req, res) => {
+app.delete("/worlds/:id", requireAuth, async (req, res) => {
   try {
-    const { worldId } = req.params;
-    await db.collection("worlds").doc(worldId).delete();
-    return res.status(200).json({ success: true });
+    const { id } = req.params;
+    
+    await db.collection("worlds").doc(id).delete();
+
+    return res.status(200).json({ 
+      message: `World ${id} has been destroyed` 
+    });
   } catch (e: any) {
-    console.error("Error in DELETE /worlds/:worldId:", e);
+    console.error("Error in DELETE /worlds:", e);
     return res.status(500).json({ error: e?.message });
   }
 });
@@ -1769,15 +1275,9 @@ app.get("/pets", async (req, res) => {
  */
 app.post("/pets", requireAuth, async (req, res) => {
   try {
-    const parsed = petSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid pet payload", issues: parsed.error.issues });
-    }
-
     const petRef = db.collection("pets").doc();
     const pet = {
-      ...parsed.data,
-      isActive: parsed.data.isActive ?? true,
+      ...req.body,
       createdAt: Date.now(),
     };
     await petRef.set(pet);
@@ -1820,15 +1320,9 @@ app.get("/pets/:petId", async (req, res) => {
 app.put("/pets/:petId", requireAuth, async (req, res) => {
   try {
     const { petId } = req.params;
-
-    const parsed = petSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid pet payload", issues: parsed.error.issues });
-    }
     const petRef = db.collection("pets").doc(petId);
     const pet = {
-      ...parsed.data,
-      isActive: parsed.data.isActive ?? true,
+      ...req.body,
       updatedAt: Date.now(),
     };
     await petRef.set(pet, { merge: false });
@@ -1849,14 +1343,9 @@ app.put("/pets/:petId", requireAuth, async (req, res) => {
 app.patch("/pets/:petId", requireAuth, async (req, res) => {
   try {
     const { petId } = req.params;
-
-    const parsed = petUpdateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid pet update", issues: parsed.error.issues });
-    }
     const petRef = db.collection("pets").doc(petId);
     await petRef.update({
-      ...parsed.data,
+      ...req.body,
       updatedAt: Date.now(),
     });
 
@@ -1919,16 +1408,41 @@ app.get("/monsters", async (req, res) => {
  */
 app.post("/monsters", requireAuth, async (req, res) => {
   try {
-    const monsterRef = db.collection("monsters").doc();
-    const monster = {
-      ...req.body,
+    const monsterData = req.body;
+
+    if (!monsterData.name) {
+      return res.status(400).json({ error: "Name is required" });
+    }
+
+    const slug = monsterData.name.toLowerCase().trim().replace(/\s+/g, '_');
+    const customId = `mon_${slug}`;
+
+    const monsterRef = db.collection("monsters").doc(customId);
+    
+    const newMonster = {
+      ...monsterData,
+      monsterId: customId,
+      isActive: monsterData.isActive || false,
+      tier: monsterData.tier || 'normal',
+      elementType: monsterData.elementType || 'physical',
+      baseStats: {
+        hp: monsterData.baseStats?.hp || 100,
+        attack: monsterData.baseStats?.attack || 10,
+        defense: monsterData.baseStats?.defense || 5,
+        magic: monsterData.baseStats?.magic || 0,
+        magicResist: monsterData.baseStats?.magicResist || 0,
+        speed: monsterData.baseStats?.speed || 5
+      },
+      attacks: monsterData.attacks || [],
+      behaviour: monsterData.behaviour || { fleeBelowHpPct: 0, pattern: [], style: "patterned" },
+      skills: monsterData.skills || [],
       createdAt: Date.now(),
     };
-    await monsterRef.set(monster);
+
+    await monsterRef.set(newMonster);
 
     return res.status(201).json({
-      monsterId: monsterRef.id,
-      ...monster,
+      data: newMonster
     });
   } catch (e: any) {
     console.error("Error in POST /monsters:", e);
@@ -2007,13 +1521,17 @@ app.patch("/monsters/:monsterId", requireAuth, async (req, res) => {
 /**
  * DELETE /monsters/:monsterId
  */
-app.delete("/monsters/:monsterId", requireAuth, async (req, res) => {
+app.delete("/monsters/:id", requireAuth, async (req, res) => {
   try {
-    const { monsterId } = req.params;
-    await db.collection("monsters").doc(monsterId).delete();
-    return res.status(200).json({ success: true });
+    const { id } = req.params;
+    
+    await db.collection("monsters").doc(id).delete();
+
+    return res.status(200).json({ 
+      message: `Entity ${id} successfully banished from the bestiary` 
+    });
   } catch (e: any) {
-    console.error("Error in DELETE /monsters/:monsterId:", e);
+    console.error("Error in DELETE /monsters:", e);
     return res.status(500).json({ error: e?.message });
   }
 });
@@ -2149,13 +1667,7 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
   try {
     const uid = (req as any).user.uid;
     const { lootboxId } = req.params;
-
-    const parsed = lootboxOpenSchema.safeParse(req.body || {});
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid lootbox open payload", issues: parsed.error.issues });
-    }
-
-    const { count } = parsed.data;
+    const { count = 1 } = req.body;
 
     const lootboxSnap = await db.collection("lootboxes").doc(lootboxId).get();
     if (!lootboxSnap.exists) {
@@ -2188,36 +1700,36 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
  */
 app.get("/items", async (req, res) => {
   try {
-    const parsedQuery = itemsQuerySchema.safeParse(req.query);
+    const { collection = "items_weapons", type, rarity, activeOnly } = req.query;
+    const collectionName = collection as string;
 
-    if (!parsedQuery.success) {
-      return res.status(400).json({ error: "Invalid query", issues: parsedQuery.error.issues });
-    }
+    const snapshot = await db.collection(collectionName).get();
+    let items: any[] = [];
 
-    const { type, rarity, activeOnly } = parsedQuery.data;
+    snapshot.docs.forEach(doc => {
+      const data = doc.data();
+      const fieldValues = Object.values(data);
+      
+      const isBundleDoc = fieldValues.some(val => 
+        typeof val === 'object' && val !== null && (val as any).name
+      );
 
-    let query = db.collection("items");
-    
-    if (type) {
-      query = query.where("type", "==", type) as any;
-    }
-    if (rarity) {
-      query = query.where("rarity", "==", rarity) as any;
-    }
-    if (activeOnly === "true") {
-      query = query.where("isActive", "==", true) as any;
-    }
+      if (isBundleDoc) {
+        Object.entries(data).forEach(([key, value]: [string, any]) => {
+          items.push({ itemId: key, ...value });
+        });
+      } else {
+        items.push({ itemId: doc.id, ...data });
+      }
+    });
 
-    const itemsSnap = await query.get();
-    const items = itemsSnap.docs.map((doc) => ({
-      itemId: doc.id,
-      ...doc.data(),
-    }));
+    if (type) items = items.filter(i => i.type === type || i.itemType === type);
+    if (rarity) items = items.filter(i => i.rarity === rarity);
+    if (activeOnly === "true") items = items.filter(i => i.isActive !== false);
 
-    return res.status(200).json(items);
+    return res.status(200).json({ data: items });
   } catch (e: any) {
-    console.error("Error in GET /items:", e);
-    return res.status(500).json({ error: e?.message });
+    return res.status(500).json({ error: e.message });
   }
 });
 
@@ -2226,23 +1738,31 @@ app.get("/items", async (req, res) => {
  */
 app.post("/items", requireAuth, async (req, res) => {
   try {
-    const parsed = itemSchema.safeParse(req.body);
-
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid item payload", issues: parsed.error.issues });
+    const { collection, ...itemData } = req.body;
+    
+    if (!collection) {
+      return res.status(400).json({ error: "Collection is required in body" });
     }
 
-    const itemRef = db.collection("items").doc();
+    const slug = itemData.name.toLowerCase().trim().replace(/\s+/g, '_');
+    const prefix = collection.includes('pets') ? 'pet_' : (collection.includes('lootboxes') ? '' : 'item_');
+    const customId = `${prefix}${slug}`;
+
+    const itemRef = db.collection(collection).doc(customId);
+    
     const item = {
-      ...parsed.data,
-      isActive: parsed.data.isActive ?? true,
+      ...itemData,
+      id: customId,
       createdAt: Date.now(),
     };
+
     await itemRef.set(item);
 
     return res.status(201).json({
-      itemId: itemRef.id,
-      ...item,
+      data: {
+        itemId: customId,
+        ...item,
+      }
     });
   } catch (e: any) {
     console.error("Error in POST /items:", e);
@@ -2278,16 +1798,9 @@ app.get("/items/:itemId", async (req, res) => {
 app.put("/items/:itemId", requireAuth, async (req, res) => {
   try {
     const { itemId } = req.params;
-
-    const parsed = itemSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid item payload", issues: parsed.error.issues });
-    }
-
     const itemRef = db.collection("items").doc(itemId);
     const item = {
-      ...parsed.data,
-      isActive: parsed.data.isActive ?? true,
+      ...req.body,
       updatedAt: Date.now(),
     };
     await itemRef.set(item, { merge: false });
@@ -2308,15 +1821,9 @@ app.put("/items/:itemId", requireAuth, async (req, res) => {
 app.patch("/items/:itemId", requireAuth, async (req, res) => {
   try {
     const { itemId } = req.params;
-
-    const parsed = itemUpdateSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid item update", issues: parsed.error.issues });
-    }
-
     const itemRef = db.collection("items").doc(itemId);
     await itemRef.update({
-      ...parsed.data,
+      ...req.body,
       updatedAt: Date.now(),
     });
 
@@ -2345,6 +1852,17 @@ app.delete("/items/:itemId", requireAuth, async (req, res) => {
   }
 });
 
+
+app.delete("/items/:collection/:id", requireAuth, async (req, res) => {
+  try {
+    const { collection, id } = req.params;
+    await db.collection(collection).doc(id).delete();
+    return res.status(200).json({ message: "Deleted successfully" });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
 // ============ HEALTH ============
 
 app.get("/health", (_req, res) => {
@@ -2359,10 +1877,4 @@ app.use((_req, res) => {
 
 // ============ EXPORT ============
 
-export const api = functions
-  .region("us-central1")
-  .runWith({
-    timeoutSeconds: 60,
-    memory: "256MB",
-  })
-  .https.onRequest(app);
+export const api = onRequest(app);
