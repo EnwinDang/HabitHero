@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
@@ -301,20 +301,23 @@ export default function DailyTasksPage() {
         }
     }
 
-    const filteredTasks = selectedDifficulty === "all"
-        ? tasks
-        : tasks.filter(t => t.difficulty === selectedDifficulty);
+    // Memoize filtered tasks to avoid recalculating on every render
+    const filteredTasks = useMemo(() => {
+        return selectedDifficulty === "all"
+            ? tasks
+            : tasks.filter(t => t.difficulty === selectedDifficulty);
+    }, [tasks, selectedDifficulty]);
 
-    const easyTasks = tasks.filter(t => t.difficulty === "easy");
-    const mediumTasks = tasks.filter(t => t.difficulty === "medium");
-    const hardTasks = tasks.filter(t => t.difficulty === "hard");
-    const extremeTasks = tasks.filter(t => t.difficulty === "extreme");
+    const easyTasks = useMemo(() => tasks.filter(t => t.difficulty === "easy"), [tasks]);
+    const mediumTasks = useMemo(() => tasks.filter(t => t.difficulty === "medium"), [tasks]);
+    const hardTasks = useMemo(() => tasks.filter(t => t.difficulty === "hard"), [tasks]);
+    const extremeTasks = useMemo(() => tasks.filter(t => t.difficulty === "extreme"), [tasks]);
 
     if (userLoading || loading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <div className="text-xl animate-pulse" style={theme.accentText}>
-                    Laden...
+                    Loading...
                 </div>
             </div>
         );
