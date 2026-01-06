@@ -35,7 +35,7 @@ const avatarIcons = [
 
 export default function ProfilePage() {
   const { user, loading: userLoading } = useRealtimeUser();
-  const { darkMode, setDarkMode, accentColor } = useTheme();
+  const { darkMode, accentColor } = useTheme();
 
   const [selectedAvatar, setSelectedAvatar] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
@@ -67,11 +67,11 @@ export default function ProfilePage() {
         photoURL: selectedAvatar.toString(),
       });
 
-      setSaveMessage({ type: 'success', text: 'Avatar succesvol opgeslagen!' });
+      setSaveMessage({ type: 'success', text: 'Avatar saved successfully!' });
       setTimeout(() => setSaveMessage(null), 3000);
     } catch (error) {
       console.error("Error saving avatar:", error);
-      setSaveMessage({ type: 'error', text: 'Fout bij het opslaan van avatar' });
+      setSaveMessage({ type: 'error', text: 'Error saving avatar' });
       setTimeout(() => setSaveMessage(null), 3000);
     } finally {
       setIsSaving(false);
@@ -86,7 +86,7 @@ export default function ProfilePage() {
         className={`min-h-screen ${theme.bg} flex items-center justify-center transition-colors duration-300`}
       >
         <div className="text-xl animate-pulse" style={theme.accentText}>
-          Laden...
+          Loading...
         </div>
       </div>
     );
@@ -164,59 +164,56 @@ export default function ProfilePage() {
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* RIGHT - MY INFORMATION */}
-          <div className="h-full">
-            <div
-              className={`${theme.card} border ${theme.border} rounded-3xl p-8 ${theme.shadow} hover:${theme.borderHover} transition-all duration-300 h-full`}
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h3
-                  className={`text-xl font-bold ${theme.text} flex items-center gap-2`}
-                >
-                  <ClipboardList size={20} style={{ color: accentColor }} />{" "}
-                  My Information
-                </h3>
-                <button
-                  className="px-4 py-2 rounded-xl border-2 text-sm font-semibold transition-all hover:shadow-md"
-                  style={{
-                    color: accentColor,
-                    borderColor: `${accentColor}40`,
-                    backgroundColor: 'transparent',
-                  }}
-                >
-                  Edit
-                </button>
-              </div>
+            {/* RIGHT - MY INFORMATION */}
+            <div className="h-full">
+              <div
+                className={`${theme.card} border ${theme.border} rounded-3xl p-8 ${theme.shadow} hover:${theme.borderHover} transition-all duration-300 h-full flex flex-col`}
+              >
+                <div className="flex justify-between items-center mb-6">
+                  <h3
+                    className={`text-xl font-bold ${theme.text} flex items-center gap-2`}
+                  >
+                    <ClipboardList size={20} style={{ color: accentColor }} />{" "}
+                    My Information
+                  </h3>
+                  <button
+                    className="px-4 py-2 rounded-xl border-2 text-sm font-semibold transition-all hover:shadow-md"
+                    style={{
+                      color: accentColor,
+                      borderColor: `${accentColor}40`,
+                      backgroundColor: 'transparent',
+                    }}
+                  >
+                    Edit
+                  </button>
+                </div>
 
-              <div className="space-y-4">
-                <InfoRow
-                  icon={<UserCircle size={20} />}
-                  label=""
-                  value={user.displayName || "Hero"}
-                  darkMode={darkMode}
-                />
-                <InfoRow
-                  icon={<Mail size={20} />}
-                  label=""
-                  value={user.email || "hunter@shadow.com"}
-                  darkMode={darkMode}
-                />
-                <InfoRow
-                  icon={<CalendarDays size={20} />}
-                  label=""
-                  value={memberSince}
-                  darkMode={darkMode}
-                />
+                <div className="space-y-4 flex-1">
+                  <InfoRow
+                    icon={<UserCircle size={20} />}
+                    label=""
+                    value={user.displayName || "Hero"}
+                    darkMode={darkMode}
+                  />
+                  <InfoRow
+                    icon={<Mail size={20} />}
+                    label=""
+                    value={user.email || "hunter@shadow.com"}
+                    darkMode={darkMode}
+                  />
+                  <InfoRow
+                    icon={<CalendarDays size={20} />}
+                    label=""
+                    value={memberSince}
+                    darkMode={darkMode}
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Avatar + Theme + Accent (structured) */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Choose Avatar */}
+          {/* Choose Avatar Section */}
           <div
             className={`${theme.card} border ${theme.border} rounded-3xl p-8 ${theme.shadow} hover:${theme.borderHover} transition-all duration-300`}
           >
@@ -278,51 +275,8 @@ export default function ProfilePage() {
                 backgroundColor: isSaving ? '#9ca3af' : accentColor,
               }}
             >
-              {isSaving ? 'Opslaan...' : 'Avatar Opslaan'}
+              {isSaving ? 'Saving...' : 'Save Avatar'}
             </button>
-          </div>
-
-          {/* Theme + Accent */}
-          <div className="space-y-6">
-            {/* Theme Settings */}
-            <div
-              className={`${theme.card} border ${theme.border} rounded-3xl p-8 ${theme.shadow} hover:${theme.borderHover} transition-all duration-300`}
-            >
-              <h3
-                className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
-              >
-                <span>🌙</span> Theme Settings
-              </h3>
-              <div
-                className={`flex justify-between items-center p-4 ${theme.inputBg} rounded-xl`}
-              >
-                <div>
-                  <p className="font-medium" style={theme.accentText}>
-                    Dark Mode
-                  </p>
-                  <p className={`${theme.textSubtle} text-sm`}>
-                    {darkMode
-                      ? "Shadow realm activated"
-                      : "Light mode active"}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setDarkMode(!darkMode)}
-                  className="w-14 h-8 rounded-full p-1 transition-all"
-                  style={{
-                    backgroundColor: darkMode ? accentColor : "#d1d5db",
-                    boxShadow: darkMode
-                      ? `0 0 10px ${accentColor}50`
-                      : "none",
-                  }}
-                >
-                  <div
-                    className={`w-6 h-6 rounded-full bg-white shadow transition-transform ${darkMode ? "translate-x-6" : "translate-x-0"
-                      }`}
-                  />
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       </main>

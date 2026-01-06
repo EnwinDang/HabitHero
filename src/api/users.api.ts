@@ -11,7 +11,9 @@ export type UsersQuery = {
   status?: "active" | "disabled";
 };
 
-export type PatchUserRequest = Partial<Pick<User, "displayName" | "photoURL" | "role" | "status">> & {
+export type PatchUserRequest = Partial<
+  Pick<User, "displayName" | "photoURL" | "role" | "status">
+> & {
   settings?: Partial<UserSettings>;
   stats?: Partial<User["stats"]>;
 };
@@ -32,7 +34,10 @@ export const UsersAPI = {
   },
 
   create(user: User): Promise<User> {
-    return apiFetch<User>("/users", { method: "POST", body: JSON.stringify(user) });
+    return apiFetch<User>("/users", {
+      method: "POST",
+      body: JSON.stringify(user),
+    });
   },
 
   get(uid: string): Promise<User> {
@@ -40,11 +45,17 @@ export const UsersAPI = {
   },
 
   replace(uid: string, user: User): Promise<User> {
-    return apiFetch<User>(`/users/${uid}`, { method: "PUT", body: JSON.stringify(user) });
+    return apiFetch<User>(`/users/${uid}`, {
+      method: "PUT",
+      body: JSON.stringify(user),
+    });
   },
 
   patch(uid: string, patch: PatchUserRequest): Promise<User> {
-    return apiFetch<User>(`/users/${uid}`, { method: "PATCH", body: JSON.stringify(patch) });
+    return apiFetch<User>(`/users/${uid}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
   },
 
   delete(uid: string): Promise<void> {
@@ -56,7 +67,10 @@ export const UsersAPI = {
     return apiFetch<UserSettings>(`/users/${uid}/settings`);
   },
 
-  patchSettings(uid: string, patch: Partial<UserSettings>): Promise<UserSettings> {
+  patchSettings(
+    uid: string,
+    patch: Partial<UserSettings>
+  ): Promise<UserSettings> {
     return apiFetch<UserSettings>(`/users/${uid}/settings`, {
       method: "PATCH",
       body: JSON.stringify(patch),
@@ -79,7 +93,10 @@ export const UsersAPI = {
     return apiFetch<EquippedItems>(`/users/${uid}/equipped`);
   },
 
-  patchEquipped(uid: string, patch: Partial<EquippedItems>): Promise<EquippedItems> {
+  patchEquipped(
+    uid: string,
+    patch: Partial<EquippedItems>
+  ): Promise<EquippedItems> {
     return apiFetch<EquippedItems>(`/users/${uid}/equipped`, {
       method: "PATCH",
       body: JSON.stringify(patch),
@@ -91,8 +108,13 @@ export const UsersAPI = {
     return apiFetch<UserAchievementProgress[]>(`/users/${uid}/achievements`);
   },
 
-  getAchievement(uid: string, achievementId: string): Promise<UserAchievementProgress> {
-    return apiFetch<UserAchievementProgress>(`/users/${uid}/achievements/${achievementId}`);
+  getAchievement(
+    uid: string,
+    achievementId: string
+  ): Promise<UserAchievementProgress> {
+    return apiFetch<UserAchievementProgress>(
+      `/users/${uid}/achievements/${achievementId}`
+    );
   },
 
   // Pets owned
@@ -101,16 +123,35 @@ export const UsersAPI = {
   },
 
   addPet(uid: string, petId: string): Promise<void> {
-    return apiFetch<void>(`/users/${uid}/pets`, { method: "POST", body: JSON.stringify({ petId }) });
+    return apiFetch<void>(`/users/${uid}/pets`, {
+      method: "POST",
+      body: JSON.stringify({ petId }),
+    });
   },
 
   removePet(uid: string, petId: string): Promise<void> {
-    return apiFetch<void>(`/users/${uid}/pets`, { method: "DELETE", body: JSON.stringify({ petId }) });
+    return apiFetch<void>(`/users/${uid}/pets`, {
+      method: "DELETE",
+      body: JSON.stringify({ petId }),
+    });
   },
 
   // Focus Session - complete a focus session and get XP reward from backend
-  completeFocusSession(uid: string, durationMinutes: number): Promise<{ xpGained: number; newXp: number; newLevel: number; leveledUp: boolean }> {
-    return apiFetch<{ xpGained: number; newXp: number; newLevel: number; leveledUp: boolean }>(`/users/${uid}/focus-session`, {
+  completeFocusSession(
+    uid: string,
+    durationMinutes: number
+  ): Promise<{
+    xpGained: number;
+    newXp: number;
+    newLevel: number;
+    leveledUp: boolean;
+  }> {
+    return apiFetch<{
+      xpGained: number;
+      newXp: number;
+      newLevel: number;
+      leveledUp: boolean;
+    }>(`/users/${uid}/focus-session`, {
       method: "POST",
       body: JSON.stringify({ durationMinutes }),
     });

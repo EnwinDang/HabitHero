@@ -20,7 +20,9 @@ export default function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [enrollingCourse, setEnrollingCourse] = useState<string | null>(null);
-  const [enrolledCourses, setEnrolledCourses] = useState<Set<string>>(new Set());
+  const [enrolledCourses, setEnrolledCourses] = useState<Set<string>>(
+    new Set()
+  );
 
   // Load courses and check enrollment status
   useEffect(() => {
@@ -40,7 +42,10 @@ export default function CoursesPage() {
                 enrolled.add(course.courseId);
               }
             } catch (err) {
-              console.error(`Error checking enrollment for ${course.courseId}:`, err);
+              console.error(
+                `Error checking enrollment for ${course.courseId}:`,
+                err
+              );
             }
           }
           setEnrolledCourses(enrolled);
@@ -100,7 +105,10 @@ export default function CoursesPage() {
       <div
         className={`min-h-screen ${theme.bg} flex items-center justify-center transition-colors duration-300`}
       >
-        <div className="text-xl animate-pulse flex items-center gap-2" style={theme.accentText}>
+        <div
+          className="text-xl animate-pulse flex items-center gap-2"
+          style={theme.accentText}
+        >
           <Loader2 className="animate-spin" size={24} />
           Loading courses...
         </div>
@@ -108,15 +116,21 @@ export default function CoursesPage() {
     );
   }
 
-  const enrolledCoursesList = courses.filter((c) => enrolledCourses.has(c.courseId));
-  const availableCoursesList = courses.filter((c) => !enrolledCourses.has(c.courseId));
+  const enrolledCoursesList = courses.filter((c) =>
+    enrolledCourses.has(c.courseId)
+  );
+  const availableCoursesList = courses.filter(
+    (c) => !enrolledCourses.has(c.courseId)
+  );
 
   return (
     <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
       <main className="p-8 overflow-y-auto">
         {/* Header */}
         <div className="mb-8">
-          <h2 className={`text-4xl font-bold ${theme.text} flex items-center gap-3`}>
+          <h2
+            className={`text-4xl font-bold ${theme.text} flex items-center gap-3`}
+          >
             <GraduationCap size={40} style={{ color: accentColor }} />
             My Courses
           </h2>
@@ -181,7 +195,11 @@ export default function CoursesPage() {
               borderStyle: "solid",
             }}
           >
-            <BookOpen size={64} className="mx-auto mb-4" style={{ color: accentColor }} />
+            <BookOpen
+              size={64}
+              className="mx-auto mb-4"
+              style={{ color: accentColor }}
+            />
             <h3 className={`text-2xl font-bold ${theme.text} mb-2`}>
               No courses available yet
             </h3>
@@ -247,7 +265,9 @@ function CourseCard({
             </div>
           )}
         </div>
-        <h4 className={`text-xl font-bold ${theme.text} mb-1`}>{course.name}</h4>
+        <h4 className={`text-xl font-bold ${theme.text} mb-1`}>
+          {course.name}
+        </h4>
         <p className={`text-sm ${theme.textSubtle}`}>{course.courseCode}</p>
       </div>
 
@@ -300,9 +320,7 @@ function CourseCard({
             Processing...
           </>
         ) : isEnrolled ? (
-          <>
-            Unenroll
-          </>
+          <>Unenroll</>
         ) : (
           <>
             <Plus size={16} />

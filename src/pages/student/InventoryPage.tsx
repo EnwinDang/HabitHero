@@ -74,7 +74,7 @@ export default function InventoryPage() {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <div className="text-xl animate-pulse" style={theme.accentText}>
-                    Laden...
+                    Loading...
                 </div>
             </div>
         );

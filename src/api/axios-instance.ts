@@ -11,7 +11,7 @@ export const api = axios.create({
  * Dit is CRUCIAAL voor /auth/me en andere endpoints
  */
 api.interceptors.request.use(async (config) => {
-  const fullUrl = `${config.baseURL || ''}${config.url || ''}`;
+  const fullUrl = `${config.baseURL || ""}${config.url || ""}`;
   console.log("📤 Axios request:", config.url, "→ Full URL:", fullUrl);
   const user = auth.currentUser;
   if (user) {
@@ -39,7 +39,7 @@ api.interceptors.response.use(
       code: error.code,
       status: error.response?.status,
       url: error.config?.url,
-      data: error.response?.data
+      data: error.response?.data,
     });
     if (error.response?.status === 401) {
       console.warn("⚠️ Unauthorized - token invalid or expired");

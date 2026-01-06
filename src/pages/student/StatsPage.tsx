@@ -29,7 +29,7 @@ export default function StatsPage() {
         className={`min-h-screen ${theme.bg} flex items-center justify-center transition-colors duration-300`}
       >
         <div className="text-xl animate-pulse" style={theme.accentText}>
-          Laden...
+          Loading...
         </div>
       </div>
     );

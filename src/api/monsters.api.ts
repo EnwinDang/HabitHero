@@ -22,9 +22,9 @@ export const MonstersAPI = {
   },
 
   create(monster: Partial<Monster>): Promise<Monster> {
-    return apiFetch<Monster>("/monsters", { 
-      method: "POST", 
-      body: JSON.stringify(monster) 
+    return apiFetch<Monster>("/monsters", {
+      method: "POST",
+      body: JSON.stringify(monster)
     });
   },
 
@@ -33,22 +33,22 @@ export const MonstersAPI = {
   },
 
   replace(monsterId: string, m: Monster): Promise<Monster> {
-    return apiFetch<Monster>(`/monsters/${monsterId}`, { 
-      method: "PUT", 
-      body: JSON.stringify(m) 
+    return apiFetch<Monster>(`/monsters/${monsterId}`, {
+      method: "PUT",
+      body: JSON.stringify(m)
     });
   },
 
   patch(monsterId: string, patch: Partial<Monster>): Promise<Monster> {
-    return apiFetch<Monster>(`/monsters/${monsterId}`, { 
-      method: "PATCH", 
-      body: JSON.stringify(patch) 
+    return apiFetch<Monster>(`/monsters/${monsterId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch)
     });
   },
 
   delete(monsterId: string): Promise<void> {
-    return apiFetch<void>(`/monsters/${monsterId}`, { 
-      method: "DELETE" 
+    return apiFetch<void>(`/monsters/${monsterId}`, {
+      method: "DELETE"
     });
   },
 };
