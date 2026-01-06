@@ -3,15 +3,20 @@ import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useRealtimeAchievements } from "@/hooks/useRealtimeAchievements";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
+import { useAuth } from "@/context/AuthContext";
+import { db } from "@/firebase";
+import { doc, updateDoc, increment } from "firebase/firestore";
 import {
   onStreakUpdated,
   onLevelUp,
   onTaskCompleted,
 } from "@/services/achievement.service";
-import { Trophy, Star, TrendingUp, Coins, Lock, Check } from "lucide-react";
+import { AchievementsAPI } from "@/api/achievements.api";
+import { Trophy, Star, TrendingUp, Coins, Lock, Check, Gift } from "lucide-react";
 
 export default function AchievementsPage() {
   const { user, loading: userLoading } = useRealtimeUser();
+  const { firebaseUser } = useAuth();
   const { achievements, loading: achievementsLoading } =
     useRealtimeAchievements();
   const { tasks } = useRealtimeTasks();
@@ -22,6 +27,59 @@ export default function AchievementsPage() {
 
   // Filter state
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [claimedAchievements, setClaimedAchievements] = useState<Set<string>>(new Set());
+
+  // Handle claim achievement (Firestore-based, no backend needed)
+  const handleClaim = async (achievementId: string) => {
+    if (!user || !firebaseUser || claimingId) return;
+
+    const achievement = achievements.find(a => a.achievementId === achievementId);
+    if (!achievement || !achievement.isUnlocked) return;
+
+    try {
+      setClaimingId(achievementId);
+
+      // Update user stats directly in Firestore
+      const userRef = doc(db, "users", firebaseUser.uid);
+      const achievementRef = doc(db, "users", firebaseUser.uid, "achievements", achievementId);
+
+      const xpReward = achievement.reward?.xp || 0;
+      const goldReward = achievement.reward?.gold || 0;
+
+      // Update user XP and Gold
+      await updateDoc(userRef, {
+        "stats.xp": increment(xpReward),
+        "stats.gold": increment(goldReward),
+      });
+
+      // Mark achievement as claimed
+      await updateDoc(achievementRef, {
+        claimed: true,
+        claimedAt: Date.now(),
+      });
+
+      // Show reward notification
+      const rewards = [];
+      if (xpReward > 0) rewards.push(`+${xpReward} XP`);
+      if (goldReward > 0) rewards.push(`+${goldReward} Gold`);
+
+      if (rewards.length > 0) {
+        alert(`🎉 Claimed!\n${rewards.join(' • ')}`);
+      }
+
+      // Mark as claimed locally
+      setClaimedAchievements(prev => new Set([...prev, achievementId]));
+
+      // Refresh page to show updated stats
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (error) {
+      console.error("Failed to claim achievement:", error);
+      alert("Failed to claim reward. Please try again.");
+    } finally {
+      setClaimingId(null);
+    }
+  };
 
   // Sync achievements with user stats when they load
   useEffect(() => {
@@ -164,6 +222,9 @@ export default function AchievementsPage() {
               darkMode={darkMode}
               accentColor={accentColor}
               theme={theme}
+              onClaim={handleClaim}
+              isClaiming={claimingId === achievement.achievementId}
+              isClaimed={claimedAchievements.has(achievement.achievementId)}
             />
           ))}
         </div>
@@ -189,6 +250,9 @@ function AchievementCard({
   darkMode,
   accentColor,
   theme,
+  onClaim,
+  isClaiming,
+  isClaimed,
 }: {
   achievement: {
     achievementId: string;
@@ -199,15 +263,24 @@ function AchievementCard({
     target: number;
     isUnlocked: boolean;
     reward?: { xp?: number; gold?: number };
+    claimed?: boolean;
+    claimedAt?: number;
   };
   darkMode: boolean;
   accentColor: string;
   theme: ReturnType<typeof getThemeClasses>;
+  onClaim: (achievementId: string) => void;
+  isClaiming: boolean;
+  isClaimed: boolean;
 }) {
   const progressPercent = Math.min(
     100,
     Math.round((achievement.progress / achievement.target) * 100)
   );
+
+  // Use claimed status from Firestore data, fallback to prop for local state
+  const isAlreadyClaimed = achievement.claimed || isClaimed;
+  const canClaim = achievement.isUnlocked && !isAlreadyClaimed;
 
   return (
     <div
@@ -252,7 +325,7 @@ function AchievementCard({
             {achievement.description}
           </p>
         </div>
-        {achievement.isUnlocked && (
+        {isAlreadyClaimed && (
           <Check size={20} className="text-green-500" />
         )}
       </div>
@@ -292,7 +365,7 @@ function AchievementCard({
       {/* Rewards */}
       {achievement.reward && (
         <div
-          className="flex gap-3 pt-3"
+          className="flex gap-3 pt-3 mb-3"
           style={{
             borderTopWidth: "1px",
             borderTopStyle: "solid",
@@ -313,6 +386,29 @@ function AchievementCard({
               </span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Claim Button */}
+      {canClaim && (
+        <button
+          onClick={() => onClaim(achievement.achievementId)}
+          disabled={isClaiming}
+          className="w-full py-2 px-4 rounded-xl font-bold text-white transition-all flex items-center justify-center gap-2"
+          style={{
+            backgroundColor: isClaiming ? "#6b7280" : accentColor,
+            opacity: isClaiming ? 0.7 : 1,
+            cursor: isClaiming ? "not-allowed" : "pointer",
+          }}
+        >
+          <Gift size={18} />
+          {isClaiming ? "Claiming..." : "Claim Reward"}
+        </button>
+      )}
+
+      {isAlreadyClaimed && (
+        <div className="w-full py-2 px-4 rounded-xl font-bold text-center bg-green-500 bg-opacity-20 text-green-500 border border-green-500">
+          ✓ Claimed
         </div>
       )}
     </div>

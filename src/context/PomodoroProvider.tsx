@@ -10,6 +10,7 @@ import {
   readStoredSettings,
   STORAGE_KEY,
 } from "./pomodoro";
+import { onFocusSessionCompleted } from "@/services/achievement.service";
 // NOTE: workspace also contains a legacy PomodoroContext.tsx stub.
 // Use explicit extension to avoid ambiguous resolution.
 
@@ -155,9 +156,19 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
 
           // Award XP once when a focus session completes
           if (authUser?.uid) {
+            // IMPORTANT: Calculate new count BEFORE the async call
+            // because sessionsCompleted state won't be updated yet
+            const newSessionCount = sessionsCompleted + 1;
+            console.log(`🎯 Focus session completed! New count: ${newSessionCount}`);
+
             UsersAPI.completeFocusSession(authUser.uid, settings.focusDuration)
               .then((result) => {
                 setXpGained(result.xpGained);
+
+                // Update focus achievements with the correct count
+                onFocusSessionCompleted(newSessionCount).catch((error) => {
+                  console.error("Failed to update focus achievements:", error);
+                });
               })
               .catch((error) => {
                 console.error("Failed to complete focus session:", error);

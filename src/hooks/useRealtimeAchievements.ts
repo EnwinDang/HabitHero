@@ -17,6 +17,8 @@ export interface AchievementWithProgress {
     target: number;
     isUnlocked: boolean;
     unlockedAt?: number;
+    claimed?: boolean;
+    claimedAt?: number;
 }
 
 // Pre-defined achievements for the app
@@ -170,7 +172,9 @@ export function useRealtimeAchievements() {
                         ...achievement,
                         progress: userProgress?.progress || 0,
                         isUnlocked: userProgress?.isUnlocked || false,
-                        unlockedAt: userProgress?.unlockedAt
+                        unlockedAt: userProgress?.unlockedAt,
+                        claimed: userProgress?.claimed || false,
+                        claimedAt: userProgress?.claimedAt,
                     };
                 });
 
