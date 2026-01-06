@@ -5,7 +5,7 @@ import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { TasksAPI } from "@/api/tasks.api";
 import { CoursesAPI } from "@/api/courses.api";
 import { db } from "@/firebase";
-import { collection, query, where, getDocs, doc, setDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
 import type { Task } from "@/models/task.model";
 import type { Course } from "@/models/course.model";
 import type { Module } from "@/models/module.model";
@@ -20,6 +20,8 @@ import {
     GraduationCap,
     Key,
     Layers,
+    X,
+    LogOut,
 } from "lucide-react";
 
 export default function DailyTasksPage() {
@@ -51,30 +53,27 @@ export default function DailyTasksPage() {
         
         try {
             setLoading(true);
-            const courses = await CoursesAPI.list(true);
             
-            // Check which courses the user is enrolled in
+            // Only load enrolled courses by checking Firestore directly
             const enrolled: Course[] = [];
-            const available: Course[] = [];
+            const allCoursesSnapshot = await getDocs(collection(db, "courses"));
             
-            for (const course of courses) {
-                try {
-                    const students = await CoursesAPI.listStudents(course.courseId);
-                    if (students.some((s) => s.uid === firebaseUser.uid)) {
-                        enrolled.push(course);
-                    } else {
-                        available.push(course);
-                    }
-                } catch (err) {
-                    console.error(`Error checking enrollment for ${course.courseId}:`, err);
-                    available.push(course);
+            for (const courseDoc of allCoursesSnapshot.docs) {
+                // Check if student is enrolled by looking at subcollection
+                const studentDoc = await getDoc(doc(db, `courses/${courseDoc.id}/students/${firebaseUser.uid}`));
+                
+                if (studentDoc.exists()) {
+                    enrolled.push({
+                        courseId: courseDoc.id,
+                        ...courseDoc.data()
+                    } as Course);
                 }
             }
             
             setEnrolledCourses(enrolled);
-            setAvailableCourses(available);
+            setAvailableCourses([]); // No courses shown as "available" - only via code
             
-            // Select first enrolled course by default
+            // Select first enrolled course by default if any
             if (enrolled.length > 0) {
                 await selectCourse(enrolled[0]);
             }
@@ -183,11 +182,14 @@ export default function DailyTasksPage() {
             setEnrollingCourse("code-enrollment");
             setCodeError("");
 
-            // Find course by courseCode (exact match - case sensitive)
-            const allCourses = await CoursesAPI.list(true);
-            const foundCourse = allCourses.find(
-                c => c.courseCode === courseCode.trim()
-            );
+            // Find course by courseCode directly from Firestore
+            const coursesSnapshot = await getDocs(collection(db, "courses"));
+            const foundCourse = coursesSnapshot.docs
+                .map(doc => ({
+                    courseId: doc.id,
+                    ...doc.data()
+                } as Course))
+                .find(c => c.courseCode === courseCode.trim());
 
             if (!foundCourse) {
                 setCodeError("Invalid course code. Please check and try again.");
@@ -195,9 +197,9 @@ export default function DailyTasksPage() {
                 return;
             }
 
-            // Check if already enrolled
-            const students = await CoursesAPI.listStudents(foundCourse.courseId);
-            if (students.some(s => s.uid === firebaseUser.uid)) {
+            // Check if already enrolled by checking Firestore directly
+            const studentDoc = await getDoc(doc(db, `courses/${foundCourse.courseId}/students/${firebaseUser.uid}`));
+            if (studentDoc.exists()) {
                 setCodeError("You are already enrolled in this course.");
                 setEnrollingCourse(null);
                 return;
@@ -213,7 +215,6 @@ export default function DailyTasksPage() {
             console.log("✅ Enrolled in course:", foundCourse.name);
 
             // Update state
-            setAvailableCourses(availableCourses.filter(c => c.courseId !== foundCourse.courseId));
             setEnrolledCourses([...enrolledCourses, foundCourse]);
             
             // Select the newly enrolled course
@@ -228,6 +229,37 @@ export default function DailyTasksPage() {
             setCodeError("Error enrolling in course. Please try again.");
         } finally {
             setEnrollingCourse(null);
+        }
+    }
+
+    async function handleLeaveCourse() {
+        if (!firebaseUser || !selectedCourse) return;
+
+        const confirmLeave = window.confirm(`Are you sure you want to leave the course "${selectedCourse.name}"?`);
+        if (!confirmLeave) return;
+
+        try {
+            // Delete student document from Firestore
+            const studentRef = doc(db, `courses/${selectedCourse.courseId}/students/${firebaseUser.uid}`);
+            await deleteDoc(studentRef);
+
+            console.log("✅ Left course:", selectedCourse.name);
+
+            // Update state
+            setEnrolledCourses(enrolledCourses.filter(c => c.courseId !== selectedCourse.courseId));
+            setSelectedCourse(null);
+            setModules([]);
+            setTasks([]);
+            setShowCourseDropdown(false);
+
+            // Select first remaining enrolled course if any
+            const remainingCourses = enrolledCourses.filter(c => c.courseId !== selectedCourse.courseId);
+            if (remainingCourses.length > 0) {
+                await selectCourse(remainingCourses[0]);
+            }
+        } catch (error) {
+            console.error("Error leaving course:", error);
+            alert("Error leaving course. Please try again.");
         }
     }
 
@@ -296,23 +328,23 @@ export default function DailyTasksPage() {
                         <h2 className={`text-3xl font-bold ${theme.text}`}>Daily Tasks</h2>
                         <p className={theme.textMuted}>Complete exercises to earn XP and Gold</p>
                     </div>
-                    {selectedCourse && (
-                        <button
-                            onClick={() => setShowCourseDropdown(!showCourseDropdown)}
-                            className="px-4 py-2 rounded-xl font-medium transition-all flex items-center gap-2"
-                            style={{
-                                backgroundColor: `${accentColor}20`,
-                                color: accentColor,
-                                borderWidth: '1px',
-                                borderStyle: 'solid',
-                                borderColor: `${accentColor}50`
-                            }}
-                        >
-                            <BookOpen size={18} />
-                            Change Course
-                        </button>
-                    )}
-                    {!selectedCourse && (
+                    <div className="flex gap-2">
+                        {selectedCourse && (
+                            <button
+                                onClick={() => setShowCourseDropdown(!showCourseDropdown)}
+                                className="px-4 py-2 rounded-xl font-medium transition-all flex items-center gap-2"
+                                style={{
+                                    backgroundColor: `${accentColor}20`,
+                                    color: accentColor,
+                                    borderWidth: '1px',
+                                    borderStyle: 'solid',
+                                    borderColor: `${accentColor}50`
+                                }}
+                            >
+                                <BookOpen size={18} />
+                                Change Course
+                            </button>
+                        )}
                         <button
                             onClick={() => setShowCodeInput(true)}
                             className="px-4 py-2 rounded-xl font-medium transition-all flex items-center gap-2 text-white"
@@ -321,9 +353,25 @@ export default function DailyTasksPage() {
                             }}
                         >
                             <Key size={18} />
-                            Enter Course Code
+                            Add Course
                         </button>
-                    )}
+                        {selectedCourse && (
+                            <button
+                                onClick={handleLeaveCourse}
+                                className="px-4 py-2 rounded-xl font-medium transition-all flex items-center gap-2"
+                                style={{
+                                    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                                    color: '#ef4444',
+                                    borderWidth: '1px',
+                                    borderStyle: 'solid',
+                                    borderColor: 'rgba(239, 68, 68, 0.5)'
+                                }}
+                            >
+                                <LogOut size={18} />
+                                Leave Course
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {/* Course Selector */}
@@ -438,7 +486,7 @@ export default function DailyTasksPage() {
                         <div className={`${theme.card} rounded-2xl p-8 text-center`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
                             <GraduationCap size={48} className="mx-auto mb-4" style={{ color: accentColor }} />
                             <h3 className={`text-xl font-bold ${theme.text} mb-2`}>No Courses Enrolled</h3>
-                            <p className={theme.textMuted} mb-4>Enter a course code from your teacher to get started!</p>
+                            <p className={`${theme.textMuted} mb-4`}>Enter a course code from your teacher to get started!</p>
                             
                             <button
                                 onClick={() => setShowCodeInput(true)}
