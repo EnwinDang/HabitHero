@@ -1,27 +1,82 @@
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { getCurrentLevelProgress, getLevelFromXP } from "@/utils/xpCurve";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "@/firebase";
 import {
   ClipboardList,
-  Gamepad2,
   Mail,
   CalendarDays,
-  Moon,
   UserCircle,
+  Sword,
+  Shield,
+  Wand2,
+  Crown,
+  Skull,
+  Target,
+  Flame,
+  Zap,
+  Check,
+  X,
 } from "lucide-react";
 
-// Avatar options - Game themed
-const avatars = ["⚔️", "🛡️", "🗡️", "🏹", "🔮", "🐉", "👑", "💀"];
+// Avatar options - Lucide React icons
+const avatarIcons = [
+  { icon: Sword, name: "Sword" },
+  { icon: Shield, name: "Shield" },
+  { icon: Target, name: "Bow" },
+  { icon: Wand2, name: "Wand" },
+  { icon: Flame, name: "Dragon" },
+  { icon: Crown, name: "Crown" },
+  { icon: Skull, name: "Skull" },
+  { icon: Zap, name: "Lightning" },
+];
 
 export default function ProfilePage() {
   const { user, loading: userLoading } = useRealtimeUser();
   const { darkMode, setDarkMode, accentColor } = useTheme();
 
   const [selectedAvatar, setSelectedAvatar] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Get theme classes
   const theme = getThemeClasses(darkMode, accentColor);
+
+  // Load saved avatar from user.photoURL
+  useEffect(() => {
+    if (user?.photoURL) {
+      const avatarIndex = parseInt(user.photoURL);
+      if (!isNaN(avatarIndex) && avatarIndex >= 0 && avatarIndex < avatarIcons.length) {
+        setSelectedAvatar(avatarIndex);
+      }
+    }
+  }, [user]);
+
+  // Save avatar to Firebase
+  const handleSaveAvatar = async () => {
+    if (!user) return;
+
+    setIsSaving(true);
+    setSaveMessage(null);
+
+    try {
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        photoURL: selectedAvatar.toString(),
+      });
+
+      setSaveMessage({ type: 'success', text: 'Avatar succesvol opgeslagen!' });
+      setTimeout(() => setSaveMessage(null), 3000);
+    } catch (error) {
+      console.error("Error saving avatar:", error);
+      setSaveMessage({ type: 'error', text: 'Fout bij het opslaan van avatar' });
+      setTimeout(() => setSaveMessage(null), 3000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
 
 
@@ -73,7 +128,10 @@ export default function ProfilePage() {
                     backgroundColor: `${accentColor}20`,
                   }}
                 >
-                  <span className="text-6xl">{avatars[selectedAvatar]}</span>
+                  {React.createElement(avatarIcons[selectedAvatar].icon, {
+                    size: 64,
+                    style: { color: accentColor },
+                  })}
                 </div>
 
                 <h3 className={`text-3xl font-bold ${theme.text}`}>
@@ -165,14 +223,26 @@ export default function ProfilePage() {
             <h3
               className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
             >
-              <span>🎭</span> Choose Avatar
+              <UserCircle size={24} style={{ color: accentColor }} />
+              Choose Avatar
             </h3>
+
+            {/* Success/Error Message */}
+            {saveMessage && (
+              <div
+                className={`mb-4 p-3 rounded-xl flex items-center gap-2 ${saveMessage.type === 'success' ? 'bg-green-500/20 text-green-600 dark:text-green-400' : 'bg-red-500/20 text-red-600 dark:text-red-400'}`}
+              >
+                {saveMessage.type === 'success' ? <Check size={20} /> : <X size={20} />}
+                <span className="text-sm font-semibold">{saveMessage.text}</span>
+              </div>
+            )}
+
             <div className="grid grid-cols-4 gap-3">
-              {avatars.map((avatar, index) => (
+              {avatarIcons.map((avatarItem, index) => (
                 <button
                   key={index}
                   onClick={() => setSelectedAvatar(index)}
-                  className="p-4 rounded-xl text-3xl transition-all border-2"
+                  className="p-4 rounded-xl transition-all border-2 hover:scale-105"
                   style={{
                     backgroundColor:
                       selectedAvatar === index
@@ -189,11 +259,27 @@ export default function ProfilePage() {
                         ? `0 0 15px ${accentColor}40`
                         : "none",
                   }}
+                  title={avatarItem.name}
                 >
-                  {avatar}
+                  {React.createElement(avatarItem.icon, {
+                    size: 32,
+                    style: { color: selectedAvatar === index ? accentColor : (darkMode ? '#9ca3af' : '#6b7280') },
+                  })}
                 </button>
               ))}
             </div>
+
+            {/* Save Button */}
+            <button
+              onClick={handleSaveAvatar}
+              disabled={isSaving}
+              className="w-full mt-6 px-6 py-3 rounded-xl font-bold text-white transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: isSaving ? '#9ca3af' : accentColor,
+              }}
+            >
+              {isSaving ? 'Opslaan...' : 'Avatar Opslaan'}
+            </button>
           </div>
 
           {/* Theme + Accent */}
