@@ -117,44 +117,28 @@ export default function HomePage() {
 
           {/* Card */}
           <div
-            className={`relative bg-gradient-to-br ${theme.cardGradient} rounded-2xl p-6 overflow-hidden transition-colors duration-300`}
-            style={{
-              ...theme.borderStyle,
-              borderWidth: "1px",
-              borderStyle: "solid",
-            }}
+            className={`${theme.card} border ${theme.border} rounded-3xl p-8 ${theme.shadow} hover:${theme.borderHover} transition-all duration-300`}
           >
-            {/* Corner Decorations */}
-            <div
-              className="absolute top-0 left-0 w-16 h-16 border-l-2 border-t-2"
-              style={{ borderColor: `${accentColor}80` }}
-            ></div>
-            <div
-              className="absolute top-0 right-0 w-16 h-16 border-r-2 border-t-2"
-              style={{ borderColor: `${accentColor}80` }}
-            ></div>
-            <div
-              className="absolute bottom-0 left-0 w-16 h-16 border-l-2 border-b-2"
-              style={{ borderColor: `${accentColor}80` }}
-            ></div>
-            <div
-              className="absolute bottom-0 right-0 w-16 h-16 border-r-2 border-b-2"
-              style={{ borderColor: `${accentColor}80` }}
-            ></div>
 
-            <div className="flex items-start gap-6">
-              {/* Character Portrait */}
+
+            <div className="flex items-center gap-6">
+              {/* Avatar */}
               <div className="relative">
                 <div
-                  className="w-32 h-40 rounded-xl border-2 flex items-center justify-center overflow-hidden"
+                  className="w-24 h-24 rounded-2xl border-4 flex items-center justify-center overflow-hidden"
                   style={{
-                    borderColor: `${accentColor}80`,
-                    backgroundColor: darkMode
-                      ? "rgba(88, 28, 135, 0.3)"
-                      : "rgba(219, 234, 254, 0.5)",
+                    borderColor: accentColor,
+                    backgroundColor: `${accentColor}20`,
                   }}
                 >
                   <Sword size={48} style={{ color: accentColor }} />
+                </div>
+                {/* Level Badge */}
+                <div
+                  className="absolute -bottom-2 -right-2 px-3 py-1 rounded-xl text-sm font-bold text-white shadow-lg"
+                  style={{ backgroundColor: accentColor }}
+                >
+                  Lvl {getLevelFromXP(user.stats.xp)}
                 </div>
               </div>
 
@@ -165,18 +149,19 @@ export default function HomePage() {
                     <h3 className={`text-2xl font-bold ${theme.text}`}>
                       {user.displayName}
                     </h3>
-                    <p style={theme.accentText}> Level {getLevelFromXP(user.stats.xp)}</p>
+                    <p className={`text-xs ${theme.textMuted} uppercase tracking-widest mt-1`}>
+                      Adventurer
+                    </p>
                   </div>
+                  {/* Gold Badge */}
                   <div
-                    className="px-4 py-2 rounded-lg"
+                    className="px-4 py-2 rounded-xl border-2"
                     style={{
-                      backgroundColor: "rgba(234, 179, 8, 0.2)",
-                      borderWidth: "1px",
-                      borderStyle: "solid",
-                      borderColor: "rgba(234, 179, 8, 0.5)",
+                      backgroundColor: "rgba(234, 179, 8, 0.1)",
+                      borderColor: "rgba(234, 179, 8, 0.3)",
                     }}
                   >
-                    <p className="text-yellow-400 font-bold flex items-center gap-1">
+                    <p className="text-yellow-500 dark:text-yellow-400 font-bold flex items-center gap-1">
                       <Coins size={16} /> {user.stats.gold}
                     </p>
                   </div>
@@ -184,9 +169,9 @@ export default function HomePage() {
 
                 {/* XP Bar */}
                 <div className="mb-3">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className={theme.textMuted}>Experience</span>
-                    <span style={theme.accentText}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className={`${theme.textMuted} uppercase tracking-wide`}>Experience</span>
+                    <span className="font-bold" style={theme.accentText}>
                       {(() => {
                         const calculatedLevel = getLevelFromXP(user.stats.xp);
                         const progress = getCurrentLevelProgress(user.stats.xp, calculatedLevel);
@@ -195,74 +180,43 @@ export default function HomePage() {
                     </span>
                   </div>
                   <div
-                    className={`h-3 rounded-full overflow-hidden ${darkMode ? "bg-gray-800" : "bg-gray-200"
-                      }`}
-                    style={{
-                      ...theme.borderStyle,
-                      borderWidth: "1px",
-                      borderStyle: "solid",
-                    }}
+                    className={`h-3 rounded-full overflow-hidden border ${theme.border}`}
+                    style={{ backgroundColor: darkMode ? "#1f2937" : "#e5e7eb" }}
                   >
                     <div
                       className="h-full rounded-full transition-all"
                       style={{
                         width: `${getCurrentLevelProgress(user.stats.xp, getLevelFromXP(user.stats.xp)).percentage}%`,
-                        background: accentColor,
+                        backgroundColor: accentColor,
                         boxShadow: `0 0 10px ${accentColor}80`,
                       }}
                     />
                   </div>
                 </div>
 
-                {/* Mana Bar */}
-                <div className="mb-4">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className={theme.textMuted}>Mana</span>
-                    <span className="text-blue-400">0 / 100</span>
-                  </div>
-                  <div
-                    className={`h-3 rounded-full overflow-hidden ${darkMode ? "bg-gray-800" : "bg-gray-200"
-                      }`}
-                    style={{
-                      borderWidth: "1px",
-                      borderStyle: "solid",
-                      borderColor: "rgba(59, 130, 246, 0.3)",
-                    }}
-                  >
-                    <div
-                      className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"
-                      style={{
-                        width: "0%",
-                        boxShadow: "0 0 10px rgba(59, 130, 246, 0.5)",
-                      }}
-                    />
-                  </div>
+                {/* Streak */}
+                <div className="flex items-center gap-2">
+                  <Flame size={16} style={{ color: "#f97316" }} />
+                  <span className={`text-sm ${theme.textMuted}`}>
+                    {user.stats.streak} day streak
+                  </span>
                 </div>
+              </div>
+            </div>
 
-                {/* Stats Grid */}
-                <div className="grid grid-cols-3 gap-3">
-                  <StatBox
-                    icon={<Sword size={20} />}
-                    label="STR"
-                    value={0}
-                    color="red"
-                    darkMode={darkMode}
-                  />
-                  <StatBox
-                    icon={<Shield size={20} />}
-                    label="DEF"
-                    value={0}
-                    color="blue"
-                    darkMode={darkMode}
-                  />
-                  <StatBox
-                    icon={<Heart size={20} />}
-                    label="HP"
-                    value={0}
-                    color="green"
-                    darkMode={darkMode}
-                  />
-                </div>
+            {/* Stats Grid */}
+            <div className={`grid grid-cols-3 gap-4 mt-6 pt-6 border-t ${theme.border}`}>
+              <div className="text-center">
+                <div className={`text-2xl font-bold ${theme.text}`}>{user.stats.gold}</div>
+                <div className={`text-xs ${theme.textMuted} uppercase tracking-wide`}>Gold</div>
+              </div>
+              <div className="text-center">
+                <div className={`text-2xl font-bold ${theme.text}`}>{getLevelFromXP(user.stats.xp)}</div>
+                <div className={`text-xs ${theme.textMuted} uppercase tracking-wide`}>Level</div>
+              </div>
+              <div className="text-center">
+                <div className={`text-2xl font-bold ${theme.text}`}>{user.stats.streak}</div>
+                <div className={`text-xs ${theme.textMuted} uppercase tracking-wide`}>Streak</div>
               </div>
             </div>
           </div>

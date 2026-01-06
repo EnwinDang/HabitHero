@@ -61,245 +61,180 @@ export default function ProfilePage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
             {/* LEFT - PROFILE CARD */}
             <div className="h-full">
-              <div className="relative h-full">
-                {/* Glow */}
-                <div
-                  className="absolute -inset-1 rounded-2xl blur-lg opacity-30"
-                  style={{
-                    background: `linear-gradient(to bottom, ${accentColor}, #a855f7)`,
-                  }}
-                ></div>
+              <div
+                className={`${theme.card} border ${theme.border} rounded-3xl p-8 text-center ${theme.shadow} hover:${theme.borderHover} transition-all duration-300 h-full flex flex-col`}
+              >
 
-                {/* Card */}
+                {/* Avatar */}
                 <div
-                  className={`relative bg-gradient-to-b ${theme.cardGradient} rounded-2xl p-6 text-center overflow-hidden transition-colors duration-300 h-full`}
+                  className="w-32 h-32 mx-auto rounded-2xl border-4 flex items-center justify-center mb-4"
                   style={{
-                    ...theme.borderStyle,
-                    borderWidth: "1px",
-                    borderStyle: "solid",
+                    borderColor: accentColor,
+                    backgroundColor: `${accentColor}20`,
                   }}
                 >
-                  {/* Corner decorations */}
-                  <div
-                    className="absolute top-0 left-0 w-12 h-12 border-l-2 border-t-2"
-                    style={{ borderColor: `${accentColor}80` }}
-                  ></div>
-                  <div
-                    className="absolute top-0 right-0 w-12 h-12 border-r-2 border-t-2"
-                    style={{ borderColor: `${accentColor}80` }}
-                  ></div>
-                  <div
-                    className="absolute bottom-0 left-0 w-12 h-12 border-l-2 border-b-2"
-                    style={{ borderColor: `${accentColor}80` }}
-                  ></div>
-                  <div
-                    className="absolute bottom-0 right-0 w-12 h-12 border-r-2 border-b-2"
-                    style={{ borderColor: `${accentColor}80` }}
-                  ></div>
+                  <span className="text-6xl">{avatars[selectedAvatar]}</span>
+                </div>
 
-                  {/* Avatar */}
-                  <div
-                    className="w-28 h-28 mx-auto rounded-xl border-2 flex items-center justify-center mb-4"
-                    style={{
-                      borderColor: `${accentColor}80`,
-                      backgroundColor: darkMode
-                        ? "rgba(88, 28, 135, 0.3)"
-                        : "rgba(219, 234, 254, 0.5)",
-                      boxShadow: `0 0 30px ${accentColor}30`,
-                    }}
-                  >
-                    <span className="text-5xl">{avatars[selectedAvatar]}</span>
-                  </div>
+                <h3 className={`text-3xl font-bold ${theme.text}`}>
+                  {user.displayName}
+                </h3>
+                <p className={`text-xs ${theme.textMuted} uppercase tracking-widest mt-2`}>
+                  Level {getLevelFromXP(user.stats.xp)} Adventurer
+                </p>
 
-                  <h3 className={`text-2xl font-bold ${theme.text}`}>
-                    {user.displayName}
-                  </h3>
-
-                  <div
-                    className="mt-6 pt-4"
-                    style={{
-                      borderTopWidth: "1px",
-                      borderTopStyle: "solid",
-                      borderColor: `${accentColor}30`,
-                    }}
-                  >
-                    <p
-                      className="text-4xl font-bold"
-                      style={theme.gradientText}
-                    >
-                      Level {getLevelFromXP(user.stats.xp)}
+                {/* Stats Preview */}
+                <div className={`grid grid-cols-3 gap-4 mt-6 pt-6 border-t ${theme.border}`}>
+                  <div className={`${theme.inputBg} rounded-lg p-2`}>
+                    <p className="text-yellow-400 font-bold">
+                      {user.stats.gold}
                     </p>
+                    <p className={`${theme.textSubtle} text-xs`}>Gold</p>
                   </div>
-
-                  {/* Stats Preview */}
-                  <div className="grid grid-cols-3 gap-2 mt-4">
-                    <div className={`${theme.inputBg} rounded-lg p-2`}>
-                      <p className="text-yellow-400 font-bold">
-                        {user.stats.gold}
-                      </p>
-                      <p className={`${theme.textSubtle} text-xs`}>Gold</p>
-                    </div>
-                    <div className={`${theme.inputBg} rounded-lg p-2`}>
-                      <p className="font-bold" style={theme.accentText}>
-                        {getCurrentLevelProgress(user.stats.xp, getLevelFromXP(user.stats.xp)).current}
-                      </p>
-                      <p className={`${theme.textSubtle} text-xs`}>XP</p>
-                    </div>
-                    <div className={`${theme.inputBg} rounded-lg p-2`}>
-                      <p className="text-orange-400 font-bold">
-                        {user.stats.streak}
-                      </p>
-                      <p className={`${theme.textSubtle} text-xs`}>Streak</p>
-                    </div>
+                  <div className={`${theme.inputBg} rounded-lg p-2`}>
+                    <p className="font-bold" style={theme.accentText}>
+                      {getCurrentLevelProgress(user.stats.xp, getLevelFromXP(user.stats.xp)).current}
+                    </p>
+                    <p className={`${theme.textSubtle} text-xs`}>XP</p>
                   </div>
-                </div>
-              </div>
-            </div>
-
-            {/* RIGHT - MY INFORMATION */}
-            <div className="h-full">
-              <div
-                className={`${theme.card} rounded-2xl p-6 transition-colors duration-300 h-full`}
-                style={{
-                  ...theme.borderStyle,
-                  borderWidth: "1px",
-                  borderStyle: "solid",
-                }}
-              >
-                <div className="flex justify-between items-center mb-6">
-                  <h3
-                    className={`text-xl font-bold ${theme.text} flex items-center gap-2`}
-                  >
-                    <ClipboardList size={20} style={{ color: accentColor }} />{" "}
-                    My Information
-                  </h3>
-                  <button
-                    className="px-4 py-1.5 rounded-lg text-sm transition-colors"
-                    style={{
-                      ...theme.accentText,
-                      borderWidth: "1px",
-                      borderStyle: "solid",
-                      borderColor: `${accentColor}80`,
-                    }}
-                  >
-                    Edit
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  <InfoRow
-                    icon={<UserCircle size={20} />}
-                    label=""
-                    value={user.displayName || "Hero"}
-                    darkMode={darkMode}
-                  />
-                  <InfoRow
-                    icon={<Mail size={20} />}
-                    label=""
-                    value={user.email || "hunter@shadow.com"}
-                    darkMode={darkMode}
-                  />
-                  <InfoRow
-                    icon={<CalendarDays size={20} />}
-                    label=""
-                    value={memberSince}
-                    darkMode={darkMode}
-                  />
+                  <div className={`${theme.inputBg} rounded-lg p-2`}>
+                    <p className="text-orange-400 font-bold">
+                      {user.stats.streak}
+                    </p>
+                    <p className={`${theme.textSubtle} text-xs`}>Streak</p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Avatar + Theme + Accent (structured) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Choose Avatar */}
+          {/* RIGHT - MY INFORMATION */}
+          <div className="h-full">
             <div
-              className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
-              style={{
-                ...theme.borderStyle,
-                borderWidth: "1px",
-                borderStyle: "solid",
-              }}
+              className={`${theme.card} border ${theme.border} rounded-3xl p-8 ${theme.shadow} hover:${theme.borderHover} transition-all duration-300 h-full`}
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3
+                  className={`text-xl font-bold ${theme.text} flex items-center gap-2`}
+                >
+                  <ClipboardList size={20} style={{ color: accentColor }} />{" "}
+                  My Information
+                </h3>
+                <button
+                  className="px-4 py-2 rounded-xl border-2 text-sm font-semibold transition-all hover:shadow-md"
+                  style={{
+                    color: accentColor,
+                    borderColor: `${accentColor}40`,
+                    backgroundColor: 'transparent',
+                  }}
+                >
+                  Edit
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <InfoRow
+                  icon={<UserCircle size={20} />}
+                  label=""
+                  value={user.displayName || "Hero"}
+                  darkMode={darkMode}
+                />
+                <InfoRow
+                  icon={<Mail size={20} />}
+                  label=""
+                  value={user.email || "hunter@shadow.com"}
+                  darkMode={darkMode}
+                />
+                <InfoRow
+                  icon={<CalendarDays size={20} />}
+                  label=""
+                  value={memberSince}
+                  darkMode={darkMode}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Avatar + Theme + Accent (structured) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Choose Avatar */}
+          <div
+            className={`${theme.card} border ${theme.border} rounded-3xl p-8 ${theme.shadow} hover:${theme.borderHover} transition-all duration-300`}
+          >
+            <h3
+              className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
+            >
+              <span>🎭</span> Choose Avatar
+            </h3>
+            <div className="grid grid-cols-4 gap-3">
+              {avatars.map((avatar, index) => (
+                <button
+                  key={index}
+                  onClick={() => setSelectedAvatar(index)}
+                  className="p-4 rounded-xl text-3xl transition-all border-2"
+                  style={{
+                    backgroundColor:
+                      selectedAvatar === index
+                        ? darkMode
+                          ? `${accentColor}20`
+                          : `${accentColor}10`
+                        : darkMode
+                          ? "rgba(55, 65, 81, 0.3)"
+                          : "rgba(243, 244, 246, 1)",
+                    borderColor:
+                      selectedAvatar === index ? accentColor : "transparent",
+                    boxShadow:
+                      selectedAvatar === index
+                        ? `0 0 15px ${accentColor}40`
+                        : "none",
+                  }}
+                >
+                  {avatar}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Theme + Accent */}
+          <div className="space-y-6">
+            {/* Theme Settings */}
+            <div
+              className={`${theme.card} border ${theme.border} rounded-3xl p-8 ${theme.shadow} hover:${theme.borderHover} transition-all duration-300`}
             >
               <h3
                 className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
               >
-                <span>🎭</span> Choose Avatar
+                <span>🌙</span> Theme Settings
               </h3>
-              <div className="grid grid-cols-4 gap-3">
-                {avatars.map((avatar, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setSelectedAvatar(index)}
-                    className="p-4 rounded-xl text-3xl transition-all border-2"
-                    style={{
-                      backgroundColor:
-                        selectedAvatar === index
-                          ? darkMode
-                            ? `${accentColor}20`
-                            : `${accentColor}10`
-                          : darkMode
-                            ? "rgba(55, 65, 81, 0.3)"
-                            : "rgba(243, 244, 246, 1)",
-                      borderColor:
-                        selectedAvatar === index ? accentColor : "transparent",
-                      boxShadow:
-                        selectedAvatar === index
-                          ? `0 0 15px ${accentColor}40`
-                          : "none",
-                    }}
-                  >
-                    {avatar}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Theme + Accent */}
-            <div className="space-y-6">
-              {/* Theme Settings */}
               <div
-                className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
-                style={{
-                  ...theme.borderStyle,
-                  borderWidth: "1px",
-                  borderStyle: "solid",
-                }}
+                className={`flex justify-between items-center p-4 ${theme.inputBg} rounded-xl`}
               >
-                <h3
-                  className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
-                >
-                  <span>🌙</span> Theme Settings
-                </h3>
-                <div
-                  className={`flex justify-between items-center p-4 ${theme.inputBg} rounded-xl`}
-                >
-                  <div>
-                    <p className="font-medium" style={theme.accentText}>
-                      Dark Mode
-                    </p>
-                    <p className={`${theme.textSubtle} text-sm`}>
-                      {darkMode
-                        ? "Shadow realm activated"
-                        : "Light mode active"}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setDarkMode(!darkMode)}
-                    className="w-14 h-8 rounded-full p-1 transition-all"
-                    style={{
-                      backgroundColor: darkMode ? accentColor : "#d1d5db",
-                      boxShadow: darkMode
-                        ? `0 0 10px ${accentColor}50`
-                        : "none",
-                    }}
-                  >
-                    <div
-                      className={`w-6 h-6 rounded-full bg-white shadow transition-transform ${darkMode ? "translate-x-6" : "translate-x-0"
-                        }`}
-                    />
-                  </button>
+                <div>
+                  <p className="font-medium" style={theme.accentText}>
+                    Dark Mode
+                  </p>
+                  <p className={`${theme.textSubtle} text-sm`}>
+                    {darkMode
+                      ? "Shadow realm activated"
+                      : "Light mode active"}
+                  </p>
                 </div>
+                <button
+                  onClick={() => setDarkMode(!darkMode)}
+                  className="w-14 h-8 rounded-full p-1 transition-all"
+                  style={{
+                    backgroundColor: darkMode ? accentColor : "#d1d5db",
+                    boxShadow: darkMode
+                      ? `0 0 10px ${accentColor}50`
+                      : "none",
+                  }}
+                >
+                  <div
+                    className={`w-6 h-6 rounded-full bg-white shadow transition-transform ${darkMode ? "translate-x-6" : "translate-x-0"
+                      }`}
+                  />
+                </button>
               </div>
             </div>
           </div>
@@ -389,3 +324,6 @@ function InfoRow({
     </div>
   );
 }
+
+
+
