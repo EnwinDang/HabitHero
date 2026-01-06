@@ -39,14 +39,12 @@ const ItemManagement: React.FC = () => {
           ...(arcanePetsRes.data || [])
         ]);
       } else if (activeTab === 'lootboxes') {
-        const [standardRes, tweaksRes] = await Promise.all([
+        const [standardRes] = await Promise.all([
           ItemsAPI.list({ collection: "lootboxes" }),
-          ItemsAPI.list({ collection: "lootboxesArcaneTweaks" })
         ]);
 
         setData([
           ...(standardRes.data || []),
-          ...(tweaksRes.data || [])
         ]);
       } else if (activeTab === 'achievements') {
         const response = await AchievementsAPI.list();

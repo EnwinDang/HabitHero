@@ -18,12 +18,18 @@ const CourseManagement = () => {
 
   const fetchEnrolledStudents = async (course: any) => {
     setSelectedCourse(course);
+    
     const q = query(collection(db, 'users'), where('role', '==', 'student'));
     const snap = await getDocs(q);
     
     const list = snap.docs
       .map(doc => ({ id: doc.id, ...doc.data() }))
-      .filter((student: any) => student.enrolledCourses?.includes(course.id));
+      .filter((student: any) => {
+          if (course.students && typeof course.students === 'object') {
+              return Object.keys(course.students).includes(student.id);
+          }
+          return false;
+      });
     
     setEnrolledStudents(list);
     setIsModalOpen(true);
@@ -54,7 +60,6 @@ const CourseManagement = () => {
             </div>
 
             <div className="space-y-4 border-t border-slate-50 pt-6">
-              {/* Leerkracht informatie */}
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center text-slate-400">
                   <User size={14} />
@@ -65,7 +70,6 @@ const CourseManagement = () => {
                 </div>
               </div>
 
-              {/* Studentenoverzicht knop */}
               <button 
                 onClick={() => fetchEnrolledStudents(course)}
                 className="w-full group flex items-center justify-between p-4 bg-slate-50 rounded-2xl hover:bg-violet-50 transition-all"
@@ -74,14 +78,17 @@ const CourseManagement = () => {
                   <Users size={18} className="text-violet-500" />
                   <span className="text-sm font-bold text-slate-600 group-hover:text-violet-700">Enrolled Students</span>
                 </div>
-                <span className="text-xs font-black text-violet-400">{course.studentCount || 0}</span>
+                
+                <span className="text-xs font-black text-violet-400">
+                  {Object.keys(course.students || {}).length}
+                </span>
+
               </button>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Modal voor Studentenlijst */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-[2.5rem] p-10 max-w-lg w-full shadow-2xl animate-in zoom-in duration-200">
