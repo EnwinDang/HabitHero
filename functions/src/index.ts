@@ -71,14 +71,42 @@ app.get("/auth/me", requireAuth, async (req, res) => {
         updatedAt: Date.now(),
         lastLoginAt: Date.now(),
         stats: {
+          // XP & Level
           level: 1,
           xp: 0,
           nextLevelXP: 100,
           totalXP: 0,
-          gold: 0,
+          // Currency
+          gold: 100,
           gems: 0,
+          // Combat stats
+          attack: 10,
+          defense: 5,
+          health: 100,
+          maxHealth: 100,
+          magicAttack: 0,
+          magicDefense: 0,
+          critChance: 0.05,
+          critDamage: 1.5,
+          // Streaks
           streak: 0,
           maxStreak: 0,
+        },
+        progression: {
+          currentWorldId: "world_1",
+          currentStage: 1,
+          bossesDefeated: 0,
+          monstersDefeated: 0,
+        },
+        lootboxes: {
+          basic: 0,
+          advanced: 0,
+          epic: 0,
+          legendary: 0,
+        },
+        streaks: {
+          daily: { current: 0, best: 0 },
+          pomodoro: { current: 0, best: 0 },
         },
         settings: {
           notificationsEnabled: true,
@@ -407,6 +435,48 @@ app.patch("/users/:uid/inventory", requireAuth, async (req, res) => {
     return res.status(200).json(req.body);
   } catch (e: any) {
     console.error("Error in PATCH /users/:uid/inventory:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+// ============ GAME CONFIG & RULES ============
+
+/**
+ * GET /game-config
+ * Get game configuration (economy, stamina, leaderboards, etc)
+ */
+app.get("/game-config", async (req, res) => {
+  try {
+    const configSnap = await db.collection("gameConfig").get();
+    
+    const configs: any = {};
+    configSnap.docs.forEach((doc) => {
+      configs[doc.id] = doc.data();
+    });
+
+    return res.status(200).json(configs);
+  } catch (e: any) {
+    console.error("Error in GET /game-config:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /world-config
+ * Get world configuration (monster scaling, player scaling, stage structure, etc)
+ */
+app.get("/world-config", async (req, res) => {
+  try {
+    const configSnap = await db.collection("worldConfig").get();
+    
+    const configs: any = {};
+    configSnap.docs.forEach((doc) => {
+      configs[doc.id] = doc.data();
+    });
+
+    return res.status(200).json(configs);
+  } catch (e: any) {
+    console.error("Error in GET /world-config:", e);
     return res.status(500).json({ error: e?.message });
   }
 });
