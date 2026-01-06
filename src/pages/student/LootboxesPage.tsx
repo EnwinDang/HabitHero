@@ -124,29 +124,61 @@ export default function LootboxesPage() {
             // Simulate opening animation
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            // Call Backend API
-            const result = await LootboxesAPI.open(lootbox.id);
+            try {
+                // TRY BACKEND FIRST (preferred for security)
+                console.log("🔄 Trying backend API for lootbox opening...");
+                const result = await LootboxesAPI.open(lootbox.id);
 
-            // Result.results contains ItemInstance[]
-            // We need to map this back to GeneratedItem for display
-            // For now, we'll map roughly
-            const items = result.results.map((r: any) => ({
-                name: r.name || "Unknown Item",
-                type: r.type || "misc",
-                rarity: r.rarity || "common",
-                icon: r.icon || "📦",
-                isEquipped: false,
-                level: 1,
-                // Add stats if available in result
-                ...(r.stats ? { stats: r.stats } : {})
-            }));
+                // Backend success - use backend result
+                const items = result.results.map((r: any) => ({
+                    name: r.name || "Unknown Item",
+                    type: r.type || "misc",
+                    rarity: r.rarity || "common",
+                    icon: r.icon || "📦",
+                    isEquipped: false,
+                    level: 1,
+                    ...(r.stats ? { stats: r.stats } : {})
+                }));
 
-            setRevealedItems(items);
-            setShowRewards(true);
-            setOpeningBox(null);
+                console.log("✅ Backend lootbox opening successful");
+                setRevealedItems(items);
+                setShowRewards(true);
+                setOpeningBox(null);
 
-            // Refresh user to update gold/inventory (handled by AuthContext/useRealtimeUser usually)
-            // If realtime listener is active, gold update should come automatically
+            } catch (backendError) {
+                // FALLBACK TO FIRESTORE (backend offline)
+                console.warn("⚠️ Backend offline, using Firestore fallback:", backendError);
+
+                // Generate items locally
+                const items = generateRewards(lootbox.type);
+
+                // Deduct gold from user
+                const userRef = doc(db, "users", user.uid);
+                await updateDoc(userRef, {
+                    "stats.gold": user.stats.gold - lootbox.price
+                });
+
+                // Add items to inventory
+                const inventoryRef = collection(db, "users", user.uid, "inventory");
+                for (const item of items) {
+                    await addDoc(inventoryRef, {
+                        ...item,
+                        acquiredAt: Date.now(),
+                        source: `lootbox_${lootbox.type}`
+                    });
+                }
+
+                console.log(`✅ Firestore fallback successful`);
+                console.log(`   Lootbox: ${lootbox.name}`);
+                console.log(`   Gold deducted: -${lootbox.price}`);
+                console.log(`   Items added: ${items.length}`);
+
+                setRevealedItems(items);
+                setShowRewards(true);
+                setOpeningBox(null);
+            }
+
+            // User data will auto-refresh via useRealtimeUser hook
         } catch (error: any) {
             console.error("Failed to open lootbox:", error);
             alert(error.message || "Er is iets misgegaan bij het openen.");
