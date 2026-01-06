@@ -1,0 +1,168 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is a teacher
+    function isTeacher() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+    
+    // Helper function to check if user is an admin
+    function isAdmin() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Helper function to check if user is teacher or admin
+    function isTeacherOrAdmin() {
+      return isTeacher() || isAdmin();
+    }
+    
+    // Users collection
+    match /users/{uid} {
+      // User can read their own profile
+      allow read: if isAuthenticated() && request.auth.uid == uid;
+      
+      // User can write their own profile (except role)
+      allow write: if isAuthenticated() && request.auth.uid == uid && 
+                      !('role' in request.resource.data.diff(resource.data).affectedKeys());
+      
+      // Role is readable by authenticated users (for rule checks)
+      // Role cannot be written by users themselves
+      
+      // Tasks subcollection
+      match /tasks/{taskId} {
+        allow read: if isAuthenticated() && request.auth.uid == uid;
+        allow write: if isAuthenticated() && request.auth.uid == uid;
+      }
+      
+      // Achievements subcollection
+      match /achievements/{achievementId} {
+        allow read: if isAuthenticated() && request.auth.uid == uid;
+        allow write: if isAuthenticated() && request.auth.uid == uid;
+      }
+      
+      // Notifications subcollection
+      match /notifications/{notifId} {
+        allow read: if isAuthenticated() && request.auth.uid == uid;
+        allow write: if isAuthenticated() && request.auth.uid == uid;
+      }
+    }
+    
+    // Courses collection
+    match /courses/{courseId} {
+      // All authenticated users can read courses
+      allow read: if isAuthenticated();
+      
+      // Only teachers or admins can write courses
+      allow write: if isTeacherOrAdmin();
+    }
+    
+    // Tasks collection (top-level, not user-specific)
+    match /tasks/{taskId} {
+      // All authenticated users can read tasks
+      allow read: if isAuthenticated();
+      
+      // Only teachers or admins can write tasks
+      allow write: if isTeacherOrAdmin();
+    }
+    
+    // Task progress collection
+    match /taskProgress/{uid} {
+      // User can only read/write their own progress
+      allow read, write: if isAuthenticated() && request.auth.uid == uid;
+    }
+    
+    // Achievements collection
+    match /achievements/{achievementId} {
+      // All authenticated users can read achievements
+      allow read: if isAuthenticated();
+      
+      // Only admins can write achievements
+      allow write: if isAdmin();
+    }
+    
+    // Achievement progress collection
+    match /achievementProgress/{uid} {
+      // User can only read/write their own progress
+      allow read, write: if isAuthenticated() && request.auth.uid == uid;
+    }
+    
+    // Worlds collection
+    match /worlds/{worldId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Monsters collection
+    match /monsters/{monsterId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Items collection
+    match /items/{itemId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Pets collection
+    match /pets/{petId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Inventories collection
+    match /inventories/{uid} {
+      // User can only read/write their own inventory
+      allow read, write: if isAuthenticated() && request.auth.uid == uid;
+    }
+    
+    // Lootboxes collection
+    match /lootboxes/{lootboxId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Reroll rules collection
+    match /rerollRules/{ruleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Calendars collection
+    match /calendars/{uid} {
+      // User can only read/write their own calendar
+      allow read, write: if isAuthenticated() && request.auth.uid == uid;
+    }
+    
+    // Leaderboards collection
+    match /leaderboards/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if false; // No one can write to leaderboards directly
+    }
+    
+    // Game rules collection
+    match /gameRules/{ruleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Levels collection
+    match /levels/{levelId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Default: deny all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

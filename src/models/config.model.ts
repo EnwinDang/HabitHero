@@ -9,5 +9,4 @@ export interface DifficultyConfig {
   easy: number;
   medium: number;
   hard: number;
-  extreme: number;
 }

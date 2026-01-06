@@ -3,9 +3,13 @@ export interface Course {
   name: string;
   description?: string | null;
   courseCode: string;
-  startDate?: string;
-  endDate?: string;
+  startDate?: string | null;
+  endDate?: string | null;
   isActive: boolean;
+  createdBy?: string;
+  students?: Record<string, boolean>;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
 export interface CourseEnrollment {

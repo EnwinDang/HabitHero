@@ -37,8 +37,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.api = void 0;
-const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
+const https_1 = require("firebase-functions/v1/https");
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 // Initialize Admin SDK
@@ -317,7 +317,7 @@ app.get("/achievements", async (req, res) => {
             achievementId: doc.id,
             ...doc.data(),
         }));
-        return res.status(200).json(achievements);
+        return res.status(200).json({ data: achievements });
     }
     catch (e) {
         console.error("Error in GET /achievements:", e);
@@ -329,21 +329,31 @@ app.get("/achievements", async (req, res) => {
  */
 app.post("/achievements", requireAuth, async (req, res) => {
     try {
-        const { name, description, icon, reward } = req.body;
-        const newAchievementRef = db.collection("achievements").doc();
-        await newAchievementRef.set({
-            name,
-            description,
-            icon,
-            reward,
+        const { title, description, reward, category } = req.body;
+        const slug = title.toLowerCase().trim().replace(/\s+/g, '_');
+        const customId = `ach_${slug}`;
+        const achievementRef = db.collection("achievements").doc(customId);
+        const achievement = {
+            achievementId: customId,
+            title,
+            category: category || "general",
+            condition: {
+                description: description,
+                operator: ">=",
+                type: "counter",
+                value: 10
+            },
+            reward: {
+                gold: reward?.gold || 0,
+                xp: reward?.xp || 0
+            },
+            iconLocked: "lock",
+            iconUnlocked: "trophy",
             createdAt: Date.now(),
-        });
+        };
+        await achievementRef.set(achievement);
         return res.status(201).json({
-            achievementId: newAchievementRef.id,
-            name,
-            description,
-            icon,
-            reward,
+            data: achievement
         });
     }
     catch (e) {
@@ -425,6 +435,38 @@ app.patch("/users/:uid", requireAuth, async (req, res) => {
     }
     catch (e) {
         console.error("Error in PATCH /users/:uid:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /users
+ */
+app.get("/users", requireAuth, async (req, res) => {
+    try {
+        const { role, status, limit = 50 } = req.query;
+        let query = db.collection("users");
+        if (role) {
+            query = query.where("role", "==", role);
+        }
+        if (status) {
+            query = query.where("status", "==", status);
+        }
+        // We halen de data op zonder de complexe sortering die indexen vereist
+        const snap = await query.limit(parseInt(limit, 10) || 50).get();
+        const users = snap.docs.map((doc) => ({
+            uid: doc.id,
+            ...doc.data(),
+        }));
+        return res.status(200).json({
+            data: users,
+            pagination: {
+                total: snap.size,
+                limit: parseInt(limit, 10) || 50
+            },
+        });
+    }
+    catch (e) {
+        console.error("Error in GET /users:", e);
         return res.status(500).json({ error: e?.message });
     }
 });
@@ -535,6 +577,1275 @@ app.get("/leaderboards/global", async (req, res) => {
         return res.status(500).json({ error: e?.message });
     }
 });
+// ============ COURSES ============
+/**
+ * GET /courses
+ */
+app.get("/courses", async (req, res) => {
+    try {
+        const activeOnly = req.query.activeOnly === "true";
+        const coursesRef = db.collection("courses");
+        let query = coursesRef;
+        if (activeOnly) {
+            query = query.where("isActive", "==", true);
+        }
+        const snap = await query.get();
+        const courses = snap.docs.map((doc) => ({
+            courseId: doc.id,
+            ...doc.data(),
+        }));
+        return res.status(200).json(courses);
+    }
+    catch (e) {
+        console.error("Error in GET /courses:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * POST /courses
+ */
+app.post("/courses", requireAuth, async (req, res) => {
+    try {
+        const newCourseRef = db.collection("courses").doc();
+        const course = {
+            ...req.body,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+        };
+        await newCourseRef.set(course);
+        return res.status(201).json({
+            courseId: newCourseRef.id,
+            ...course,
+        });
+    }
+    catch (e) {
+        console.error("Error in POST /courses:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /courses/:courseId
+ */
+app.get("/courses/:courseId", async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const courseSnap = await db.collection("courses").doc(courseId).get();
+        if (!courseSnap.exists) {
+            return res.status(404).json({ error: "Course not found" });
+        }
+        return res.status(200).json({
+            courseId: courseSnap.id,
+            ...courseSnap.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in GET /courses/:courseId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PUT /courses/:courseId
+ */
+app.put("/courses/:courseId", requireAuth, async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const courseRef = db.collection("courses").doc(courseId);
+        const course = {
+            ...req.body,
+            updatedAt: Date.now(),
+        };
+        await courseRef.set(course, { merge: false });
+        return res.status(200).json({
+            courseId,
+            ...course,
+        });
+    }
+    catch (e) {
+        console.error("Error in PUT /courses/:courseId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PATCH /courses/:courseId
+ */
+app.patch("/courses/:courseId", requireAuth, async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const courseRef = db.collection("courses").doc(courseId);
+        await courseRef.update({
+            ...req.body,
+            updatedAt: Date.now(),
+        });
+        const updated = await courseRef.get();
+        return res.status(200).json({
+            courseId: updated.id,
+            ...updated.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in PATCH /courses/:courseId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * DELETE /courses/:courseId
+ */
+app.delete("/courses/:courseId", requireAuth, async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        await db.collection("courses").doc(courseId).delete();
+        return res.status(200).json({ success: true });
+    }
+    catch (e) {
+        console.error("Error in DELETE /courses/:courseId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /courses/:courseId/students
+ */
+app.get("/courses/:courseId/students", requireAuth, async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const studentsSnap = await db
+            .collection("courses")
+            .doc(courseId)
+            .collection("students")
+            .get();
+        const students = studentsSnap.docs.map((doc) => ({
+            uid: doc.id,
+            ...doc.data(),
+        }));
+        return res.status(200).json(students);
+    }
+    catch (e) {
+        console.error("Error in GET /courses/:courseId/students:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * POST /courses/:courseId/students
+ */
+app.post("/courses/:courseId/students", requireAuth, async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { uid } = req.body;
+        await db
+            .collection("courses")
+            .doc(courseId)
+            .collection("students")
+            .doc(uid)
+            .set({
+            ...req.body,
+            enrolledAt: Date.now(),
+        });
+        return res.status(200).json({ success: true });
+    }
+    catch (e) {
+        console.error("Error in POST /courses/:courseId/students:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * DELETE /courses/:courseId/students
+ */
+app.delete("/courses/:courseId/students", requireAuth, async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { uid } = req.body;
+        await db
+            .collection("courses")
+            .doc(courseId)
+            .collection("students")
+            .doc(uid)
+            .delete();
+        return res.status(200).json({ success: true });
+    }
+    catch (e) {
+        console.error("Error in DELETE /courses/:courseId/students:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /courses/:courseId/modules
+ */
+app.get("/courses/:courseId/modules", async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const modulesSnap = await db
+            .collection("courses")
+            .doc(courseId)
+            .collection("modules")
+            .get();
+        const modules = modulesSnap.docs.map((doc) => ({
+            moduleId: doc.id,
+            ...doc.data(),
+        }));
+        return res.status(200).json(modules);
+    }
+    catch (e) {
+        console.error("Error in GET /courses/:courseId/modules:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * POST /courses/:courseId/modules
+ */
+app.post("/courses/:courseId/modules", requireAuth, async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const newModuleRef = db
+            .collection("courses")
+            .doc(courseId)
+            .collection("modules")
+            .doc();
+        const module = {
+            ...req.body,
+            createdAt: Date.now(),
+        };
+        await newModuleRef.set(module);
+        return res.status(201).json({
+            moduleId: newModuleRef.id,
+            ...module,
+        });
+    }
+    catch (e) {
+        console.error("Error in POST /courses/:courseId/modules:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /modules/:moduleId
+ */
+app.get("/modules/:moduleId", async (req, res) => {
+    try {
+        const { moduleId } = req.params;
+        // We need to search across all courses - simplified approach
+        const coursesSnap = await db.collection("courses").get();
+        for (const courseDoc of coursesSnap.docs) {
+            const moduleSnap = await courseDoc.ref.collection("modules").doc(moduleId).get();
+            if (moduleSnap.exists) {
+                return res.status(200).json({
+                    moduleId: moduleSnap.id,
+                    ...moduleSnap.data(),
+                });
+            }
+        }
+        return res.status(404).json({ error: "Module not found" });
+    }
+    catch (e) {
+        console.error("Error in GET /modules/:moduleId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PUT /modules/:moduleId
+ */
+app.put("/modules/:moduleId", requireAuth, async (req, res) => {
+    try {
+        const { moduleId } = req.params;
+        const coursesSnap = await db.collection("courses").get();
+        for (const courseDoc of coursesSnap.docs) {
+            const moduleRef = courseDoc.ref.collection("modules").doc(moduleId);
+            const moduleSnap = await moduleRef.get();
+            if (moduleSnap.exists) {
+                const module = {
+                    ...req.body,
+                    updatedAt: Date.now(),
+                };
+                await moduleRef.set(module, { merge: false });
+                return res.status(200).json({
+                    moduleId,
+                    ...module,
+                });
+            }
+        }
+        return res.status(404).json({ error: "Module not found" });
+    }
+    catch (e) {
+        console.error("Error in PUT /modules/:moduleId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PATCH /modules/:moduleId
+ */
+app.patch("/modules/:moduleId", requireAuth, async (req, res) => {
+    try {
+        const { moduleId } = req.params;
+        const coursesSnap = await db.collection("courses").get();
+        for (const courseDoc of coursesSnap.docs) {
+            const moduleRef = courseDoc.ref.collection("modules").doc(moduleId);
+            const moduleSnap = await moduleRef.get();
+            if (moduleSnap.exists) {
+                await moduleRef.update({
+                    ...req.body,
+                    updatedAt: Date.now(),
+                });
+                const updated = await moduleRef.get();
+                return res.status(200).json({
+                    moduleId: updated.id,
+                    ...updated.data(),
+                });
+            }
+        }
+        return res.status(404).json({ error: "Module not found" });
+    }
+    catch (e) {
+        console.error("Error in PATCH /modules/:moduleId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * DELETE /modules/:moduleId
+ */
+app.delete("/modules/:moduleId", requireAuth, async (req, res) => {
+    try {
+        const { moduleId } = req.params;
+        const coursesSnap = await db.collection("courses").get();
+        for (const courseDoc of coursesSnap.docs) {
+            const moduleRef = courseDoc.ref.collection("modules").doc(moduleId);
+            const moduleSnap = await moduleRef.get();
+            if (moduleSnap.exists) {
+                await moduleRef.delete();
+                return res.status(200).json({ success: true });
+            }
+        }
+        return res.status(404).json({ error: "Module not found" });
+    }
+    catch (e) {
+        console.error("Error in DELETE /modules/:moduleId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+// ============ COMBAT ============
+/**
+ * POST /combat/start
+ */
+app.post("/combat/start", requireAuth, async (req, res) => {
+    try {
+        const uid = req.user.uid;
+        const { worldId, stage, seed } = req.body;
+        const combatRef = db.collection("combats").doc();
+        const combat = {
+            combatId: combatRef.id,
+            uid,
+            worldId,
+            stage,
+            seed: seed || Math.random().toString(36).substring(2),
+            status: "in-progress",
+            startedAt: Date.now(),
+            completedAt: null,
+        };
+        await combatRef.set(combat);
+        return res.status(201).json(combat);
+    }
+    catch (e) {
+        console.error("Error in POST /combat/start:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /combat/:combatId
+ */
+app.get("/combat/:combatId", requireAuth, async (req, res) => {
+    try {
+        const { combatId } = req.params;
+        const combatSnap = await db.collection("combats").doc(combatId).get();
+        if (!combatSnap.exists) {
+            return res.status(404).json({ error: "Combat not found" });
+        }
+        return res.status(200).json({
+            combatId: combatSnap.id,
+            ...combatSnap.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in GET /combat/:combatId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * POST /combat/:combatId/resolve
+ */
+app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
+    try {
+        const uid = req.user.uid;
+        const { combatId } = req.params;
+        const combatRef = db.collection("combats").doc(combatId);
+        const combatSnap = await combatRef.get();
+        if (!combatSnap.exists) {
+            return res.status(404).json({ error: "Combat not found" });
+        }
+        // Simple resolution logic - can be expanded
+        const victory = Math.random() > 0.3;
+        const xpGained = victory ? 50 : 10;
+        const goldGained = victory ? 25 : 5;
+        await combatRef.update({
+            status: victory ? "victory" : "defeat",
+            completedAt: Date.now(),
+            reward: {
+                xp: xpGained,
+                gold: goldGained,
+            },
+        });
+        if (victory) {
+            const userRef = db.collection("users").doc(uid);
+            const userSnap = await userRef.get();
+            const user = userSnap.data() || {};
+            await userRef.update({
+                "stats.xp": (user.stats?.xp || 0) + xpGained,
+                "stats.gold": (user.stats?.gold || 0) + goldGained,
+                "stats.totalXP": (user.stats?.totalXP || 0) + xpGained,
+            });
+        }
+        const updated = await combatRef.get();
+        return res.status(200).json({
+            combatId: updated.id,
+            ...updated.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in POST /combat/:combatId/resolve:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+// ============ WORLDS ============
+/**
+ * GET /worlds
+ */
+app.get("/worlds", async (req, res) => {
+    try {
+        const worldsSnap = await db.collection("worlds").get();
+        const worlds = worldsSnap.docs.map((doc) => ({
+            worldId: doc.id,
+            ...doc.data(),
+        }));
+        return res.status(200).json(worlds);
+    }
+    catch (e) {
+        console.error("Error in GET /worlds:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * POST /worlds
+ */
+app.post("/worlds", requireAuth, async (req, res) => {
+    try {
+        const worldData = req.body;
+        if (!worldData.name) {
+            return res.status(400).json({ error: "World name is required" });
+        }
+        const slug = worldData.name.toLowerCase().trim().replace(/\s+/g, '_');
+        const customId = `world_${slug}`;
+        const worldRef = db.collection("worlds").doc(customId);
+        const newWorld = {
+            ...worldData,
+            worldId: customId,
+            description: worldData.description || "",
+            element: worldData.element || "neutral",
+            stages: worldData.stages || [null],
+            createdAt: Date.now()
+        };
+        await worldRef.set(newWorld);
+        return res.status(201).json({
+            data: newWorld
+        });
+    }
+    catch (e) {
+        console.error("Error in POST /worlds:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /worlds/:worldId
+ */
+app.get("/worlds/:worldId", async (req, res) => {
+    try {
+        const { worldId } = req.params;
+        const worldSnap = await db.collection("worlds").doc(worldId).get();
+        if (!worldSnap.exists) {
+            return res.status(404).json({ error: "World not found" });
+        }
+        return res.status(200).json({
+            worldId: worldSnap.id,
+            ...worldSnap.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in GET /worlds/:worldId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PUT /worlds/:worldId
+ */
+app.put("/worlds/:worldId", requireAuth, async (req, res) => {
+    try {
+        const { worldId } = req.params;
+        const worldRef = db.collection("worlds").doc(worldId);
+        const world = {
+            ...req.body,
+            updatedAt: Date.now(),
+        };
+        await worldRef.set(world, { merge: false });
+        return res.status(200).json({
+            worldId,
+            ...world,
+        });
+    }
+    catch (e) {
+        console.error("Error in PUT /worlds/:worldId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PATCH /worlds/:worldId
+ */
+app.patch("/worlds/:worldId", requireAuth, async (req, res) => {
+    try {
+        const { worldId } = req.params;
+        const worldRef = db.collection("worlds").doc(worldId);
+        await worldRef.update({
+            ...req.body,
+            updatedAt: Date.now(),
+        });
+        const updated = await worldRef.get();
+        return res.status(200).json({
+            worldId: updated.id,
+            ...updated.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in PATCH /worlds/:worldId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * DELETE /worlds/:worldId
+ */
+app.delete("/worlds/:id", requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.collection("worlds").doc(id).delete();
+        return res.status(200).json({
+            message: `World ${id} has been destroyed`
+        });
+    }
+    catch (e) {
+        console.error("Error in DELETE /worlds:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /worlds/:worldId/stages
+ */
+app.get("/worlds/:worldId/stages", async (req, res) => {
+    try {
+        const { worldId } = req.params;
+        const stagesSnap = await db
+            .collection("worlds")
+            .doc(worldId)
+            .collection("stages")
+            .get();
+        const stages = stagesSnap.docs.map((doc) => ({
+            stageId: doc.id,
+            ...doc.data(),
+        }));
+        return res.status(200).json(stages);
+    }
+    catch (e) {
+        console.error("Error in GET /worlds/:worldId/stages:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+// ============ PETS ============
+/**
+ * GET /pets
+ */
+app.get("/pets", async (req, res) => {
+    try {
+        const petsSnap = await db.collection("pets").get();
+        const pets = petsSnap.docs.map((doc) => ({
+            petId: doc.id,
+            ...doc.data(),
+        }));
+        return res.status(200).json(pets);
+    }
+    catch (e) {
+        console.error("Error in GET /pets:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * POST /pets
+ */
+app.post("/pets", requireAuth, async (req, res) => {
+    try {
+        const petRef = db.collection("pets").doc();
+        const pet = {
+            ...req.body,
+            createdAt: Date.now(),
+        };
+        await petRef.set(pet);
+        return res.status(201).json({
+            petId: petRef.id,
+            ...pet,
+        });
+    }
+    catch (e) {
+        console.error("Error in POST /pets:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /pets/:petId
+ */
+app.get("/pets/:petId", async (req, res) => {
+    try {
+        const { petId } = req.params;
+        const petSnap = await db.collection("pets").doc(petId).get();
+        if (!petSnap.exists) {
+            return res.status(404).json({ error: "Pet not found" });
+        }
+        return res.status(200).json({
+            petId: petSnap.id,
+            ...petSnap.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in GET /pets/:petId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PUT /pets/:petId
+ */
+app.put("/pets/:petId", requireAuth, async (req, res) => {
+    try {
+        const { petId } = req.params;
+        const petRef = db.collection("pets").doc(petId);
+        const pet = {
+            ...req.body,
+            updatedAt: Date.now(),
+        };
+        await petRef.set(pet, { merge: false });
+        return res.status(200).json({
+            petId,
+            ...pet,
+        });
+    }
+    catch (e) {
+        console.error("Error in PUT /pets/:petId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PATCH /pets/:petId
+ */
+app.patch("/pets/:petId", requireAuth, async (req, res) => {
+    try {
+        const { petId } = req.params;
+        const petRef = db.collection("pets").doc(petId);
+        await petRef.update({
+            ...req.body,
+            updatedAt: Date.now(),
+        });
+        const updated = await petRef.get();
+        return res.status(200).json({
+            petId: updated.id,
+            ...updated.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in PATCH /pets/:petId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * DELETE /pets/:petId
+ */
+app.delete("/pets/:petId", requireAuth, async (req, res) => {
+    try {
+        const { petId } = req.params;
+        await db.collection("pets").doc(petId).delete();
+        return res.status(200).json({ success: true });
+    }
+    catch (e) {
+        console.error("Error in DELETE /pets/:petId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+// ============ MONSTERS ============
+/**
+ * GET /monsters
+ */
+app.get("/monsters", async (req, res) => {
+    try {
+        let query = db.collection("monsters");
+        if (req.query.worldId) {
+            query = query.where("worldId", "==", req.query.worldId);
+        }
+        if (req.query.tier) {
+            query = query.where("tier", "==", req.query.tier);
+        }
+        const monstersSnap = await query.get();
+        const monsters = monstersSnap.docs.map((doc) => ({
+            monsterId: doc.id,
+            ...doc.data(),
+        }));
+        return res.status(200).json(monsters);
+    }
+    catch (e) {
+        console.error("Error in GET /monsters:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * POST /monsters
+ */
+app.post("/monsters", requireAuth, async (req, res) => {
+    try {
+        const monsterData = req.body;
+        if (!monsterData.name) {
+            return res.status(400).json({ error: "Name is required" });
+        }
+        const slug = monsterData.name.toLowerCase().trim().replace(/\s+/g, '_');
+        const customId = `mon_${slug}`;
+        const monsterRef = db.collection("monsters").doc(customId);
+        const newMonster = {
+            ...monsterData,
+            monsterId: customId,
+            isActive: monsterData.isActive || false,
+            tier: monsterData.tier || 'normal',
+            elementType: monsterData.elementType || 'physical',
+            baseStats: {
+                hp: monsterData.baseStats?.hp || 100,
+                attack: monsterData.baseStats?.attack || 10,
+                defense: monsterData.baseStats?.defense || 5,
+                magic: monsterData.baseStats?.magic || 0,
+                magicResist: monsterData.baseStats?.magicResist || 0,
+                speed: monsterData.baseStats?.speed || 5
+            },
+            attacks: monsterData.attacks || [],
+            behaviour: monsterData.behaviour || { fleeBelowHpPct: 0, pattern: [], style: "patterned" },
+            skills: monsterData.skills || [],
+            createdAt: Date.now(),
+        };
+        await monsterRef.set(newMonster);
+        return res.status(201).json({
+            data: newMonster
+        });
+    }
+    catch (e) {
+        console.error("Error in POST /monsters:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /monsters/:monsterId
+ */
+app.get("/monsters/:monsterId", async (req, res) => {
+    try {
+        const { monsterId } = req.params;
+        const monsterSnap = await db.collection("monsters").doc(monsterId).get();
+        if (!monsterSnap.exists) {
+            return res.status(404).json({ error: "Monster not found" });
+        }
+        return res.status(200).json({
+            monsterId: monsterSnap.id,
+            ...monsterSnap.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in GET /monsters/:monsterId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PUT /monsters/:monsterId
+ */
+app.put("/monsters/:monsterId", requireAuth, async (req, res) => {
+    try {
+        const { monsterId } = req.params;
+        const monsterRef = db.collection("monsters").doc(monsterId);
+        const monster = {
+            ...req.body,
+            updatedAt: Date.now(),
+        };
+        await monsterRef.set(monster, { merge: false });
+        return res.status(200).json({
+            monsterId,
+            ...monster,
+        });
+    }
+    catch (e) {
+        console.error("Error in PUT /monsters/:monsterId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PATCH /monsters/:monsterId
+ */
+app.patch("/monsters/:monsterId", requireAuth, async (req, res) => {
+    try {
+        const { monsterId } = req.params;
+        const monsterRef = db.collection("monsters").doc(monsterId);
+        await monsterRef.update({
+            ...req.body,
+            updatedAt: Date.now(),
+        });
+        const updated = await monsterRef.get();
+        return res.status(200).json({
+            monsterId: updated.id,
+            ...updated.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in PATCH /monsters/:monsterId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * DELETE /monsters/:monsterId
+ */
+app.delete("/monsters/:id", requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.collection("monsters").doc(id).delete();
+        return res.status(200).json({
+            message: `Entity ${id} successfully banished from the bestiary`
+        });
+    }
+    catch (e) {
+        console.error("Error in DELETE /monsters:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+// ============ LOOTBOXES ============
+/**
+ * GET /lootboxes
+ */
+app.get("/lootboxes", async (req, res) => {
+    try {
+        const lootboxesSnap = await db.collection("lootboxes").get();
+        const lootboxes = lootboxesSnap.docs.map((doc) => ({
+            lootboxId: doc.id,
+            ...doc.data(),
+        }));
+        return res.status(200).json(lootboxes);
+    }
+    catch (e) {
+        console.error("Error in GET /lootboxes:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * POST /lootboxes
+ */
+app.post("/lootboxes", requireAuth, async (req, res) => {
+    try {
+        const lootboxRef = db.collection("lootboxes").doc();
+        const lootbox = {
+            ...req.body,
+            createdAt: Date.now(),
+        };
+        await lootboxRef.set(lootbox);
+        return res.status(201).json({
+            lootboxId: lootboxRef.id,
+            ...lootbox,
+        });
+    }
+    catch (e) {
+        console.error("Error in POST /lootboxes:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /lootboxes/:lootboxId
+ */
+app.get("/lootboxes/:lootboxId", async (req, res) => {
+    try {
+        const { lootboxId } = req.params;
+        const lootboxSnap = await db.collection("lootboxes").doc(lootboxId).get();
+        if (!lootboxSnap.exists) {
+            return res.status(404).json({ error: "Lootbox not found" });
+        }
+        return res.status(200).json({
+            lootboxId: lootboxSnap.id,
+            ...lootboxSnap.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in GET /lootboxes/:lootboxId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PUT /lootboxes/:lootboxId
+ */
+app.put("/lootboxes/:lootboxId", requireAuth, async (req, res) => {
+    try {
+        const { lootboxId } = req.params;
+        const lootboxRef = db.collection("lootboxes").doc(lootboxId);
+        const lootbox = {
+            ...req.body,
+            updatedAt: Date.now(),
+        };
+        await lootboxRef.set(lootbox, { merge: false });
+        return res.status(200).json({
+            lootboxId,
+            ...lootbox,
+        });
+    }
+    catch (e) {
+        console.error("Error in PUT /lootboxes/:lootboxId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PATCH /lootboxes/:lootboxId
+ */
+app.patch("/lootboxes/:lootboxId", requireAuth, async (req, res) => {
+    try {
+        const { lootboxId } = req.params;
+        const lootboxRef = db.collection("lootboxes").doc(lootboxId);
+        await lootboxRef.update({
+            ...req.body,
+            updatedAt: Date.now(),
+        });
+        const updated = await lootboxRef.get();
+        return res.status(200).json({
+            lootboxId: updated.id,
+            ...updated.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in PATCH /lootboxes/:lootboxId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * DELETE /lootboxes/:lootboxId
+ */
+app.delete("/lootboxes/:lootboxId", requireAuth, async (req, res) => {
+    try {
+        const { lootboxId } = req.params;
+        await db.collection("lootboxes").doc(lootboxId).delete();
+        return res.status(200).json({ success: true });
+    }
+    catch (e) {
+        console.error("Error in DELETE /lootboxes/:lootboxId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * POST /lootboxes/:lootboxId/open
+ */
+app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
+    try {
+        const uid = req.user.uid;
+        const { lootboxId } = req.params;
+        const { count = 1 } = req.body;
+        // 1. Get lootbox config
+        const lootboxSnap = await db.collection("lootboxes").doc(lootboxId).get();
+        if (!lootboxSnap.exists) {
+            return res.status(404).json({ error: "Lootbox not found" });
+        }
+        const lootbox = lootboxSnap.data();
+        // 2. Get user and check gold
+        const userRef = db.collection("users").doc(uid);
+        const userSnap = await userRef.get();
+        if (!userSnap.exists) {
+            return res.status(404).json({ error: "User not found" });
+        }
+        const user = userSnap.data();
+        const totalCost = (lootbox.priceGold || 0) * count;
+        const currentGold = user.stats?.gold || 0;
+        if (currentGold < totalCost) {
+            return res.status(400).json({ error: `Not enough gold. Need ${totalCost}, have ${currentGold}` });
+        }
+        // 3. Determine minimum items based on box type
+        let minItems = 1; // default
+        if (lootboxId.includes("legendary")) {
+            minItems = 3;
+        }
+        else if (lootboxId.includes("advanced") || lootboxId.includes("epic")) {
+            minItems = 2;
+        }
+        // 4. Roll loot for each box
+        const results = [];
+        for (let i = 0; i < count; i++) {
+            // Roll minimum guaranteed items
+            for (let itemSlot = 0; itemSlot < minItems; itemSlot++) {
+                // Determine rarity based on dropChances
+                const rarityRoll = Math.random();
+                let cumulativeChance = 0;
+                let selectedRarity = "common";
+                const dropChances = lootbox.dropChances || {};
+                const rarities = ["legendary", "epic", "rare", "uncommon", "common"]; // Check rarest first
+                for (const rarity of rarities) {
+                    cumulativeChance += dropChances[rarity] || 0;
+                    if (rarityRoll <= cumulativeChance) {
+                        selectedRarity = rarity;
+                        break;
+                    }
+                }
+                // Get item pool for this rarity (with fallback)
+                const itemPools = lootbox.itemPools || {};
+                let poolCollections = itemPools[selectedRarity] || [];
+                let itemAdded = false;
+                // Try selected rarity first, then fallback to lower rarities if empty
+                const fallbackRarities = [selectedRarity, "rare", "uncommon", "common"];
+                for (const fallbackRarity of fallbackRarities) {
+                    if (itemAdded)
+                        break;
+                    poolCollections = itemPools[fallbackRarity] || [];
+                    if (poolCollections.length > 0) {
+                        // Pick random collection from pool
+                        const randomCollection = poolCollections[Math.floor(Math.random() * poolCollections.length)];
+                        // Get all items from that collection
+                        const itemsSnap = await db.collection(randomCollection).get();
+                        const availableItems = itemsSnap.docs
+                            .map(doc => ({ itemId: doc.id, ...doc.data() }))
+                            .filter((item) => item.isActive !== false);
+                        if (availableItems.length > 0) {
+                            // Pick random item
+                            const randomItem = availableItems[Math.floor(Math.random() * availableItems.length)];
+                            results.push({
+                                type: "item",
+                                rarity: fallbackRarity, // Use actual rarity found
+                                collection: randomCollection,
+                                ...randomItem,
+                            });
+                            itemAdded = true;
+                        }
+                    }
+                }
+                // GUARANTEE: If still no item, give a fallback common item
+                if (!itemAdded) {
+                    results.push({
+                        type: "item",
+                        rarity: "common",
+                        itemId: "fallback_gold",
+                        name: "Gold Coins",
+                        description: "Better luck next time!",
+                        value: 50,
+                    });
+                }
+            }
+            // BONUS: Check for pet drop (extra, not part of minimum items)
+            const petChance = lootbox.petChance || 0;
+            if (Math.random() <= petChance) {
+                // Determine pet rarity
+                const petRarityRoll = Math.random();
+                let petCumulativeChance = 0;
+                let selectedPetRarity = "common";
+                const petRarityChances = lootbox.petRarityChances || {};
+                const petRarities = ["legendary", "epic", "rare", "uncommon", "common"];
+                for (const rarity of petRarities) {
+                    petCumulativeChance += petRarityChances[rarity] || 0;
+                    if (petRarityRoll <= petCumulativeChance) {
+                        selectedPetRarity = rarity;
+                        break;
+                    }
+                }
+                // Get pet from items_pets or pets_arcane
+                const petCollection = selectedPetRarity === "legendary" || selectedPetRarity === "epic"
+                    ? "pets_arcane"
+                    : "items_pets";
+                const petsSnap = await db.collection(petCollection).get();
+                const availablePets = petsSnap.docs
+                    .map(doc => ({ itemId: doc.id, ...doc.data() }))
+                    .filter((pet) => pet.isActive !== false && pet.rarity === selectedPetRarity);
+                if (availablePets.length > 0) {
+                    const randomPet = availablePets[Math.floor(Math.random() * availablePets.length)];
+                    results.push({
+                        type: "pet",
+                        rarity: selectedPetRarity,
+                        collection: petCollection,
+                        ...randomPet,
+                    });
+                }
+            }
+        }
+        // 5. Deduct gold from user
+        await userRef.update({
+            "stats.gold": currentGold - totalCost,
+            updatedAt: Date.now(),
+        });
+        // 6. Add items to user inventory (optional - can be done on frontend too)
+        // For now we just return the results
+        return res.status(200).json({
+            lootboxId,
+            opened: count,
+            cost: totalCost,
+            remainingGold: currentGold - totalCost,
+            minItemsPerBox: minItems,
+            results,
+            openedAt: Date.now(),
+        });
+    }
+    catch (e) {
+        console.error("Error in POST /lootboxes/:lootboxId/open:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+// ============ ITEMS ============
+/**
+ * GET /items
+ */
+app.get("/items", async (req, res) => {
+    try {
+        const { collection = "items_weapons", type, rarity, activeOnly } = req.query;
+        const collectionName = collection;
+        const snapshot = await db.collection(collectionName).get();
+        let items = [];
+        snapshot.docs.forEach(doc => {
+            const data = doc.data();
+            const fieldValues = Object.values(data);
+            const isBundleDoc = fieldValues.some(val => typeof val === 'object' && val !== null && val.name);
+            if (isBundleDoc) {
+                Object.entries(data).forEach(([key, value]) => {
+                    items.push({ itemId: key, ...value });
+                });
+            }
+            else {
+                items.push({ itemId: doc.id, ...data });
+            }
+        });
+        if (type)
+            items = items.filter(i => i.type === type || i.itemType === type);
+        if (rarity)
+            items = items.filter(i => i.rarity === rarity);
+        if (activeOnly === "true")
+            items = items.filter(i => i.isActive !== false);
+        return res.status(200).json({ data: items });
+    }
+    catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+});
+/**
+ * POST /items
+ */
+app.post("/items", requireAuth, async (req, res) => {
+    try {
+        const { collection, ...itemData } = req.body;
+        if (!collection) {
+            return res.status(400).json({ error: "Collection is required in body" });
+        }
+        const slug = itemData.name.toLowerCase().trim().replace(/\s+/g, '_');
+        const prefix = collection.includes('pets') ? 'pet_' : (collection.includes('lootboxes') ? '' : 'item_');
+        const customId = `${prefix}${slug}`;
+        const itemRef = db.collection(collection).doc(customId);
+        const item = {
+            ...itemData,
+            id: customId,
+            createdAt: Date.now(),
+        };
+        await itemRef.set(item);
+        return res.status(201).json({
+            data: {
+                itemId: customId,
+                ...item,
+            }
+        });
+    }
+    catch (e) {
+        console.error("Error in POST /items:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * GET /items/:itemId
+ */
+app.get("/items/:itemId", async (req, res) => {
+    try {
+        const { itemId } = req.params;
+        const itemSnap = await db.collection("items").doc(itemId).get();
+        if (!itemSnap.exists) {
+            return res.status(404).json({ error: "Item not found" });
+        }
+        return res.status(200).json({
+            itemId: itemSnap.id,
+            ...itemSnap.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in GET /items/:itemId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PUT /items/:itemId
+ */
+app.put("/items/:itemId", requireAuth, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+        const itemRef = db.collection("items").doc(itemId);
+        const item = {
+            ...req.body,
+            updatedAt: Date.now(),
+        };
+        await itemRef.set(item, { merge: false });
+        return res.status(200).json({
+            itemId,
+            ...item,
+        });
+    }
+    catch (e) {
+        console.error("Error in PUT /items/:itemId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PATCH /items/:itemId
+ */
+app.patch("/items/:itemId", requireAuth, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+        const itemRef = db.collection("items").doc(itemId);
+        await itemRef.update({
+            ...req.body,
+            updatedAt: Date.now(),
+        });
+        const updated = await itemRef.get();
+        return res.status(200).json({
+            itemId: updated.id,
+            ...updated.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in PATCH /items/:itemId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * DELETE /items/:itemId
+ */
+app.delete("/items/:itemId", requireAuth, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+        await db.collection("items").doc(itemId).delete();
+        return res.status(200).json({ success: true });
+    }
+    catch (e) {
+        console.error("Error in DELETE /items/:itemId:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+app.delete("/items/:collection/:id", requireAuth, async (req, res) => {
+    try {
+        const { collection, id } = req.params;
+        await db.collection(collection).doc(id).delete();
+        return res.status(200).json({ message: "Deleted successfully" });
+    }
+    catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+});
 // ============ HEALTH ============
 app.get("/health", (_req, res) => {
     res.status(200).json({ ok: true, timestamp: Date.now() });
@@ -544,10 +1855,4 @@ app.use((_req, res) => {
     res.status(404).json({ error: "Not found" });
 });
 // ============ EXPORT ============
-exports.api = functions
-    .region("us-central1")
-    .runWith({
-    timeoutSeconds: 60,
-    memory: "256MB",
-})
-    .https.onRequest(app);
+exports.api = (0, https_1.onRequest)(app);
