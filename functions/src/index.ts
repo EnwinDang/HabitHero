@@ -1669,22 +1669,163 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
     const { lootboxId } = req.params;
     const { count = 1 } = req.body;
 
+    // 1. Get lootbox config
     const lootboxSnap = await db.collection("lootboxes").doc(lootboxId).get();
     if (!lootboxSnap.exists) {
       return res.status(404).json({ error: "Lootbox not found" });
     }
+    const lootbox = lootboxSnap.data() as any;
 
-    // Simple loot generation - can be expanded
-    const rewards = [];
-    for (let i = 0; i < count; i++) {
-      rewards.push({
-        type: "gold",
-        amount: Math.floor(Math.random() * 100) + 50,
-      });
+    // 2. Get user and check gold
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const user = userSnap.data() as any;
+    const totalCost = (lootbox.priceGold || 0) * count;
+    const currentGold = user.stats?.gold || 0;
+
+    if (currentGold < totalCost) {
+      return res.status(400).json({ error: `Not enough gold. Need ${totalCost}, have ${currentGold}` });
     }
 
+    // 3. Determine minimum items based on box type
+    let minItems = 1; // default
+    if (lootboxId.includes("legendary")) {
+      minItems = 3;
+    } else if (lootboxId.includes("advanced") || lootboxId.includes("epic")) {
+      minItems = 2;
+    }
+
+    // 4. Roll loot for each box
+    const results: any[] = [];
+    
+    for (let i = 0; i < count; i++) {
+      // Roll minimum guaranteed items
+      for (let itemSlot = 0; itemSlot < minItems; itemSlot++) {
+        // Determine rarity based on dropChances
+        const rarityRoll = Math.random();
+        let cumulativeChance = 0;
+        let selectedRarity = "common";
+        
+        const dropChances = lootbox.dropChances || {};
+        const rarities = ["legendary", "epic", "rare", "uncommon", "common"]; // Check rarest first
+        
+        for (const rarity of rarities) {
+          cumulativeChance += dropChances[rarity] || 0;
+          if (rarityRoll <= cumulativeChance) {
+            selectedRarity = rarity;
+            break;
+          }
+        }
+
+        // Get item pool for this rarity (with fallback)
+        const itemPools = lootbox.itemPools || {};
+        let poolCollections = itemPools[selectedRarity] || [];
+        let itemAdded = false;
+        
+        // Try selected rarity first, then fallback to lower rarities if empty
+        const fallbackRarities = [selectedRarity, "rare", "uncommon", "common"];
+        
+        for (const fallbackRarity of fallbackRarities) {
+          if (itemAdded) break;
+          
+          poolCollections = itemPools[fallbackRarity] || [];
+          
+          if (poolCollections.length > 0) {
+            // Pick random collection from pool
+            const randomCollection = poolCollections[Math.floor(Math.random() * poolCollections.length)];
+            
+            // Get all items from that collection
+            const itemsSnap = await db.collection(randomCollection).get();
+            const availableItems = itemsSnap.docs
+              .map(doc => ({ itemId: doc.id, ...doc.data() }))
+              .filter((item: any) => item.isActive !== false);
+
+            if (availableItems.length > 0) {
+              // Pick random item
+              const randomItem = availableItems[Math.floor(Math.random() * availableItems.length)];
+              results.push({
+                type: "item",
+                rarity: fallbackRarity, // Use actual rarity found
+                collection: randomCollection,
+                ...randomItem,
+              });
+              itemAdded = true;
+            }
+          }
+        }
+        
+        // GUARANTEE: If still no item, give a fallback common item
+        if (!itemAdded) {
+          results.push({
+            type: "item",
+            rarity: "common",
+            itemId: "fallback_gold",
+            name: "Gold Coins",
+            description: "Better luck next time!",
+            value: 50,
+          });
+        }
+      }
+
+      // BONUS: Check for pet drop (extra, not part of minimum items)
+      const petChance = lootbox.petChance || 0;
+      if (Math.random() <= petChance) {
+        // Determine pet rarity
+        const petRarityRoll = Math.random();
+        let petCumulativeChance = 0;
+        let selectedPetRarity = "common";
+        
+        const petRarityChances = lootbox.petRarityChances || {};
+        const petRarities = ["legendary", "epic", "rare", "uncommon", "common"];
+        for (const rarity of petRarities) {
+          petCumulativeChance += petRarityChances[rarity] || 0;
+          if (petRarityRoll <= petCumulativeChance) {
+            selectedPetRarity = rarity;
+            break;
+          }
+        }
+
+        // Get pet from items_pets or pets_arcane
+        const petCollection = selectedPetRarity === "legendary" || selectedPetRarity === "epic" 
+          ? "pets_arcane" 
+          : "items_pets";
+        
+        const petsSnap = await db.collection(petCollection).get();
+        const availablePets = petsSnap.docs
+          .map(doc => ({ itemId: doc.id, ...doc.data() }))
+          .filter((pet: any) => pet.isActive !== false && pet.rarity === selectedPetRarity);
+
+        if (availablePets.length > 0) {
+          const randomPet = availablePets[Math.floor(Math.random() * availablePets.length)];
+          results.push({
+            type: "pet",
+            rarity: selectedPetRarity,
+            collection: petCollection,
+            ...randomPet,
+          });
+        }
+      }
+    }
+
+    // 5. Deduct gold from user
+    await userRef.update({
+      "stats.gold": currentGold - totalCost,
+      updatedAt: Date.now(),
+    });
+
+    // 6. Add items to user inventory (optional - can be done on frontend too)
+    // For now we just return the results
+
     return res.status(200).json({
-      rewards,
+      lootboxId,
+      opened: count,
+      cost: totalCost,
+      remainingGold: currentGold - totalCost,
+      minItemsPerBox: minItems,
+      results,
       openedAt: Date.now(),
     });
   } catch (e: any) {
