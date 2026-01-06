@@ -15,7 +15,6 @@ import {
   Sparkles,
   Palette,
   Bell,
-  Volume2,
   AlertTriangle,
   Info,
   Moon,
@@ -41,7 +40,6 @@ export default function SettingsPage() {
   const [taskReminders, setTaskReminders] = useState(true);
   const [battleNotifications, setBattleNotifications] = useState(true);
   const [achievementAlerts, setAchievementAlerts] = useState(true);
-  const [soundEffects, setSoundEffects] = useState(true);
 
   // Get theme classes
   const theme = getThemeClasses(darkMode, accentColor);
@@ -74,10 +72,10 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        <div className="columns-1 md:columns-2 gap-6 max-w-6xl mx-auto block">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto">
           {/* Appearance Section */}
           <div
-            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300 mb-6 break-inside-avoid`}
+            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
             style={{
               ...theme.borderStyle,
               borderWidth: "1px",
@@ -108,7 +106,7 @@ export default function SettingsPage() {
 
           {/* Accent Color Section */}
           <div
-            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300 mb-6 break-inside-avoid`}
+            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
             style={{
               ...theme.borderStyle,
               borderWidth: "1px",
@@ -157,7 +155,7 @@ export default function SettingsPage() {
 
           {/* Notifications Section */}
           <div
-            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300 mb-6 break-inside-avoid`}
+            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300 md:col-span-2`}
             style={{
               ...theme.borderStyle,
               borderWidth: "1px",
@@ -170,7 +168,7 @@ export default function SettingsPage() {
               <Bell size={24} /> Notifications
             </h3>
 
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <SettingRow
                 icon={null}
                 title="Enable Notifications"
@@ -229,39 +227,9 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Audio Section */}
-          <div
-            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300 mb-6 break-inside-avoid`}
-            style={{
-              ...theme.borderStyle,
-              borderWidth: "1px",
-              borderStyle: "solid",
-            }}
-          >
-            <h3
-              className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
-            >
-              <Volume2 size={24} /> Audio
-            </h3>
-
-            <SettingRow
-              icon={null}
-              title="Sound Effects"
-              description="Battle sounds and UI feedback"
-              darkMode={darkMode}
-              accentColor={accentColor}
-            >
-              <Toggle
-                enabled={soundEffects}
-                onToggle={() => setSoundEffects(!soundEffects)}
-                accentColor={accentColor}
-              />
-            </SettingRow>
-          </div>
-
           {/* Danger Zone */}
           <div
-            className="rounded-2xl p-6 transition-colors duration-300 mb-6 break-inside-avoid"
+            className="rounded-2xl p-6 transition-colors duration-300"
             style={{
               backgroundColor: darkMode
                 ? "rgba(127, 29, 29, 0.2)"
@@ -301,7 +269,7 @@ export default function SettingsPage() {
 
           {/* App Version */}
           <div
-            className="rounded-2xl p-6 transition-colors duration-300 mb-6 break-inside-avoid"
+            className="rounded-2xl p-6 transition-colors duration-300"
             style={{
               backgroundColor: accentColor, // Use solid accent color instead of gradient
             }}
