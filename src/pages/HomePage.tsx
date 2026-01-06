@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
@@ -19,8 +19,24 @@ import {
   FileText,
   Coins,
   AlertTriangle,
+  Wand2,
+  Crown,
+  Skull,
+  Target,
 } from "lucide-react";
 import { TimeDial } from "./Components/TimeDial";
+
+// Avatar icons - same as ProfilePage
+const avatarIcons = [
+  { icon: Sword, name: "Sword" },
+  { icon: Shield, name: "Shield" },
+  { icon: Target, name: "Bow" },
+  { icon: Wand2, name: "Wand" },
+  { icon: Flame, name: "Dragon" },
+  { icon: Crown, name: "Crown" },
+  { icon: Skull, name: "Skull" },
+  { icon: Zap, name: "Lightning" },
+];
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -131,7 +147,13 @@ export default function HomePage() {
                     backgroundColor: `${accentColor}20`,
                   }}
                 >
-                  <Sword size={48} style={{ color: accentColor }} />
+                  {(() => {
+                    // Get saved avatar from user.photoURL
+                    const avatarIndex = user.photoURL ? parseInt(user.photoURL) : 0;
+                    const validIndex = !isNaN(avatarIndex) && avatarIndex >= 0 && avatarIndex < avatarIcons.length ? avatarIndex : 0;
+                    const AvatarIcon = avatarIcons[validIndex].icon;
+                    return <AvatarIcon size={48} style={{ color: accentColor }} />;
+                  })()}
                 </div>
                 {/* Level Badge */}
                 <div
