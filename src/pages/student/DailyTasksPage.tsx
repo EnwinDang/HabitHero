@@ -43,6 +43,7 @@ export default function DailyTasksPage() {
     const [showCodeInput, setShowCodeInput] = useState(false);
     const [courseCode, setCourseCode] = useState("");
     const [codeError, setCodeError] = useState("");
+    const [courseSearchQuery, setCourseSearchQuery] = useState("");
 
     useEffect(() => {
         loadCoursesAndTasks();
@@ -186,7 +187,7 @@ export default function DailyTasksPage() {
             setEnrollingCourse("code-enrollment");
             setCodeError("");
 
-            // Find course by courseCode directly from Firestore
+            // Find course by courseCode (exact match) from Firestore
             const coursesSnapshot = await getDocs(collection(db, "courses"));
             const foundCourse = coursesSnapshot.docs
                 .map(doc => ({
@@ -407,13 +408,39 @@ export default function DailyTasksPage() {
                                     className={`absolute top-full left-0 right-0 mt-2 ${theme.card} rounded-2xl shadow-xl z-10 overflow-hidden`}
                                     style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}
                                 >
+                                    {/* Search Input */}
+                                    <div className="p-4 border-b" style={{ borderColor: `${accentColor}20` }}>
+                                        <input
+                                            type="text"
+                                            value={courseSearchQuery}
+                                            onChange={(e) => setCourseSearchQuery(e.target.value)}
+                                            placeholder="Search courses..."
+                                            className={`w-full px-4 py-2 rounded-xl ${theme.inputBg} ${theme.text} border transition-colors`}
+                                            style={{
+                                                borderColor: `${accentColor}30`,
+                                                outline: 'none'
+                                            }}
+                                            onFocus={(e) => e.target.style.borderColor = accentColor}
+                                            onBlur={(e) => e.target.style.borderColor = `${accentColor}30`}
+                                            autoFocus
+                                        />
+                                    </div>
+
                                     {/* Enrolled Courses */}
-                                    {enrolledCourses.length > 0 && (
+                                    {enrolledCourses.filter(c => 
+                                        c.name.toLowerCase().includes(courseSearchQuery.toLowerCase()) ||
+                                        c.courseCode.toLowerCase().includes(courseSearchQuery.toLowerCase())
+                                    ).length > 0 && (
                                         <div className="p-4">
                                             <p className={`text-xs font-bold uppercase tracking-wider ${theme.textSubtle} mb-2`}>
                                                 My Courses
                                             </p>
-                                            {enrolledCourses.map((course) => (
+                                            {enrolledCourses
+                                                .filter(c => 
+                                                    c.name.toLowerCase().includes(courseSearchQuery.toLowerCase()) ||
+                                                    c.courseCode.toLowerCase().includes(courseSearchQuery.toLowerCase())
+                                                )
+                                                .map((course) => (
                                                 <button
                                                     key={course.courseId}
                                                     onClick={() => selectCourse(course)}
