@@ -13,10 +13,12 @@ export interface Task {
   xp: number;
   gold: number;
   date?: string;
-  dueAt?: number;
+  dueAt?: number | null;
   achievementTag?: string | null;
   isRepeatable: boolean;
   isActive: boolean;
+  createdAt?: number;
+  completedAt?: number | null;
 }
 
 export interface TaskCompletionResult {

@@ -2,8 +2,8 @@ import { apiFetch } from "./client";
 import type { Achievement } from "../models/achievement.model";
 
 export const AchievementsAPI = {
-  list(): Promise<Achievement[]> {
-    return apiFetch<Achievement[]>("/achievements");
+  list(): Promise<{data: Achievement[]}> {
+    return apiFetch<{data: Achievement[]}>("/achievements");
   },
 
   create(a: Achievement): Promise<Achievement> {

@@ -46,6 +46,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log("📡 Fetching /auth/me...");
         const me = await AuthAPI.me();
         console.log("✅ /auth/me success:", me.displayName);
+        console.log("👤 User Role:", me.role);
+        console.log("👤 User UID:", me.uid);
+        console.log("👤 Full User Object:", me);
         setUser(me);
       } catch (err) {
         console.error("❌ /auth/me failed:", err);

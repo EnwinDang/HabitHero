@@ -20,28 +20,35 @@ export const MonstersAPI = {
   list(query: MonstersQuery = {}): Promise<Monster[]> {
     return apiFetch<Monster[]>(`/monsters${qs(query)}`);
   },
-  create(m: Monster): Promise<Monster> {
-    return apiFetch<Monster>("/monsters", {
-      method: "POST",
-      body: JSON.stringify(m),
+
+  create(monster: Partial<Monster>): Promise<Monster> {
+    return apiFetch<Monster>("/monsters", { 
+      method: "POST", 
+      body: JSON.stringify(monster) 
     });
   },
+
   get(monsterId: string): Promise<Monster> {
     return apiFetch<Monster>(`/monsters/${monsterId}`);
   },
+
   replace(monsterId: string, m: Monster): Promise<Monster> {
-    return apiFetch<Monster>(`/monsters/${monsterId}`, {
-      method: "PUT",
-      body: JSON.stringify(m),
+    return apiFetch<Monster>(`/monsters/${monsterId}`, { 
+      method: "PUT", 
+      body: JSON.stringify(m) 
     });
   },
+
   patch(monsterId: string, patch: Partial<Monster>): Promise<Monster> {
-    return apiFetch<Monster>(`/monsters/${monsterId}`, {
-      method: "PATCH",
-      body: JSON.stringify(patch),
+    return apiFetch<Monster>(`/monsters/${monsterId}`, { 
+      method: "PATCH", 
+      body: JSON.stringify(patch) 
     });
   },
+
   delete(monsterId: string): Promise<void> {
-    return apiFetch<void>(`/monsters/${monsterId}`, { method: "DELETE" });
+    return apiFetch<void>(`/monsters/${monsterId}`, { 
+      method: "DELETE" 
+    });
   },
 };

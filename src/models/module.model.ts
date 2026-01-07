@@ -6,4 +6,6 @@ export interface Module {
   order: number;
   achievementId?: string | null;
   isActive: boolean;
+  createdAt?: number;
+  updatedAt?: number;
 }

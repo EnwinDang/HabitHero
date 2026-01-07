@@ -54,7 +54,11 @@ export const TasksAPI = {
     return res.data;
   },
 
-  async delete(taskId: string): Promise<void> {
-    await api.delete(`/tasks/${taskId}`);
+  async delete(taskId: string, courseId?: string, moduleId?: string): Promise<void> {
+    const params = new URLSearchParams();
+    if (courseId) params.append('courseId', courseId);
+    if (moduleId) params.append('moduleId', moduleId);
+    const query = params.toString() ? `?${params.toString()}` : '';
+    await api.delete(`/tasks/${taskId}${query}`);
   },
 };
