@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { collection, addDoc, onSnapshot, query, where, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
-import { UserPlus, Shield, Trash2, Mail, CheckCircle } from 'lucide-react';
+import { UserPlus, Shield, Trash2, CheckCircle, X } from 'lucide-react';
+import { UsersAPI } from '../../api/users.api';
 
 const TeacherManagement = () => {
   const [teachers, setTeachers] = useState<any[]>([]);
@@ -19,18 +20,14 @@ const TeacherManagement = () => {
   const handleAddTeacher = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await addDoc(collection(db, 'users'), {
+      await UsersAPI.create({
         displayName: newTeacher.displayName,
         email: newTeacher.email,
-        role: 'teacher',
-        status: 'active',
-        createdAt: serverTimestamp(),
-        settings: { theme: 'light', language: 'nl', notificationsEnabled: true },
-        teacher: { managedCourses: {} }
-      });
+        role: 'teacher'
+      } as any);
 
       await addDoc(collection(db, 'logs'), {
-        action: `New Teacher Added: ${newTeacher.displayName}`,
+        action: `New Teacher Created: ${newTeacher.displayName}`,
         user: 'Admin',
         timestamp: serverTimestamp(),
         type: 'user_management'
@@ -38,8 +35,19 @@ const TeacherManagement = () => {
 
       setIsModalOpen(false);
       setNewTeacher({ displayName: '', email: '' });
-    } catch (err) {
+      alert("Teacher account created. Default password: ehbleerkracht.123");
+    } catch (err: any) {
       console.error("Error adding teacher:", err);
+      alert("Failed to create teacher: " + err.message);
+    }
+  };
+
+  const handleToggleStatus = async (uid: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'active' ? 'disabled' : 'active';
+    try {
+      await UsersAPI.patch(uid, { status: newStatus });
+    } catch (err) {
+      console.error("Error updating status:", err);
     }
   };
 
@@ -97,9 +105,24 @@ const TeacherManagement = () => {
                 </td>
                 <td className="px-8 py-5 text-slate-500 font-medium text-sm">{teacher.email}</td>
                 <td className="px-8 py-5">
-                  <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter w-fit">
-                    <CheckCircle size={12} /> {teacher.status || 'Active'}
-                  </span>
+                  <button
+                    onClick={() => handleToggleStatus(teacher.id, teacher.status)}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter transition-all ${
+                      teacher.status === 'active' 
+                        ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' 
+                        : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
+                    }`}
+                  >
+                    {teacher.status === 'active' ? (
+                      <>
+                        <CheckCircle size={12} /> Active
+                      </>
+                    ) : (
+                      <>
+                        <X size={12} /> Inactive
+                      </>
+                    )}
+                  </button>
                 </td>
                 <td className="px-8 py-5 text-right">
                   <button 
@@ -122,7 +145,7 @@ const TeacherManagement = () => {
               <Shield size={32} />
             </div>
             <h2 className="text-2xl font-black text-slate-900 mb-2">New Teacher</h2>
-            <p className="text-sm text-slate-400 font-medium mb-8">Voeg een nieuwe docent toe aan het platform.</p>
+            <p className="text-sm text-slate-400 font-medium mb-8">Voeg een nieuwe docent toe met standaard wachtwoord.</p>
             
             <form onSubmit={handleAddTeacher} className="space-y-5">
               <div>

@@ -19,6 +19,7 @@ export interface UserStats {
   level: number;
   xp: number;  // Changed back to 'xp' to match Firebase
   gold: number;
+  hp: number;
   streak: number;
   maxStreak?: number;
   gems?: number;
