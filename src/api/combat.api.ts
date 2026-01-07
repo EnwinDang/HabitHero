@@ -9,7 +9,10 @@ export type StartCombatRequest = {
 
 export const CombatAPI = {
   start(body: StartCombatRequest): Promise<Combat> {
-    return apiFetch<Combat>("/combat/start", { method: "POST", body: JSON.stringify(body) });
+    return apiFetch<Combat>("/combat/start", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
   },
 
   get(combatId: string): Promise<Combat> {

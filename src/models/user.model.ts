@@ -12,17 +12,27 @@ export interface User {
   lastLoginAt?: number;
   stats: UserStats;
   settings?: UserSettings;
+  worldMapProgress?: WorldMapProgress;
 }
 
 export interface UserStats {
   level: number;
-  xp: number;
+  xp: number;  // Changed back to 'xp' to match Firebase
   gold: number;
   streak: number;
+  maxStreak?: number;
+  gems?: number;
+  focusSessionsCompleted?: number;
 }
 
 export interface UserSettings {
   notificationsEnabled: boolean;
   theme: "dark" | "light";
   language: string;
+}
+
+export interface WorldMapProgress {
+  [realmId: string]: {
+    completedLevels: number[]; // Array of completed level IDs
+  };
 }

@@ -6,9 +6,10 @@ interface ModalProps {
   onClose: () => void;
   label?: string;
   maxWidth?: number;
+  showClose?: boolean;
 }
 
-export function Modal({ title, children, onClose, label = "Modal", maxWidth = 720 }: ModalProps) {
+export function Modal({ title, children, onClose, label = "Modal", maxWidth = 720, showClose = false }: ModalProps) {
   return (
     <div className="hh-modal-overlay">
       <div className="hh-modal" style={{ maxWidth }}>
@@ -19,9 +20,11 @@ export function Modal({ title, children, onClose, label = "Modal", maxWidth = 72
               {title}
             </div>
           </div>
-          <button type="button" onClick={onClose} className="hh-btn hh-btn-secondary">
-            Close
-          </button>
+          {showClose && (
+            <button type="button" onClick={onClose} className="hh-btn hh-btn-secondary">
+              Close
+            </button>
+          )}
         </div>
         <div className="hh-modal__body">{children}</div>
       </div>

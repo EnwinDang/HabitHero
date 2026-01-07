@@ -21,7 +21,7 @@ export default function LoginPage() {
       } else if (user.role === 'teacher') {
         navigate('/teacher', { replace: true });
       } else {
-        navigate('/dashboard', { replace: true });
+        navigate('/student', { replace: true });
       }
     }
   }, [user, authLoading, navigate]);

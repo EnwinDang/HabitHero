@@ -9,8 +9,8 @@ import {
   useState,
   ReactNode,
 } from "react";
-import { auth } from "@/firebase";
-import { AuthAPI } from "@/api/auth.api";
+import { auth, db } from "@/firebase";
+import { doc, onSnapshot, getDoc } from "firebase/firestore";
 import { logout as authLogout } from "@/services/auth/auth.service";
 import type { User } from "@/models/user.model";
 
@@ -29,50 +29,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch backend user when Firebase user changes
+  // Unified auth and user listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+    let unsubscribeFirestore: () => void;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (fbUser) => {
       console.log("🔄 onAuthStateChanged:", fbUser?.uid || "logged out");
       setFirebaseUser(fbUser);
 
-      if (!fbUser) {
-        console.log("❌ No Firebase user");
+      if (fbUser) {
+        // Logged in: Set up Firestore listener
+        const userRef = doc(db, "users", fbUser.uid);
+        unsubscribeFirestore = onSnapshot(
+          userRef,
+          (snapshot) => {
+            if (snapshot.exists()) {
+              const userData = { uid: snapshot.id, ...snapshot.data() } as User;
+              console.log("👤 AuthContext User Loaded:", userData.displayName);
+              setUser(userData);
+            } else {
+              console.log("❌ No user document found in Firestore");
+              setUser(null);
+            }
+            setLoading(false);
+          },
+          (err) => {
+            console.error("❌ AuthContext Firestore Error:", err);
+            setLoading(false);
+          }
+        );
+      } else {
+        // Logged out
+        if (unsubscribeFirestore) unsubscribeFirestore();
         setUser(null);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        console.log("📡 Fetching /auth/me...");
-        const me = await AuthAPI.me();
-        console.log("✅ /auth/me success:", me.displayName);
-        console.log("👤 User Role:", me.role);
-        console.log("👤 User UID:", me.uid);
-        console.log("👤 Full User Object:", me);
-        setUser(me);
-      } catch (err) {
-        console.error("❌ /auth/me failed:", err);
-        setUser(null);
-      } finally {
         setLoading(false);
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeFirestore) unsubscribeFirestore();
+    };
   }, []);
 
   async function refreshUser() {
-    if (!auth.currentUser) {
-      setUser(null);
-      return;
-    }
+    // No-op for realtime listener, but kept for interface compatibility
+    // Could implement a manual getDoc if strictly needed, but snapshot handles updates.
+    if (!firebaseUser) return;
     try {
-      console.log("🔄 Refreshing user...");
-      const me = await AuthAPI.me();
-      setUser(me);
-      console.log("✅ User refreshed");
-    } catch (err) {
-      console.error("❌ Refresh failed:", err);
+      const userRef = doc(db, "users", firebaseUser.uid);
+      const snapshot = await getDoc(userRef);
+      if (snapshot.exists()) {
+        setUser({ uid: snapshot.id, ...snapshot.data() } as User);
+      }
+    } catch (e) {
+      console.error("Refresh failed", e);
     }
   }
 

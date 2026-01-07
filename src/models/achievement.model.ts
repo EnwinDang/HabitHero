@@ -18,4 +18,6 @@ export interface UserAchievementProgress {
   progress: number;
   isUnlocked: boolean;
   unlockedAt?: number;
+  claimed?: boolean;
+  claimedAt?: number;
 }
