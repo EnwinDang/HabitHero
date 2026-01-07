@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
+import { deleteAccount } from "@/services/auth/auth.service";
 import {
   Sword,
   Scroll,
@@ -38,6 +39,8 @@ export default function SettingsPage() {
   // Settings state
   const [enableNotifications, setEnableNotifications] = useState(true);
   const [taskReminders, setTaskReminders] = useState(true);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [battleNotifications, setBattleNotifications] = useState(true);
   const [achievementAlerts, setAchievementAlerts] = useState(true);
 
@@ -47,6 +50,19 @@ export default function SettingsPage() {
   async function handleLogout() {
     await logout();
     navigate("/login");
+  }
+
+  async function handleDeleteAccount() {
+    try {
+      setIsDeleting(true);
+      await deleteAccount();
+      // After account deletion, redirect to login
+      navigate("/login", { replace: true });
+    } catch (error) {
+      console.error("Error deleting account:", error);
+      alert("Failed to delete account. Please try again.");
+      setIsDeleting(false);
+    }
   }
 
   if (authLoading) {
@@ -227,6 +243,42 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          {/* Profile Section */}
+          <div
+            className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
+            style={{
+              ...theme.borderStyle,
+              borderWidth: "1px",
+              borderStyle: "solid",
+            }}
+          >
+            <h3
+              className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
+            >
+              <User size={24} /> Profile
+            </h3>
+
+            <p className={`text-sm ${theme.textMuted} mb-6`}>
+              Manage your personal profile and information
+            </p>
+
+            <button
+              onClick={() => navigate("/student/profile")}
+              className={`w-full px-6 py-3 rounded-xl font-medium transition-all ${
+                darkMode
+                  ? "bg-violet-900/50 hover:bg-violet-800/70 text-violet-200"
+                  : "bg-violet-100 hover:bg-violet-200 text-violet-900"
+              }`}
+              style={{
+                borderWidth: "1px",
+                borderStyle: "solid",
+                borderColor: accentColor,
+              }}
+            >
+              Go to Profile
+            </button>
+          </div>
+
           {/* Danger Zone */}
           <div
             className="rounded-2xl p-6 transition-colors duration-300"
@@ -248,23 +300,59 @@ export default function SettingsPage() {
                 className={`font-medium ${darkMode ? "text-red-300" : "text-red-700"
                   }`}
               >
-                Reset All Data
+                Delete Account
               </p>
               <p
                 className={`text-sm ${darkMode ? "text-red-400/70" : "text-red-600/70"
                   }`}
               >
-                This will permanently delete all your tasks, progress, items,
+                This will permanently delete your account, all your tasks, progress, items,
                 and achievements. This action cannot be undone.
               </p>
             </div>
 
             <button
-              className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-xl font-bold transition-colors"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={isDeleting}
+              className="bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-2 rounded-xl font-bold transition-colors"
               style={{ boxShadow: "0 0 15px rgba(239, 68, 68, 0.3)" }}
             >
-              Reset All Data
+              {isDeleting ? "Deleting..." : "Delete Account"}
             </button>
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteConfirm && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <div className={`${theme.card} rounded-2xl p-8 max-w-md w-full`}>
+                  <h4 className={`text-2xl font-bold ${theme.text} mb-4`}>
+                    Delete Account?
+                  </h4>
+                  <p className={`${theme.textMuted} mb-6 text-sm`}>
+                    This will permanently delete your account and all associated data. This action cannot be undone.
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={isDeleting}
+                      className={`flex-1 px-4 py-2 rounded-xl font-medium transition-colors ${
+                        darkMode
+                          ? "bg-gray-700 hover:bg-gray-600 text-white"
+                          : "bg-gray-200 hover:bg-gray-300 text-gray-900"
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleDeleteAccount}
+                      disabled={isDeleting}
+                      className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-xl font-bold transition-colors"
+                    >
+                      {isDeleting ? "Deleting..." : "Yes, Delete"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* App Version */}

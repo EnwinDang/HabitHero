@@ -3,6 +3,7 @@ import LoginPage from "../pages/LoginPage";
 import RegisterPage from "../pages/RegisterPage";
 import HomePage from "../pages/HomePage";
 import AdminLayout from "../pages/layouts/AdminLayout";
+import StudentLayout from "../pages/layouts/StudentLayout";
 import TeacherLayout from "../components/layout/TeacherLayout";
 import ProtectedRoute from "../components/ProtectedRoute";
 
@@ -20,6 +21,20 @@ import TeacherModuleDetail from "../pages/teacher/ModuleDetail";
 import TeacherStudents from "../pages/teacher/Students";
 import TeacherStudentDetail from "../pages/teacher/StudentDetail";
 import TeacherProfile from "../pages/teacher/Profile";
+import {
+  DailyTasksPage,
+  ProfilePage,
+  StatsPage,
+  AchievementsPage,
+  SettingsPage,
+  CalendarPage,
+  FocusModePage,
+  LootboxesPage,
+  InventoryPage,
+  BattlePage,
+  WorldMapPage,
+  CoursesPage,
+} from "../pages/student";
 
 export const AppRoutes = () => {
   return (
@@ -56,6 +71,30 @@ export const AppRoutes = () => {
         <Route path="worlds" element={<WorldList />} />
         <Route path="monsters" element={<MonsterManagement/>} />
         <Route path="items" element={<ItemManagement />} />
+      </Route>
+
+      {/* Student Routes (Nested in StudentLayout) */}
+      <Route
+        path="/student"
+        element={
+          <ProtectedRoute>
+            <StudentLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<DailyTasksPage />} />
+        <Route path="daily-tasks" element={<DailyTasksPage />} />
+        <Route path="profile" element={<ProfilePage />} />
+        <Route path="stats" element={<StatsPage />} />
+        <Route path="achievements" element={<AchievementsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="calendar" element={<CalendarPage />} />
+        <Route path="focus-mode" element={<FocusModePage />} />
+        <Route path="lootboxes" element={<LootboxesPage />} />
+        <Route path="inventory" element={<InventoryPage />} />
+        <Route path="battle" element={<BattlePage />} />
+        <Route path="world-map" element={<WorldMapPage />} />
+        <Route path="courses" element={<CoursesPage />} />
       </Route>
 
       {/* Teacher Routes (Nested in TeacherLayout) */}

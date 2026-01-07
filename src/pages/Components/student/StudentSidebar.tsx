@@ -25,41 +25,34 @@ const StudentSidebar = () => {
   const theme = getThemeClasses(darkMode, accentColor);
 
   const menuItems = [
-    { name: "Home", path: "/dashboard", icon: <Sword size={20} />, end: true },
+    { name: "Courses", path: "/student/courses", icon: <ClipboardList size={20} /> },
     {
       name: "Daily Tasks",
-      path: "/dashboard/daily-tasks",
+      path: "/student/daily-tasks",
       icon: <ClipboardList size={20} />,
     },
-    { name: "Focus Mode", path: "/dashboard/focus", icon: <Timer size={20} /> },
-    { name: "Battle", path: "/dashboard/battle", icon: <Swords size={20} /> },
-    { name: "World Map", path: "/dashboard/world-map", icon: <Map size={20} /> },
-    { name: "Stats", path: "/dashboard/stats", icon: <BarChart3 size={20} /> },
+    { name: "Focus Mode", path: "/student/focus-mode", icon: <Timer size={20} /> },
+    { name: "World Map", path: "/student/world-map", icon: <Map size={20} /> },
+    { name: "Stats", path: "/student/stats", icon: <BarChart3 size={20} /> },
     {
       name: "Achievements",
-      path: "/dashboard/achievements",
+      path: "/student/achievements",
       icon: <Trophy size={20} />,
     },
     {
       name: "Calendar",
-      path: "/dashboard/calendar",
+      path: "/student/calendar",
       icon: <Calendar size={20} />,
     },
     {
       name: "Lootboxes",
-      path: "/dashboard/lootboxes",
+      path: "/student/lootboxes",
       icon: <Gift size={20} />,
     },
     {
       name: "Inventory",
-      path: "/dashboard/inventory",
+      path: "/student/inventory",
       icon: <Package size={20} />,
-    },
-    { name: "Profile", path: "/dashboard/profile", icon: <User size={20} /> },
-    {
-      name: "Settings",
-      path: "/dashboard/settings",
-      icon: <Settings size={20} />,
     },
   ];
 
@@ -73,14 +66,18 @@ const StudentSidebar = () => {
       className={`h-screen w-64 ${theme.sidebar} ${theme.text} flex flex-col shadow-xl border-r ${theme.border}`}
     >
       {/* Header */}
-      <div className={`p-6 border-b ${theme.border}`}>
+      <button
+        onClick={() => navigate("/student")}
+        className="block w-full text-left p-6 border-b hover:opacity-80 transition-opacity"
+        style={{ borderColor: theme.border.split(' ')[0] }}
+      >
         <h1 className="text-2xl font-bold" style={theme.accentText}>
           HabitHero
         </h1>
         <p className={`text-xs ${theme.textMuted} uppercase tracking-widest mt-1`}>
           Student Portal
         </p>
-      </div>
+      </button>
 
       {/* Navigation */}
       <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
@@ -124,8 +121,28 @@ const StudentSidebar = () => {
         })}
       </nav>
 
-      {/* Footer - Logout */}
-      <div className={`p-4 border-t ${theme.border}`}>
+{/* Footer - Settings & Logout */}
+      <div className={`p-4 space-y-2 border-t ${theme.border}`}>
+        <NavLink
+          to="/student/settings"
+          className={({ isActive }) => `
+            flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200
+            ${isActive
+              ? ""
+              : `${theme.textMuted} hover:opacity-80`
+            }
+          `}
+          style={({ isActive }) => isActive ? {
+            backgroundColor: darkMode ? `${accentColor}20` : `${accentColor}10`,
+            color: accentColor,
+            borderWidth: '1px',
+            borderStyle: 'solid',
+            borderColor: darkMode ? `${accentColor}50` : `${accentColor}30`
+          } : {}}
+        >
+          <Settings size={20} />
+          <span>Settings</span>
+        </NavLink>
         <button
           onClick={handleLogout}
           className={`flex items-center gap-3 px-4 py-3 w-full rounded-xl transition-all text-sm font-medium ${darkMode
