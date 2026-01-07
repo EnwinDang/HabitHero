@@ -26,11 +26,6 @@ const StudentSidebar = () => {
 
   const menuItems = [
     { name: "Courses", path: "/student/courses", icon: <ClipboardList size={20} /> },
-    {
-      name: "Daily Tasks",
-      path: "/student/daily-tasks",
-      icon: <ClipboardList size={20} />,
-    },
     { name: "Focus Mode", path: "/student/focus-mode", icon: <Timer size={20} /> },
     { name: "World Map", path: "/student/world-map", icon: <Map size={20} /> },
     { name: "Stats", path: "/student/stats", icon: <BarChart3 size={20} /> },

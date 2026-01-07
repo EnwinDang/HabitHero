@@ -83,7 +83,10 @@ export const AppRoutes = () => {
         }
       >
         <Route index element={<DailyTasksPage />} />
-        <Route path="daily-tasks" element={<DailyTasksPage />} />
+        <Route path="courses-tasks">
+          <Route index element={<DailyTasksPage />} />
+          <Route path=":courseId" element={<DailyTasksPage />} />
+        </Route>
         <Route path="profile" element={<ProfilePage />} />
         <Route path="stats" element={<StatsPage />} />
         <Route path="achievements" element={<AchievementsPage />} />

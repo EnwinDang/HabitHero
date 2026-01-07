@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
@@ -25,6 +26,8 @@ import {
 } from "lucide-react";
 
 export default function DailyTasksPage() {
+    const { courseId: courseIdParam } = useParams<{ courseId?: string }>();
+    const navigate = useNavigate();
     const { user, loading: userLoading } = useRealtimeUser();
     const { firebaseUser } = useAuth();
     const { darkMode, accentColor } = useTheme();
@@ -48,7 +51,7 @@ export default function DailyTasksPage() {
 
     useEffect(() => {
         loadCoursesAndTasks();
-    }, [firebaseUser]);
+    }, [firebaseUser, courseIdParam]);
 
     async function loadCoursesAndTasks() {
         if (!firebaseUser) return;
@@ -79,9 +82,17 @@ export default function DailyTasksPage() {
             setEnrolledCourses(enrolledCourses);
             setAvailableCourses([]); // No courses shown as "available" - only via code
             
-            // Select first enrolled course by default if any
+            // If a courseId is provided via URL, prefer it
             if (enrolledCourses.length > 0) {
-                await selectCourse(enrolledCourses[0]);
+                const byParam = courseIdParam
+                    ? enrolledCourses.find(c => c.courseId === courseIdParam)
+                    : null;
+                await selectCourse(byParam || enrolledCourses[0]);
+            } else {
+                // No courses enrolled; if a courseId is in URL, send back to list
+                if (courseIdParam) {
+                    navigate('/student/courses');
+                }
             }
         } catch (error) {
             console.error("Error loading courses:", error);
