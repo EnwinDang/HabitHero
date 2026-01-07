@@ -249,7 +249,7 @@ export default function CalendarPage() {
             onClick={goToToday}
             className="px-4 py-2 rounded-xl font-medium transition-all"
             style={{
-              background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+              backgroundColor: accentColor,
               color: "white",
             }}
           >
@@ -411,7 +411,7 @@ export default function CalendarPage() {
                     onClick={() => setShowAddTask(true)}
                     className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
                     style={{
-                      background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                      backgroundColor: accentColor,
                       color: "white",
                     }}
                   >
@@ -496,7 +496,7 @@ export default function CalendarPage() {
                         disabled={isSubmitting || !newTaskTitle.trim()}
                         className="flex-1 py-2 rounded-lg font-medium text-white transition-all disabled:opacity-50"
                         style={{
-                          background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                          backgroundColor: accentColor,
                         }}
                       >
                         {isSubmitting ? "Adding..." : "Add Task"}

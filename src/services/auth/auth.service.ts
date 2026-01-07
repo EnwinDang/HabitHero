@@ -55,4 +55,5 @@ export async function deleteAccount(): Promise<void> {
   }
 
   // Delete Firebase Auth account
-  await deleteUser(user);}
+  await deleteUser(user);
+}
