@@ -31,7 +31,7 @@ export default function WorldMapPage() {
             try {
                 console.log("🔍 Fetching worlds from Firestore...");
                 
-                // Get all worlds (try without isActive filter first)
+                // Get all worlds
                 const worldsSnapshot = await getDocs(collection(db, "worlds"));
                 console.log("📦 Found", worldsSnapshot.docs.length, "worlds total");
                 
@@ -46,29 +46,42 @@ export default function WorldMapPage() {
                 
                 setWorlds(worldsData);
 
-                // Get monsters for each world in parallel
-                const monstersPromises = worldsData.map(async (world) => {
-                    console.log("🔍 Fetching monsters for world:", world.worldId);
-                    const monstersSnapshot = await getDocs(
-                        query(
-                            collection(db, "monsters"),
-                            where("worldId", "==", world.worldId)
-                        )
-                    );
-                    console.log("👹 Found", monstersSnapshot.docs.length, "monsters for", world.name);
-                    
-                    const monsters = monstersSnapshot.docs.map(doc => ({
-                        monsterId: doc.id,
-                        ...doc.data()
-                    } as Monster));
-                    
-                    return { worldId: world.worldId, monsters };
-                });
+                // Get ALL monsters from Firestore
+                const monstersSnapshot = await getDocs(collection(db, "monsters"));
+                console.log("📦 Total monsters in database:", monstersSnapshot.docs.length);
+                
+                const allMonsters = monstersSnapshot.docs.map(doc => ({
+                    monsterId: doc.id,
+                    ...doc.data()
+                } as Monster));
 
-                const monstersResults = await Promise.all(monstersPromises);
+                // For each world, extract monster IDs from stages IN ORDER and match with monster data
                 const monstersMap: Record<string, Monster[]> = {};
-                monstersResults.forEach(({ worldId, monsters }) => {
-                    monstersMap[worldId] = monsters;
+                
+                worldsData.forEach((world) => {
+                    const worldData = world as any;
+                    const stages = worldData.stages || [];
+                    const monsterIdsInOrder: string[] = [];
+                    
+                    // Extract monster IDs in order from stages (first appearance only)
+                    stages.forEach((stage: any) => {
+                        if (stage && stage.values && Array.isArray(stage.values)) {
+                            stage.values.forEach((id: string) => {
+                                if (id && !monsterIdsInOrder.includes(id)) {
+                                    monsterIdsInOrder.push(id);
+                                }
+                            });
+                        }
+                    });
+                    
+                    // Match monster IDs with actual monster data, KEEPING THE ORDER
+                    const worldMonsters = monsterIdsInOrder.map(id => 
+                        allMonsters.find(m => m.monsterId === id)
+                    ).filter(m => m !== undefined) as Monster[];
+                    
+                    monstersMap[world.worldId] = worldMonsters;
+                    
+                    console.log("👹", world.name, "has", worldMonsters.length, "monsters in order:", monsterIdsInOrder.slice(0, 5), "...");
                 });
                 
                 setWorldMonsters(monstersMap);
@@ -390,9 +403,11 @@ export default function WorldMapPage() {
                                 >
                                     {!isUnlocked ? (
                                         <>
-                                            <Lock size={32} className="mx-auto mb-2 text-white/60" />
-                                            <p className="text-sm text-white/60 font-medium">Locked</p>
-                                            <p className="text-xs text-white/40 mt-1">Defeat previous</p>
+                                            <div className="relative mb-2">
+                                                <Lock size={32} className="mx-auto text-white/60" />
+                                            </div>
+                                            <p className="text-sm text-white/80 font-medium">{monster.name}</p>
+                                            <p className="text-xs text-white/50 mt-1 capitalize">{monster.tier}</p>
                                         </>
                                     ) : (
                                         <>
