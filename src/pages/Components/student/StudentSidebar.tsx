@@ -16,7 +16,6 @@ import {
   Package,
   Swords,
   Map,
-  BookOpen,
 } from "lucide-react";
 
 const StudentSidebar = () => {

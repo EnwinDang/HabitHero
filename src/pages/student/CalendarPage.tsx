@@ -535,7 +535,7 @@ export default function CalendarPage() {
 function TaskCard({
   task,
   darkMode,
-  accentColor,
+  accentColor: _accentColor,
   theme,
   onDelete,
   onComplete,

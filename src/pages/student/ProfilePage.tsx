@@ -284,48 +284,6 @@ export default function ProfilePage() {
   );
 }
 
-/* Navigation Item Component */
-function NavItem({
-  icon,
-  label,
-  active = false,
-  onClick,
-  darkMode,
-  accentColor,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-  darkMode: boolean;
-  accentColor: string;
-}) {
-  return (
-    <li>
-      <button
-        onClick={onClick}
-        className="flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-all"
-        style={
-          active
-            ? {
-              background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
-              color: accentColor,
-              borderWidth: "1px",
-              borderStyle: "solid",
-              borderColor: `${accentColor}50`,
-            }
-            : {
-              color: darkMode ? "#9ca3af" : "#6b7280",
-            }
-        }
-      >
-        {icon}
-        <span className="font-medium">{label}</span>
-      </button>
-    </li>
-  );
-}
-
 /* Info Row Component */
 function InfoRow({
   icon,
