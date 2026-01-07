@@ -21,7 +21,7 @@ export default function LoginPage() {
       } else if (user.role === 'teacher') {
         navigate('/teacher', { replace: true });
       } else {
-        navigate('/dashboard', { replace: true });
+        navigate('/student', { replace: true });
       }
     }
   }, [user, authLoading, navigate]);
@@ -80,88 +80,88 @@ export default function LoginPage() {
         </div>
 
         <div className="hh-card hh-auth__card">
-          <div className="hh-title" style={{ fontSize: 'clamp(18px, 4vw, 22px)' }}>Login</div>
-          <div className="hh-hint" style={{ marginTop: 8 }}>
-            Log in met je school email.
+        <div className="hh-title" style={{ fontSize: 'clamp(18px, 4vw, 22px)' }}>Login</div>
+        <div className="hh-hint" style={{ marginTop: 8 }}>
+          Authenticate with your school email.
+        </div>
+
+        {error && (
+          <div className="hh-hint" style={{ marginTop: 14, color: 'var(--hh-red, #ef4444)' }}>
+            {error}
+          </div>
+        )}
+
+        <div style={{ marginTop: 18, display: 'grid', gap: 14 }}>
+          <div>
+            <div className="hh-label">Email</div>
+        <input
+              ref={emailRef}
+          type="email"
+          value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  passwordRef.current?.focus();
+                }
+              }}
+              placeholder="email@school.be"
+              className="hh-input"
+              style={{ marginTop: 8 }}
+              disabled={loading}
+            />
+            <div className="hh-hint">Must be a valid school email (e.g. @school.be)</div>
           </div>
 
-          {error && (
-            <div className="hh-hint" style={{ marginTop: 14, color: 'var(--hh-red, #ef4444)' }}>
-              {error}
-            </div>
-          )}
-
-          <div style={{ marginTop: 18, display: 'grid', gap: 14 }}>
-            <div>
-              <div className="hh-label">Email</div>
-              <input
-                ref={emailRef}
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    passwordRef.current?.focus();
-                  }
-                }}
-                placeholder="email@school.be"
-                className="hh-input"
-                style={{ marginTop: 8 }}
-                disabled={loading}
-              />
-              <div className="hh-hint">Moet een geldig school email adres zijn (bv. @school.be)</div>
-            </div>
-
-            <div>
-              <div className="hh-label">Password</div>
-              <input
-                ref={passwordRef}
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !loading) {
-                    e.preventDefault();
-                    handleEmailLogin();
-                  }
-                }}
-                placeholder="••••••••"
-                className="hh-input"
-                style={{ marginTop: 8 }}
-                disabled={loading}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleEmailLogin}
+          <div>
+            <div className="hh-label">Password</div>
+        <input
+              ref={passwordRef}
+          type="password"
+          value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !loading) {
+                  e.preventDefault();
+                  handleEmailLogin();
+                }
+              }}
+              placeholder="••••••••"
+              className="hh-input"
+              style={{ marginTop: 8 }}
               disabled={loading}
-              className="hh-btn hh-btn-primary"
-              style={{ width: '100%', paddingTop: 12, paddingBottom: 12 }}
-            >
-              {loading ? "Bezig..." : "Log in"}
-            </button>
+        />
+          </div>
 
-            <div className="hh-hint" style={{ textAlign: 'center' }}>
-              of
-            </div>
+          <button
+            type="button"
+            onClick={handleEmailLogin}
+            disabled={loading}
+            className="hh-btn hh-btn-primary"
+            style={{ width: '100%', paddingTop: 12, paddingBottom: 12 }}
+          >
+            {loading ? "Bezig..." : "Log in"}
+        </button>
 
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              disabled={loading}
-              className="hh-btn hh-btn-secondary"
-              style={{ width: '100%', paddingTop: 12, paddingBottom: 12 }}
-            >
-              {loading ? "Bezig..." : "Login met Google"}
-            </button>
+          <div className="hh-hint" style={{ textAlign: 'center' }}>
+            of
+      </div>
 
-            <div className="hh-hint" style={{ textAlign: 'center' }}>
-              Nog geen account? <Link to="/register">Registreer hier</Link>
-            </div>
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={loading}
+            className="hh-btn hh-btn-secondary"
+            style={{ width: '100%', paddingTop: 12, paddingBottom: 12 }}
+          >
+            {loading ? "Bezig..." : "Login met Google"}
+      </button>
+
+          <div className="hh-hint" style={{ textAlign: 'center' }}>
+            No account? <Link to="/register">Create account</Link>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

@@ -1,589 +1,140 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { useAuth } from "@/context/AuthContext";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
-import { useTheme, getThemeClasses } from "@/context/ThemeContext";
-import { usePomodoro } from "@/context/pomodoro";
-import { getCurrentLevelProgress, getXPForLevel, getLevelFromXP } from "@/utils/xpCurve";
-import {
-  Sword,
-  ClipboardList,
-  BookOpen,
-  Zap,
-  Gift,
-  Shield,
-  Heart,
-  CalendarDays,
-  FileText,
-  Coins,
-  AlertTriangle,
-  Wand2,
-  Crown,
-  Skull,
-  Target,
-} from "lucide-react";
-import { TimeDial } from "./Components/TimeDial";
 
-// Avatar icons - same as ProfilePage
-const avatarIcons = [
-  { icon: Sword, name: "Sword" },
-  { icon: Shield, name: "Shield" },
-  { icon: Target, name: "Bow" },
-  { icon: Wand2, name: "Wand" },
-  { icon: Zap, name: "Dragon" },
-  { icon: Crown, name: "Crown" },
-  { icon: Skull, name: "Skull" },
-  { icon: Zap, name: "Lightning" },
-];
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const { logout, loading: authLoading } = useAuth();
   const { user, loading: userLoading, error: userError } = useRealtimeUser();
-  const { error: tasksError } = useRealtimeTasks();
-  const { darkMode, accentColor } = useTheme();
-  const {
-    focusDuration,
-    setFocusDuration,
-    status,
-    timeLeftSeconds,
-    toggle,
-    reset,
-    sessionsCompleted,
-    totalFocusSeconds,
-  } = usePomodoro();
+  const { tasks, loading: tasksLoading, error: tasksError } = useRealtimeTasks();
 
-  const [error] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Get theme classes
-  const theme = getThemeClasses(darkMode, accentColor);
+  async function handleLogout() {
+    await logout();
+    navigate("/login");
+  }
 
-  // Get current date info
-  const today = new Date();
-  const weekDays = ["Zo", "Ma", "Di", "Wo", "Do", "Vr", "Za"];
-  const currentDayIndex = today.getDay();
-
-  const getWeekDates = () => {
-    const dates = [];
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - currentDayIndex);
-
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(startOfWeek);
-      date.setDate(startOfWeek.getDate() + i);
-      dates.push({
-        day: weekDays[i],
-        date: date.getDate(),
-        isToday: date.toDateString() === today.toDateString(),
-      });
+  async function handleRefresh() {
+    setIsRefreshing(true);
+    try {
+      console.log("Refreshing...");
+      setError(null);
+    } catch (err) {
+      console.error("Refresh failed:", err);
+      setError("Failed to refresh data");
+    } finally {
+      setIsRefreshing(false);
     }
-    return dates;
-  };
+  }
 
-  const weekDates = getWeekDates();
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs
-      .toString()
-      .padStart(2, "0")}`;
-  };
-
-  const handleStartPause = () => toggle();
-  const handleReset = () => reset();
-
-
-
-  if (userLoading) {
-    return (
-      <div
-        className={`min-h-screen ${theme.bg} flex items-center justify-center transition-colors duration-300`}
-      >
-        <div className="text-xl animate-pulse" style={theme.accentText}>
-          Loading...
-        </div>
-      </div>
-    );
+  if (authLoading || userLoading) {
+    return <p className="p-6 text-lg">Dashboard laden...</p>;
   }
 
   if (!user) {
     return null;
   }
 
-  const totalSeconds = focusDuration * 60;
-  const safeTimeLeft = Math.min(Math.max(timeLeftSeconds, 0), totalSeconds);
-
   return (
-    <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
-      <main className="p-8 overflow-y-auto">
-        {/* Welcome Header */}
-        <div className="mb-6">
-          <p
-            className="text-3xl font-bold tracking-widest uppercase mb-1"
-            style={theme.accentText}
-          >
-            Welcome back, {user.displayName}
+    <div className="min-h-screen bg-gray-900 text-white p-4 sm:p-6">
+      {/* HEADER */}
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold">
+            Welkom, {user.displayName}
+          </h1>
+          <p className="text-gray-400 text-sm sm:text-base">
+            Level {user.stats.level}
           </p>
         </div>
 
-        {/* HERO CARD */}
-        <div className="relative mb-8">
-
-          {/* Card */}
-          <div
-            className={`${theme.card} border ${theme.border} rounded-3xl p-8 ${theme.shadow} hover:${theme.borderHover} transition-all duration-300`}
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-2 rounded text-sm sm:text-base flex-1 sm:flex-none"
           >
-
-
-            <div className="flex items-center gap-6">
-              {/* Avatar */}
-              <div className="relative">
-                <div
-                  className="w-24 h-24 rounded-2xl border-4 flex items-center justify-center overflow-hidden"
-                  style={{
-                    borderColor: accentColor,
-                    backgroundColor: `${accentColor}20`,
-                  }}
-                >
-                  {(() => {
-                    // Get saved avatar from user.photoURL
-                    const avatarIndex = user.photoURL ? parseInt(user.photoURL) : 0;
-                    const validIndex = !isNaN(avatarIndex) && avatarIndex >= 0 && avatarIndex < avatarIcons.length ? avatarIndex : 0;
-                    const AvatarIcon = avatarIcons[validIndex].icon;
-                    return <AvatarIcon size={48} style={{ color: accentColor }} />;
-                  })()}
-                </div>
-                {/* Level Badge */}
-                <div
-                  className="absolute -bottom-2 -right-2 px-3 py-1 rounded-xl text-sm font-bold text-white shadow-lg"
-                  style={{ backgroundColor: accentColor }}
-                >
-                  Lvl {getLevelFromXP(user.stats.xp)}
-                </div>
-              </div>
-
-              {/* Stats */}
-              <div className="flex-1">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className={`text-2xl font-bold ${theme.text}`}>
-                      {user.displayName}
-                    </h3>
-                    <p className={`text-xs ${theme.textMuted} uppercase tracking-widest mt-1`}>
-                      Adventurer
-                    </p>
-                  </div>
-                  {/* Gold Badge */}
-                  <div
-                    className="px-4 py-2 rounded-xl border-2"
-                    style={{
-                      backgroundColor: "rgba(234, 179, 8, 0.1)",
-                      borderColor: "rgba(234, 179, 8, 0.3)",
-                    }}
-                  >
-                    <p className="text-yellow-500 dark:text-yellow-400 font-bold flex items-center gap-1">
-                      <Coins size={16} /> {user.stats.gold}
-                    </p>
-                  </div>
-                </div>
-
-                {/* XP Bar */}
-                <div className="mb-3">
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className={`${theme.textMuted} uppercase tracking-wide`}>Experience</span>
-                    <span className="font-bold" style={theme.accentText}>
-                      {(() => {
-                        const calculatedLevel = getLevelFromXP(user.stats.xp);
-                        const progress = getCurrentLevelProgress(user.stats.xp, calculatedLevel);
-                        return `${progress.current} / ${progress.required}`;
-                      })()}
-                    </span>
-                  </div>
-                  <div
-                    className={`h-3 rounded-full overflow-hidden border ${theme.border}`}
-                    style={{ backgroundColor: darkMode ? "#1f2937" : "#e5e7eb" }}
-                  >
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${getCurrentLevelProgress(user.stats.xp, getLevelFromXP(user.stats.xp)).percentage}%`,
-                        backgroundColor: accentColor,
-                        boxShadow: `0 0 10px ${accentColor}80`,
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Streak */}
-                <div className="flex items-center gap-2">
-                  <span style={{ color: "#f97316" }}>🔥</span>
-                  <span className={`text-sm ${theme.textMuted}`}>
-                    {user.stats.streak} day streak
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Stats Grid */}
-            <div className={`grid grid-cols-3 gap-4 mt-6 pt-6 border-t ${theme.border}`}>
-              <div className="text-center">
-                <div className={`text-2xl font-bold ${theme.text}`}>{user.stats.gold}</div>
-                <div className={`text-xs ${theme.textMuted} uppercase tracking-wide`}>Gold</div>
-              </div>
-              <div className="text-center">
-                <div className={`text-2xl font-bold ${theme.text}`}>{getLevelFromXP(user.stats.xp)}</div>
-                <div className={`text-xs ${theme.textMuted} uppercase tracking-wide`}>Level</div>
-              </div>
-              <div className="text-center">
-                <div className={`text-2xl font-bold ${theme.text}`}>{user.stats.streak}</div>
-                <div className={`text-xs ${theme.textMuted} uppercase tracking-wide`}>Streak</div>
-              </div>
-            </div>
-          </div>
+            {isRefreshing ? "Laden..." : "Vernieuwen"}
+          </button>
+          <button
+            onClick={handleLogout}
+            className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm sm:text-base flex-1 sm:flex-none"
+          >
+            Uitloggen
+          </button>
         </div>
+      </header>
 
-        {/* ERROR MESSAGE */}
-        {(error || userError || tasksError) && (
-          <div className="bg-red-900/20 border border-red-500/50 text-red-400 p-4 mb-6 rounded-xl">
-            <p className="font-semibold flex items-center gap-2">
-              <AlertTriangle size={16} /> Waarschuwing
-            </p>
-            <p className="text-sm">{error || userError || tasksError}</p>
-          </div>
+      {/* ERROR MESSAGE */}
+      {(error || userError || tasksError) && (
+        <div className="bg-yellow-900 border-l-4 border-yellow-500 text-yellow-200 p-3 sm:p-4 mb-4 sm:mb-6 rounded text-sm sm:text-base">
+          <p className="font-semibold">⚠️ Waarschuwing</p>
+          <p className="text-xs sm:text-sm">{error || userError || tasksError}</p>
+        </div>
+      )}
+
+      {/* STATS */}
+      <section className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+        <StatCard label="XP" value={user.stats.xp} />
+        <StatCard label="Gold" value={user.stats.gold} />
+        <StatCard label="Streak" value={user.stats.streak} />
+        <StatCard label="Level" value={user.stats.level} />
+      </section>
+
+      {/* TASKS */}
+      <section>
+        <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4">
+          Taken van vandaag {tasksLoading && "🔄"}
+        </h2>
+
+        {tasksLoading && tasks.length === 0 ? (
+          <p className="text-gray-400 text-sm sm:text-base">Laden...</p>
+        ) : tasks.length === 0 ? (
+          <p className="text-gray-400 text-sm sm:text-base">Geen taken 🎉</p>
+        ) : (
+          <ul className="space-y-2 sm:space-y-3">
+            {tasks.map(task => (
+              <li
+                key={task.taskId}
+                className="bg-gray-800 p-3 sm:p-4 rounded flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4 hover:bg-gray-700 transition"
+              >
+                <div className="flex-1 min-w-0">
+                  <strong className="text-base sm:text-lg block truncate">{task.title}</strong>
+                  <p className="text-xs sm:text-sm text-gray-400">
+                    Moeilijkheid: {task.difficulty}
+                  </p>
+                </div>
+
+                <span className="text-yellow-400 text-sm sm:text-base whitespace-nowrap">
+                  {task.xp} XP • {task.gold} Gold
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* LEFT COLUMN */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* DAILY QUEST + POMODORO (50/50) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* DAILY QUEST */}
-              <div
-                className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
-                style={{
-                  ...theme.borderStyle,
-                  borderWidth: "1px",
-                  borderStyle: "solid",
-                }}
-              >
-                <div className="flex justify-between items-center mb-4">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-10 h-10 rounded-lg flex items-center justify-center"
-                      style={{
-                        background: accentColor,
-                      }}
-                    >
-                      <ClipboardList size={20} className="text-white" />
-                    </div>
-                    <div>
-                      <h3 className={`text-xl font-bold ${theme.text}`}>
-                        Daily tasks
-                      </h3>
-                      {/* <p className={`${theme.textSubtle} text-sm`}>Daily tasks</p> */}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => navigate('/dashboard/daily-tasks')}
-                    className="text-sm hover:underline"
-                    style={theme.accentText}
-                  >
-                    View All →
-                  </button>
-                </div>
-
-                <div className="py-12 text-center flex flex-col items-center justify-center">
-                  <div
-                    className={`w-16 h-16 ${darkMode ? "bg-gray-800/50" : "bg-gray-100"
-                      } rounded-full flex items-center justify-center mb-4`}
-                  >
-                    <FileText
-                      size={32}
-                      className={darkMode ? "text-gray-500" : "text-gray-400"}
-                    />
-                  </div>
-                  <p className={theme.textMuted}>No active quests</p>
-                  <p className={`${theme.textSubtle} text-sm`}>
-                    Complete quests to earn XP and Gold
-                  </p>
-                </div>
-              </div>
-
-              {/* POMODORO TIMER */}
-              <div className="relative">
-                <div
-                  className={`relative ${theme.card} rounded-2xl p-6 transition-colors duration-300`}
-                  style={{
-                    ...theme.borderStyle,
-                    borderWidth: "1px",
-                    borderStyle: "solid",
-                  }}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <Zap size={24} style={{ color: accentColor }} />
-                    <h3 className={`text-xl font-bold ${theme.text}`}>
-                      Focus Mode
-                    </h3>
-                  </div>
-                  <p className={`${theme.textSubtle} text-sm mb-6`}>
-                    Enter the zone. Eliminate distractions.
-                  </p>
-
-                  {/* Time Dial & Controls */}
-                  <div className="flex flex-col items-center">
-                    <TimeDial
-                      value={status === "running" ? Math.max(0, safeTimeLeft / 60) : focusDuration}
-                      onChange={setFocusDuration}
-                      min={1}
-                      max={180}
-                      darkMode={darkMode}
-                      accentColor={accentColor}
-                      isRunning={status === "running"}
-                      timeLeft={formatTime(safeTimeLeft)}
-                    />
-
-                    {/* Controls */}
-                    <div className="flex gap-3 mt-4">
-                      <button
-                        onClick={handleStartPause}
-                        className="text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all transform active:scale-95"
-                        style={{
-                          background: accentColor,
-                          boxShadow: `0 0 20px ${accentColor}50`,
-                        }}
-                      >
-                        {status === "running" ? "PAUSE" : "START"}
-                      </button>
-                      <button
-                        onClick={handleReset}
-                        className={`${darkMode
-                          ? "bg-gray-800 hover:bg-gray-700 text-gray-300"
-                          : "bg-gray-200 hover:bg-gray-300 text-gray-700"
-                          } px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors transform active:scale-95`}
-                      >
-                        RESET
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* WEEKLY CALENDAR */}
-            <div
-              className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
-              style={{
-                ...theme.borderStyle,
-                borderWidth: "1px",
-                borderStyle: "solid",
-              }}
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h3
-                  className={`text-xl font-bold ${theme.text} flex items-center gap-2`}
-                >
-                  <CalendarDays size={20} /> This Week
-                </h3>
-                <button
-                  onClick={() => navigate('/dashboard/calendar')}
-                  className="text-sm hover:underline"
-                  style={theme.accentText}
-                >
-                  Full Calendar →
-                </button>
-              </div>
-
-              <div className="grid grid-cols-7 gap-2">
-                {weekDates.map((d, i) => (
-                  <div
-                    key={i}
-                    className={`text-center py-3 rounded-xl cursor-pointer transition-all`}
-                    style={
-                      d.isToday
-                        ? {
-                          background: accentColor,
-                          color: "white",
-                          boxShadow: `0 0 15px ${accentColor}50`,
-                        }
-                        : {
-                          backgroundColor: darkMode
-                            ? "rgba(55, 65, 81, 0.3)"
-                            : "rgba(243, 244, 246, 1)",
-                          color: darkMode ? "#9ca3af" : "#6b7280",
-                        }
-                    }
-                  >
-                    <p className="text-xs font-medium">{d.day}</p>
-                    <p className="text-lg font-bold">{d.date}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT COLUMN */}
-          <div className="space-y-6">
-            {/* DAILY REWARDS */}
-            <div className="relative">
-              <div
-                className={`relative ${theme.card} rounded-2xl p-6 transition-colors duration-300`}
-                style={{
-                  borderWidth: "1px",
-                  borderStyle: "solid",
-                  borderColor: "rgba(234, 179, 8, 0.3)",
-                }}
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className={`text-lg font-bold ${theme.text}`}>
-                    Daily Reward
-                  </h3>
-                  <Gift size={24} className="text-yellow-400" />
-                </div>
-                <button
-                  className="w-full bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-white py-3 rounded-xl font-bold transition-all"
-                  style={{ boxShadow: "0 0 15px rgba(234, 179, 8, 0.3)" }}
-                >
-                  CLAIM REWARD
-                </button>
-              </div>
-            </div>
-            {/* STREAK */}
-            <div
-              className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
-              style={{
-                borderWidth: "1px",
-                borderStyle: "solid",
-                borderColor: "rgba(249, 115, 22, 0.3)",
-              }}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center"
-                  style={{
-                    background: "linear-gradient(to br, #ea580c, #dc2626)",
-                    boxShadow: "0 0 15px rgba(249, 115, 22, 0.3)",
-                  }}
-                >
-                  <span className="text-3xl">🔥</span>
-                </div>
-
-                <div>
-                  <p className={`${theme.textMuted} text-sm`}>Current Streak</p>
-                  <p className="text-3xl font-bold text-orange-400">
-                    {user.stats.streak} days
-                  </p>
-                </div>
-              </div>
-              {/* <p className={`${theme.textSubtle} text-sm`}>Keep hunting to maintain your streak!</p> */}
-            </div>
-
-            {/* TODAY'S PROGRESS */}
-            <div
-              className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`}
-              style={{
-                ...theme.borderStyle,
-                borderWidth: "1px",
-                borderStyle: "solid",
-              }}
-            >
-              <h3 className={`text-lg font-bold ${theme.text} mb-4`}>
-                {" "}
-                Today's stats
-              </h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className={theme.textMuted}>Sessions</span>
-                  <span className="font-bold" style={theme.accentText}>
-                    {sessionsCompleted}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className={theme.textMuted}>Focus Time</span>
-                  <span className="text-purple-400 font-bold">
-                    {Math.floor(totalFocusSeconds / 60)} min
-                  </span>
-                </div>
-                <div
-                  className={`h-2 ${darkMode ? "bg-gray-800" : "bg-gray-200"
-                    } rounded-full overflow-hidden`}
-                >
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${Math.min(
-                        (totalFocusSeconds / 60 / 60) * 100,
-                        100
-                      )}%`,
-                      background: accentColor,
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
+      </section>
     </div>
   );
 }
 
-
-
-/* Stat Box Component */
-function StatBox({
-  icon,
+/* Kleine herbruikbare component */
+function StatCard({
   label,
-  value,
-  color,
-  darkMode,
+  value
 }: {
-  icon: React.ReactNode;
   label: string;
-  value: number;
-  color: string;
-  darkMode: boolean;
+  value: number | string;
 }) {
-  const colorMap = {
-    red: {
-      border: "rgba(239, 68, 68, 0.3)",
-      text: "#f87171",
-      bg: darkMode ? "rgba(127, 29, 29, 0.3)" : "rgba(254, 226, 226, 1)",
-    },
-    blue: {
-      border: "rgba(59, 130, 246, 0.3)",
-      text: "#60a5fa",
-      bg: darkMode ? "rgba(30, 58, 138, 0.3)" : "rgba(219, 234, 254, 1)",
-    },
-    green: {
-      border: "rgba(34, 197, 94, 0.3)",
-      text: "#4ade80",
-      bg: darkMode ? "rgba(20, 83, 45, 0.3)" : "rgba(220, 252, 231, 1)",
-    },
-  };
-
-  const colors = colorMap[color as keyof typeof colorMap];
-
   return (
-    <div
-      className="rounded-xl p-3 text-center"
-      style={{
-        backgroundColor: colors.bg,
-        borderWidth: "1px",
-        borderStyle: "solid",
-        borderColor: colors.border,
-      }}
-    >
-      <span style={{ color: colors.text }}>{icon}</span>
-      <p
-        className={`text-xs ${darkMode ? "text-gray-500" : "text-gray-400"
-          } mt-1`}
-      >
-        {label}
-      </p>
-      <p className="text-xl font-bold" style={{ color: colors.text }}>
-        {value}
-      </p>
+    <div className="bg-gray-800 rounded p-3 sm:p-4 text-center">
+      <p className="text-gray-400 text-xs sm:text-sm">{label}</p>
+      <p className="text-xl sm:text-2xl font-bold">{value}</p>
     </div>
   );
 }

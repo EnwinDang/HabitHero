@@ -5,32 +5,18 @@ export const WorldsAPI = {
   list(): Promise<World[]> {
     return apiFetch<World[]>("/worlds");
   },
-
   create(world: Partial<World>): Promise<World> {
-    return apiFetch<World>("/worlds", {
-      method: "POST",
-      body: JSON.stringify(world)
-    });
+    return apiFetch<World>("/worlds", { method: "POST", body: JSON.stringify(world) });
   },
-
   get(worldId: string): Promise<World> {
     return apiFetch<World>(`/worlds/${worldId}`);
   },
-
   replace(worldId: string, world: World): Promise<World> {
-    return apiFetch<World>(`/worlds/${worldId}`, {
-      method: "PUT",
-      body: JSON.stringify(world)
-    });
+    return apiFetch<World>(`/worlds/${worldId}`, { method: "PUT", body: JSON.stringify(world) });
   },
-
   patch(worldId: string, patch: Partial<World>): Promise<World> {
-    return apiFetch<World>(`/worlds/${worldId}`, {
-      method: "PATCH",
-      body: JSON.stringify(patch)
-    });
+    return apiFetch<World>(`/worlds/${worldId}`, { method: "PATCH", body: JSON.stringify(patch) });
   },
-
   delete(worldId: string): Promise<void> {
     return apiFetch<void>(`/worlds/${worldId}`, { method: "DELETE" });
   },

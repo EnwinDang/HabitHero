@@ -1,12 +1,7 @@
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { usePomodoro } from "@/context/pomodoro";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
-import { getCurrentLevelProgress, getLevelFromXP } from "@/utils/xpCurve";
-import {
-  Settings,
-  Star,
-  Flame,
-} from "lucide-react";
+import { Settings, Flame } from "lucide-react";
 
 export default function FocusModePage() {
   const { user, loading } = useRealtimeUser();
@@ -25,7 +20,6 @@ export default function FocusModePage() {
     reset,
     sessionsCompleted,
     totalFocusSeconds,
-    xpGained,
   } = usePomodoro();
 
   const formatTime = (seconds: number) => {
@@ -60,15 +54,7 @@ export default function FocusModePage() {
 
   return (
     <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
-      {/* XP Notification */}
-      {xpGained && (
-        <div className="fixed top-8 left-1/2 transform -translate-x-1/2 z-50 animate-bounce">
-          <div className="px-6 py-3 rounded-full shadow-lg flex items-center gap-2" style={{ background: accentColor, color: 'white' }}>
-            <span className="text-xl">⭐</span>
-            <span className="font-bold">+{xpGained} XP earned!</span>
-          </div>
-        </div>
-      )}
+      {/* XP notification hidden on Focus Mode page */}
 
       <main className="p-8 overflow-y-auto w-full">
         {/* Header */}
@@ -159,21 +145,7 @@ export default function FocusModePage() {
 
           {/* Right Column - Stats */}
           <div className="space-y-6">
-            {/* Current XP */}
-            {user && (
-              <div className={`${theme.card} rounded-2xl p-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <Star size={20} style={{ color: accentColor }} />
-                  <h3 className={`text-lg font-bold ${theme.text}`}>Your XP</h3>
-                </div>
-                <p className="text-3xl font-bold" style={{ color: accentColor }}>
-                  {getCurrentLevelProgress(user.stats.xp, getLevelFromXP(user.stats.xp)).current || 0} XP
-                </p>
-                <p className={`${theme.textMuted} text-sm`}>
-                  Level {getLevelFromXP(user.stats.xp) || 1}
-                </p>
-              </div>
-            )}
+            {/* Current XP card hidden on Focus Mode page */}
 
             {/* Focus Streak */}
             <div className={`${theme.card} rounded-2xl p-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>

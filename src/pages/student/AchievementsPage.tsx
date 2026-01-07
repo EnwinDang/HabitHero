@@ -247,7 +247,7 @@ export default function AchievementsPage() {
               style={
                 selectedCategory === category
                   ? {
-                    background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                    backgroundColor: accentColor,
                     color: "white",
                   }
                   : {

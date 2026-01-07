@@ -988,11 +988,11 @@ function NavItem({
                 onClick={onClick}
                 className="flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-all"
                 style={active ? {
-                    background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
+                    backgroundColor: darkMode ? `${accentColor}20` : `${accentColor}10`,
                     color: accentColor,
                     borderWidth: '1px',
                     borderStyle: 'solid',
-                    borderColor: `${accentColor}50`
+                    borderColor: darkMode ? `${accentColor}50` : `${accentColor}30`
                 } : {
                     color: darkMode ? '#9ca3af' : '#6b7280'
                 }}

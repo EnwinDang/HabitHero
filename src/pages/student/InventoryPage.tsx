@@ -10,10 +10,8 @@ import {
     Shield,
     Gem,
     Droplet,
-    Star,
     Check,
     Hammer,
-    Zap, // Added Hammer for merge icon
     ArrowUpCircle
 } from "lucide-react";
 

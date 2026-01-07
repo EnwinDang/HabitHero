@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
-import { db, auth } from "@/firebase";
+import { db } from "@/firebase";
 import { collection, addDoc, updateDoc, doc } from "firebase/firestore";
 import { LootboxesAPI } from "@/api/lootboxes.api";
 import {
@@ -181,40 +181,35 @@ export default function LootboxesPage() {
         }
     };
 
-    const generateRewards = (type: LootboxType): GeneratedItem[] => {
-        const commonItems: GeneratedItem[] = [
-            { name: "Iron Sword", type: "weapon", rarity: "common", icon: "⚔️", isEquipped: false, level: 1 },
-            { name: "Wooden Shield", type: "armor", rarity: "common", icon: "🛡️", isEquipped: false, level: 1 },
-            { name: "Health Potion", type: "potion", rarity: "common", icon: "🧪", isEquipped: false, level: 1 }
-        ];
-        const rareItems: GeneratedItem[] = [
-            { name: "Steel Sword", type: "weapon", rarity: "rare", icon: "⚔️", isEquipped: false, level: 1 },
-            { name: "Iron Shield", type: "armor", rarity: "rare", icon: "🛡️", isEquipped: false, level: 1 },
-            { name: "Mana Potion", type: "potion", rarity: "rare", icon: "🧪", isEquipped: false, level: 1 },
-            { name: "Lucky Charm", type: "accessory", rarity: "rare", icon: "📿", isEquipped: false, level: 1 }
-        ];
-        const epicItems: GeneratedItem[] = [
-            { name: "Legendary Blade", type: "weapon", rarity: "epic", icon: "⚔️", isEquipped: false, level: 1 },
-            { name: "Dragon Shield", type: "armor", rarity: "epic", icon: "🛡️", isEquipped: false, level: 1 },
-            { name: "Elixir of Life", type: "potion", rarity: "epic", icon: "🧪", isEquipped: false, level: 1 },
-            { name: "Crown of Wisdom", type: "accessory", rarity: "epic", icon: "👑", isEquipped: false, level: 1 }
-        ];
+const generateRewards = (type: LootboxType): GeneratedItem[] => {
+    const commonItems: GeneratedItem[] = [
+        { name: "Iron Sword", type: "weapon", rarity: "common", icon: "⚔️", isEquipped: false, level: 1 },
+        { name: "Wooden Shield", type: "armor", rarity: "common", icon: "🛡️", isEquipped: false, level: 1 },
+        { name: "Health Potion", type: "potion", rarity: "common", icon: "🧪", isEquipped: false, level: 1 }
+    ];
+    const rareItems: GeneratedItem[] = [
+        { name: "Steel Sword", type: "weapon", rarity: "rare", icon: "⚔️", isEquipped: false, level: 1 },
+        { name: "Iron Shield", type: "armor", rarity: "rare", icon: "🛡️", isEquipped: false, level: 1 },
+        { name: "Mana Potion", type: "potion", rarity: "rare", icon: "🧪", isEquipped: false, level: 1 },
+        { name: "Lucky Charm", type: "accessory", rarity: "rare", icon: "📿", isEquipped: false, level: 1 }
+    ];
+    const epicItems: GeneratedItem[] = [
+        { name: "Legendary Blade", type: "weapon", rarity: "epic", icon: "⚔️", isEquipped: false, level: 1 },
+        { name: "Dragon Shield", type: "armor", rarity: "epic", icon: "🛡️", isEquipped: false, level: 1 },
+        { name: "Elixir of Life", type: "potion", rarity: "epic", icon: "🧪", isEquipped: false, level: 1 },
+        { name: "Crown of Wisdom", type: "accessory", rarity: "epic", icon: "👑", isEquipped: false, level: 1 }
+    ];
 
-        if (type === "common") {
-            return [commonItems[Math.floor(Math.random() * commonItems.length)]];
-        } else if (type === "rare") {
-            return [
-                rareItems[Math.floor(Math.random() * rareItems.length)],
-                commonItems[Math.floor(Math.random() * commonItems.length)]
-            ];
-        } else {
-            return [
-                epicItems[Math.floor(Math.random() * epicItems.length)],
-                rareItems[Math.floor(Math.random() * rareItems.length)],
-                commonItems[Math.floor(Math.random() * commonItems.length)]
-            ];
-        }
-    };
+    const getRandom = (arr: GeneratedItem[]) => arr[Math.floor(Math.random() * arr.length)];
+
+    if (type === "common") {
+        return [getRandom(commonItems)];
+    } else if (type === "rare") {
+        return [getRandom(rareItems), getRandom(commonItems)];
+    } else {
+        return [getRandom(epicItems), getRandom(rareItems), getRandom(commonItems)];
+    }
+};
 
     return (
         <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>

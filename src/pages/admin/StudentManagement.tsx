@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Trash2, GraduationCap, Loader2, Mail, Shield, Coins } from 'lucide-react';
+import { Search, Trash2, GraduationCap, Loader2, Mail, Shield, Coins, UserPlus, X } from 'lucide-react';
 import { UsersAPI } from '../../api/users.api';
+import { db } from '../../firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import type { User } from '../../models/user.model';
 
 const StudentManagement: React.FC = () => {
@@ -8,6 +10,8 @@ const StudentManagement: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newStudent, setNewStudent] = useState({ displayName: '', email: '' });
 
   const loadStudents = async (): Promise<void> => {
     setLoading(true);
@@ -28,13 +32,49 @@ const StudentManagement: React.FC = () => {
     loadStudents();
   }, []);
 
-  const handleDelete = async (uid: string): Promise<void> => {
-    if (window.confirm("Wil je deze student verwijderen uit de academie?")) {
+  const handleAddStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await addDoc(collection(db, 'users'), {
+        displayName: newStudent.displayName,
+        email: newStudent.email,
+        role: 'student',
+        status: 'active',
+        createdAt: serverTimestamp(),
+        stats: { hp: 100, gold: 0, level: 1, xp: 0 },
+        settings: { theme: 'light', language: 'nl', notificationsEnabled: true }
+      });
+
+      await addDoc(collection(db, 'logs'), {
+        action: `New Student Added: ${newStudent.displayName}`,
+        user: 'Admin',
+        timestamp: serverTimestamp(),
+        type: 'user_management'
+      });
+
+      setIsModalOpen(false);
+      setNewStudent({ displayName: '', email: '' });
+      loadStudents();
+    } catch (err) {
+      console.error("Fout bij toevoegen student:", err);
+    }
+  };
+
+  const handleDelete = async (uid: string, displayName: string): Promise<void> => {
+    if (window.confirm(`Wil je ${displayName} verwijderen uit de academie?`)) {
       try {
         await UsersAPI.delete(uid);
+        
+        await addDoc(collection(db, 'logs'), {
+          action: `Student Removed: ${displayName}`,
+          user: 'Admin',
+          timestamp: serverTimestamp(),
+          type: 'user_management'
+        });
+
         setStudents(prev => prev.filter(s => s.uid !== uid));
       } catch (error) {
-        console.error(error);
+        console.error("Fout bij verwijderen student:", error);
       }
     }
   };
@@ -46,14 +86,22 @@ const StudentManagement: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-violet-50 p-8 text-slate-900 font-sans">
-      <div className="mb-10">
-        <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3 tracking-tight">
-          <GraduationCap className="text-violet-500" size={32} />
-          Student Academy
-        </h1>
-        <p className="text-slate-500 font-medium mt-1">
-          Monitor heroes-in-training and their combat readiness
-        </p>
+      <div className="flex justify-between items-center mb-10">
+        <div>
+          <h1 className="text-3xl font-extrabold text-slate-900 flex items-center gap-3 tracking-tight">
+            <GraduationCap className="text-violet-500" size={32} />
+            Student Academy
+          </h1>
+          <p className="text-slate-500 font-medium mt-1">
+            Monitor heroes-in-training and their combat readiness
+          </p>
+        </div>
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          className="bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-lg shadow-violet-200 transition-all"
+        >
+          <UserPlus size={20} /> Add Student
+        </button>
       </div>
 
       <div className="relative mb-10 group">
@@ -73,13 +121,13 @@ const StudentManagement: React.FC = () => {
         </div>
       ) : error ? (
         <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-8 text-center">
-          <p className="text-rose-700 font-semibold mb-4">⚠️ {error}</p>
+          <p className="text-rose-700 font-semibold mb-4"> {error}</p>
           <p className="text-rose-600 text-sm mb-6">Make sure you're logged in as an admin</p>
           <button 
             onClick={loadStudents}
             className="px-6 py-3 bg-rose-500 text-white rounded-xl hover:bg-rose-600 transition-all font-semibold"
           >
-            🔄 Retry Loading
+            Retry Loading
           </button>
         </div>
       ) : (
@@ -132,7 +180,7 @@ const StudentManagement: React.FC = () => {
 
               <div className="flex items-center gap-3 pr-4">
                 <button 
-                  onClick={() => handleDelete(student.uid)}
+                  onClick={() => handleDelete(student.uid, student.displayName || 'Student')}
                   className="p-4 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all"
                 >
                   <Trash2 size={22} />
@@ -146,6 +194,59 @@ const StudentManagement: React.FC = () => {
               No students found in the academy directory.
             </div>
           )}
+        </div>
+      )}
+
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] p-10 max-w-md w-full shadow-2xl animate-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-black text-slate-900 flex items-center gap-3">
+                <Shield className="text-violet-500" /> New Student
+              </h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={handleAddStudent} className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
+                <input 
+                  required
+                  value={newStudent.displayName}
+                  onChange={(e) => setNewStudent({...newStudent, displayName: e.target.value})}
+                  className="w-full mt-1 bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+                  placeholder="e.g. Ash Ketchum"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Student Email</label>
+                <input 
+                  required
+                  type="email"
+                  value={newStudent.email}
+                  onChange={(e) => setNewStudent({...newStudent, email: e.target.value})}
+                  className="w-full mt-1 bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+                  placeholder="student@ehb.be"
+                />
+              </div>
+              <div className="flex gap-3 pt-6">
+                <button 
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 px-6 py-3 bg-slate-100 text-slate-500 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 px-6 py-3 bg-violet-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-violet-700 shadow-lg shadow-violet-100"
+                >
+                  Confirm
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
