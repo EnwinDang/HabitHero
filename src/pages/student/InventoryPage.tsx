@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { db, auth } from "@/firebase";
-import { collection, query, onSnapshot, doc, deleteDoc, updateDoc } from "firebase/firestore";
+import { collection, query, onSnapshot, doc, deleteDoc, updateDoc, addDoc } from "firebase/firestore";
 import { useEffect } from "react";
 import {
     Package,
@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 
 // Item types
-type ItemType = "weapon" | "armor" | "accessory" | "potion";
+type ItemType = "weapon" | "armor" | "accessory" | "potion" | "lootbox";
 type ItemRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
 interface InventoryItem {
@@ -27,8 +27,11 @@ interface InventoryItem {
     type: ItemType;
     rarity: ItemRarity;
     icon: string;
-    isEquipped: boolean;
-    level?: number; // Added level property (optional for potential backward compatibility)
+    isEquipped?: boolean;
+    level?: number;
+    lootboxType?: string; // For lootbox items (basic_box, advanced_box, epic_box)
+    acquiredAt?: number;
+    source?: string;
 }
 
 // Rarity colors matching the screenshot
@@ -48,7 +51,85 @@ export default function InventoryPage() {
     const [items, setItems] = useState<InventoryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedCategory, setSelectedCategory] = useState<string>("all");
-    const [mergeMessage, setMergeMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null); // Feedback state
+    const [mergeMessage, setMergeMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [openingLootbox, setOpeningLootbox] = useState<string | null>(null);
+    const [lootboxRewards, setLootboxRewards] = useState<InventoryItem[] | null>(null);
+
+    // Helper function to generate lootbox rewards (fallback)
+    const generateLootboxRewards = (lootboxType: string): InventoryItem[] => {
+        const rarityPool = lootboxType === "epic_box"
+            ? ["epic", "rare", "uncommon"]
+            : lootboxType === "advanced_box"
+                ? ["rare", "uncommon", "common"]
+                : ["uncommon", "common", "common"];
+
+        const itemCount = lootboxType === "epic_box" ? 3 : lootboxType === "advanced_box" ? 2 : 1;
+        const items: InventoryItem[] = [];
+
+        for (let i = 0; i < itemCount; i++) {
+            const rarity = rarityPool[Math.floor(Math.random() * rarityPool.length)] as ItemRarity;
+            const types: ItemType[] = ["weapon", "armor", "accessory"];
+            const type = types[Math.floor(Math.random() * types.length)];
+
+            items.push({
+                id: `temp_${Date.now()}_${i}`,
+                name: `${rarity.charAt(0).toUpperCase() + rarity.slice(1)} ${type}`,
+                type,
+                rarity,
+                icon: type === "weapon" ? "⚔️" : type === "armor" ? "🛡️" : "💎",
+                isEquipped: false,
+                level: 1,
+                acquiredAt: Date.now(),
+                source: `lootbox_${lootboxType}`
+            });
+        }
+
+        return items;
+    };
+
+    // Handle lootbox opening
+    const handleOpenLootbox = async (lootbox: InventoryItem) => {
+        if (!user || !lootbox.lootboxType) return;
+
+        try {
+            setOpeningLootbox(lootbox.id);
+
+            // Simulate opening animation
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            // Generate rewards (using Firestore fallback since backend may not be configured)
+            const rewards = generateLootboxRewards(lootbox.lootboxType);
+
+            // Add items to inventory
+            const inventoryRef = collection(db, "users", user.uid, "inventory");
+            for (const reward of rewards) {
+                await addDoc(inventoryRef, {
+                    name: reward.name,
+                    type: reward.type,
+                    rarity: reward.rarity,
+                    icon: reward.icon,
+                    isEquipped: false,
+                    level: 1,
+                    acquiredAt: Date.now(),
+                    source: `lootbox_${lootbox.lootboxType}`
+                });
+            }
+
+            // Delete lootbox from inventory
+            const lootboxRef = doc(db, "users", user.uid, "inventory", lootbox.id);
+            await deleteDoc(lootboxRef);
+
+            // Show rewards
+            setLootboxRewards(rewards);
+            setOpeningLootbox(null);
+
+        } catch (error) {
+            console.error("Failed to open lootbox:", error);
+            setMergeMessage({ type: 'error', text: "Failed to open lootbox." });
+            setTimeout(() => setMergeMessage(null), 3000);
+            setOpeningLootbox(null);
+        }
+    }; // Feedback state
 
     // Fetch inventory items from Firebase
     useEffect(() => {
@@ -96,6 +177,7 @@ export default function InventoryPage() {
             case "armor": return <Shield size={20} />;
             case "accessory": return <Gem size={20} />;
             case "potion": return <Droplet size={20} />;
+            case "lootbox": return <Package size={20} />;
             default: return <Package size={20} />;
         }
     };
@@ -379,7 +461,9 @@ function ItemCard({
     getTypeIcon,
     canMerge,
     onMerge,
-    onEquip
+    onEquip,
+    onOpenLootbox,
+    isOpeningLootbox
 }: {
     item: InventoryItem;
     darkMode: boolean;
@@ -388,6 +472,8 @@ function ItemCard({
     canMerge?: boolean;
     onMerge?: () => void;
     onEquip?: () => void;
+    onOpenLootbox?: () => void;
+    isOpeningLootbox?: boolean;
 }) {
     const colors = rarityColors[item.rarity];
 
@@ -404,21 +490,43 @@ function ItemCard({
             <div className="text-center">
                 <div className="relative inline-block mb-2">
                     <div className="text-4xl">{item.icon}</div>
-                    {/* Level Badge */}
-                    <div className={`absolute -bottom-2 -right-2 px-1.5 rounded-full text-[10px] font-bold text-white shadow-sm ${(item.level || 1) > 1 ? 'bg-indigo-500' : 'bg-gray-500'
-                        }`}>
-                        L{(item.level || 1)}
-                    </div>
+                    {/* Level Badge - only for non-lootbox items */}
+                    {item.type !== "lootbox" && (
+                        <div className={`absolute -bottom-2 -right-2 px-1.5 rounded-full text-[10px] font-bold text-white shadow-sm ${(item.level || 1) > 1 ? 'bg-indigo-500' : 'bg-gray-500'
+                            }`}>
+                            L{(item.level || 1)}
+                        </div>
+                    )}
                 </div>
 
                 <h4 className={`font-medium ${theme.text} text-sm truncate`}>{item.name}</h4>
                 <p className={`text-xs ${theme.textMuted} capitalize`}>{item.rarity}</p>
 
-                {/* Merge Button if available */}
-                {canMerge && (
+                {/* Lootbox Open Button */}
+                {item.type === "lootbox" && (
                     <button
                         onClick={(e) => {
-                            e.stopPropagation(); // Prevent card click
+                            e.stopPropagation();
+                            onOpenLootbox?.();
+                        }}
+                        disabled={isOpeningLootbox}
+                        className={`mt-2 text-xs w-full py-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-colors ${isOpeningLootbox ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'
+                            }`}
+                        style={{
+                            backgroundColor: 'rgba(168, 85, 247, 0.2)',
+                            color: '#a855f7'
+                        }}
+                    >
+                        <Package size={12} />
+                        {isOpeningLootbox ? 'Opening...' : 'Open'}
+                    </button>
+                )}
+
+                {/* Merge Button if available (not for lootboxes) */}
+                {item.type !== "lootbox" && canMerge && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
                             onMerge?.();
                         }}
                         className="mt-2 text-xs w-full py-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-colors hover:scale-105"
@@ -430,8 +538,8 @@ function ItemCard({
                     </button>
                 )}
 
-                {/* Equip Button (if not equipped) */}
-                {!item.isEquipped && (
+                {/* Equip Button (if not equipped and not lootbox) */}
+                {item.type !== "lootbox" && !item.isEquipped && (
                     <button
                         onClick={(e) => {
                             e.stopPropagation();

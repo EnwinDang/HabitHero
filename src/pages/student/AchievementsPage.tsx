@@ -5,7 +5,7 @@ import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/firebase";
-import { doc, updateDoc, increment } from "firebase/firestore";
+import { doc, updateDoc, increment, addDoc, collection } from "firebase/firestore";
 import { getLevelFromXP } from "@/utils/xpCurve";
 import {
   onStreakUpdated,
@@ -87,10 +87,36 @@ export default function AchievementsPage() {
         claimedAt: Date.now(),
       });
 
+      // Handle lootbox reward - add to inventory
+      const lootboxReward = achievement.reward?.lootbox;
+      if (lootboxReward) {
+        const inventoryRef = collection(db, "users", firebaseUser.uid, "inventory");
+
+        // Map lootbox type to display name and rarity
+        const lootboxNames: Record<string, { name: string; rarity: string }> = {
+          basic_box: { name: "Basic Lootbox", rarity: "common" },
+          advanced_box: { name: "Advanced Lootbox", rarity: "rare" },
+          epic_box: { name: "Epic Lootbox", rarity: "epic" },
+        };
+
+        const lootboxInfo = lootboxNames[lootboxReward] || { name: "Lootbox", rarity: "common" };
+
+        await addDoc(inventoryRef, {
+          type: "lootbox",
+          lootboxType: lootboxReward,
+          name: lootboxInfo.name,
+          rarity: lootboxInfo.rarity,
+          icon: "🎁",
+          acquiredAt: Date.now(),
+          source: `achievement_${achievementId}`,
+        });
+      }
+
       // Show reward notification
       const rewards = [];
       if (xpReward > 0) rewards.push(`+${xpReward} XP`);
       if (goldReward > 0) rewards.push(`+${goldReward} Gold`);
+      if (lootboxReward) rewards.push(`🎁 ${lootboxReward.replace('_', ' ')}`);
 
       if (rewards.length > 0) {
         alert(`🎉 Claimed!\n${rewards.join(' • ')}`);
