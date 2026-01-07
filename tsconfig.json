@@ -16,6 +16,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "allowJs": true,
     "noEmit": true,
     "jsx": "react-jsx",
     "baseUrl": ".",
@@ -27,5 +28,8 @@
   },
   "include": [
     "src"
+  ],
+  "exclude": [
+    "src/pages/HomePage.backup.tsx"
   ]
 }

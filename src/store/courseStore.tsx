@@ -38,6 +38,9 @@ interface UICourse {
   endDate: string | null;
   createdBy: string | null;
   modules: UIModule[];
+  // Optional metadata used by UI in some places
+  year?: number | string;
+  program?: string | null;
 }
 
 // Helper functions to map between API format and UI format

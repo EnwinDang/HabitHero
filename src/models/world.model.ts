@@ -8,5 +8,7 @@ export interface World {
 
   // Optional game fields used in admin UI
   element?: string | null;
+  // Some pages reference an alternate field name
+  elementType?: string | null;
   stages?: any[];
 }
