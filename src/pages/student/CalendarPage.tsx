@@ -9,6 +9,10 @@ import {
   Calendar,
   Trash2,
   Check,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 
 export default function CalendarPage() {
@@ -26,9 +30,6 @@ export default function CalendarPage() {
   // Add task modal state
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [newTaskDifficulty, setNewTaskDifficulty] = useState<
-    "easy" | "medium" | "hard" | "extreme"
-  >("medium");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
 
@@ -152,28 +153,15 @@ export default function CalendarPage() {
       const tasksRef = collection(db, "users", firebaseUser.uid, "tasks");
       await addDoc(tasksRef, {
         title: newTaskTitle,
-        difficulty: newTaskDifficulty,
-        xp:
-          newTaskDifficulty === "easy"
-            ? 25
-            : newTaskDifficulty === "medium"
-              ? 50
-              : newTaskDifficulty === "hard"
-                ? 100
-                : 200,
-        gold:
-          newTaskDifficulty === "easy"
-            ? 10
-            : newTaskDifficulty === "medium"
-              ? 25
-              : newTaskDifficulty === "hard"
-                ? 50
-                : 100,
         date: dateStr,
         dueAt: selectedDate.getTime(),
-        isRepeatable: false,
         isActive: true,
         createdAt: Date.now(),
+        // Calendar tasks don't have difficulty, XP, or gold
+        difficulty: "easy",
+        xp: 0,
+        gold: 0,
+        isRepeatable: false,
       });
 
       console.log("✅ Task created successfully!");
@@ -268,24 +256,66 @@ export default function CalendarPage() {
             }}
           >
             {/* Month Navigation */}
-            <div className="flex justify-between items-center mb-6">
-              <button
-                onClick={prevMonth}
-                className={`p-2 rounded-lg transition-colors ${darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"
-                  }`}
-              >
-                <span className="text-xl">←</span>
-              </button>
-              <h3 className={`text-2xl font-bold ${theme.text}`}>
+            <div className="flex justify-between items-center mb-6 gap-4">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setCurrentDate(new Date(year - 1, month, 1))}
+                  aria-label="Previous year"
+                  className={`px-3 py-2 rounded-lg transition-colors ${darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"} focus-visible:outline-none`}
+                  style={{
+                    borderWidth: "1px",
+                    borderStyle: "solid",
+                    ...theme.borderStyle,
+                    color: accentColor,
+                  }}
+                >
+                  <ChevronsLeft size={20} strokeWidth={2.5} />
+                </button>
+                <button
+                  onClick={prevMonth}
+                  aria-label="Previous month"
+                  className={`px-3 py-2 rounded-lg transition-colors ${darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"} focus-visible:outline-none`}
+                  style={{
+                    borderWidth: "1px",
+                    borderStyle: "solid",
+                    ...theme.borderStyle,
+                    color: accentColor,
+                  }}
+                >
+                  <ChevronLeft size={20} strokeWidth={2.5} />
+                </button>
+              </div>
+              <h3 className={`text-2xl font-bold ${theme.text} min-w-fit`}>
                 {monthNames[month]} {year}
               </h3>
-              <button
-                onClick={nextMonth}
-                className={`p-2 rounded-lg transition-colors ${darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"
-                  }`}
-              >
-                <span className="text-xl">→</span>
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={nextMonth}
+                  aria-label="Next month"
+                  className={`px-3 py-2 rounded-lg transition-colors ${darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"} focus-visible:outline-none`}
+                  style={{
+                    borderWidth: "1px",
+                    borderStyle: "solid",
+                    ...theme.borderStyle,
+                    color: accentColor,
+                  }}
+                >
+                  <ChevronRight size={20} strokeWidth={2.5} />
+                </button>
+                <button
+                  onClick={() => setCurrentDate(new Date(year + 1, month, 1))}
+                  aria-label="Next year"
+                  className={`px-3 py-2 rounded-lg transition-colors ${darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"} focus-visible:outline-none`}
+                  style={{
+                    borderWidth: "1px",
+                    borderStyle: "solid",
+                    ...theme.borderStyle,
+                    color: accentColor,
+                  }}
+                >
+                  <ChevronsRight size={20} strokeWidth={2.5} />
+                </button>
+              </div>
             </div>
 
             {/* Weekday Headers */}
@@ -423,7 +453,7 @@ export default function CalendarPage() {
                   <div className="text-center py-8">
                     <Calendar
                       size={40}
-                      className={`mb-4 mx-auto ${darkMode ? "text-gray-500" : "text-gray-400"
+                      className={`mb-4 mx-auto ${darkMode ? "text-gray-100" : "text-gray-400"
                         }`}
                     />
                     <p className={theme.textMuted}>No tasks for this day</p>
@@ -473,23 +503,6 @@ export default function CalendarPage() {
                         ...theme.borderStyle,
                       }}
                     />
-                    <select
-                      value={newTaskDifficulty}
-                      onChange={(e) =>
-                        setNewTaskDifficulty(e.target.value as any)
-                      }
-                      className={`w-full p-3 rounded-lg mb-3 ${theme.inputBg} ${theme.text}`}
-                      style={{
-                        borderWidth: "1px",
-                        borderStyle: "solid",
-                        ...theme.borderStyle,
-                      }}
-                    >
-                      <option value="easy">Easy</option>
-                      <option value="medium">Medium</option>
-                      <option value="hard">Hard</option>
-                      <option value="extreme">Extreme</option>
-                    </select>
                     <div className="flex gap-2">
                       <button
                         onClick={handleAddTask}
@@ -549,13 +562,6 @@ function TaskCard({
 }) {
   const [showConfirm, setShowConfirm] = useState(false);
 
-  const difficultyColors = {
-    easy: "#22c55e",
-    medium: "#f59e0b",
-    hard: "#ef4444",
-    extreme: "#a855f7",
-  };
-
   return (
     <div
       className={`p-4 rounded-xl transition-all ${task.isActive ? "" : "opacity-60"
@@ -564,9 +570,6 @@ function TaskCard({
         backgroundColor: darkMode
           ? "rgba(55, 65, 81, 0.3)"
           : "rgba(249, 250, 251, 1)",
-        borderLeftWidth: "4px",
-        borderLeftStyle: "solid",
-        borderLeftColor: difficultyColors[task.difficulty],
       }}
     >
       <div className="flex items-start justify-between">
@@ -578,23 +581,17 @@ function TaskCard({
             {task.title}
           </p>
           <div className="flex items-center gap-3 mt-2">
-            <span
-              className="text-xs px-2 py-1 rounded"
-              style={{
-                backgroundColor: `${difficultyColors[task.difficulty]}20`,
-                color: difficultyColors[task.difficulty],
-              }}
-            >
-              {task.difficulty}
+            <span className={`text-xs px-2 py-1 rounded ${theme.textMuted}`}>
+              Due: {task.date || (task.dueAt ? new Date(task.dueAt).toLocaleDateString() : 'No date')}
             </span>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {!task.isActive && <Check size={18} className="text-green-500" />}
+          {!task.isActive && <Check size={18} className={darkMode ? "text-emerald-300" : "text-green-500"} />}
           {task.isActive && (
             <button
               onClick={onComplete}
-              className="text-green-500 hover:text-green-600 p-1 rounded transition-colors"
+              className={`${darkMode ? "text-emerald-300 hover:text-emerald-200" : "text-green-500 hover:text-green-600"} p-1 rounded transition-colors`}
               title="Mark as complete"
             >
               <Check size={18} />
@@ -613,7 +610,7 @@ function TaskCard({
               </button>
               <button
                 onClick={() => setShowConfirm(false)}
-                className="text-xs px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
+                className={`text-xs px-2 py-1 ${darkMode ? "bg-gray-600 hover:bg-gray-500" : "bg-gray-500 hover:bg-gray-600"} text-white rounded transition-colors`}
               >
                 Cancel
               </button>
@@ -621,7 +618,7 @@ function TaskCard({
           ) : (
             <button
               onClick={() => setShowConfirm(true)}
-              className="text-red-400 hover:text-red-500 p-1 rounded transition-colors"
+              className={`${darkMode ? "text-red-300 hover:text-red-200" : "text-red-400 hover:text-red-500"} p-1 rounded transition-colors`}
               title="Delete task"
             >
               <Trash2 size={16} />

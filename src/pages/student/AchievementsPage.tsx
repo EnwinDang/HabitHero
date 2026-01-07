@@ -78,11 +78,6 @@ export default function AchievementsPage() {
         if (levelUpResult.rewards?.gold) rewards.push(`+${levelUpResult.rewards.gold} Bonus Gold`);
         if (levelUpResult.rewards?.gems) rewards.push(`+${levelUpResult.rewards.gems} Gems`);
       }
-      if (levelUpResult?.leveledUp) {
-        rewards.push(`\n🎉 LEVEL UP! ${levelUpResult.oldLevel} → ${levelUpResult.newLevel}`);
-        if (levelUpResult.rewards?.gold) rewards.push(`+${levelUpResult.rewards.gold} Bonus Gold`);
-        if (levelUpResult.rewards?.gems) rewards.push(`+${levelUpResult.rewards.gems} Gems`);
-      }
 
       if (rewards.length > 0) {
         alert(`🎉 Claimed!\n${rewards.join(' • ')}`);

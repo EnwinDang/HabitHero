@@ -172,7 +172,7 @@ export default function FocusModePage() {
               </div>
               <p className={`text-3xl font-bold ${theme.text}`}>
                 {(() => {
-                  const streakCount = user?.stats?.streak ?? user?.streaks?.daily?.current ?? 0;
+                  const streakCount = user?.stats?.streak ?? 0;
                   const label = streakCount === 1 ? "day" : "days";
                   return `${streakCount} ${label}`;
                 })()}
