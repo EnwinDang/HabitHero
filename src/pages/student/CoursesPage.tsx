@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { CoursesAPI } from "@/api/courses.api";
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 
 export default function CoursesPage() {
+  const navigate = useNavigate();
   const { firebaseUser } = useAuth();
   const { darkMode, accentColor } = useTheme();
   const theme = getThemeClasses(darkMode, accentColor);
@@ -229,6 +231,7 @@ export default function CoursesPage() {
                   isEnrolled={true}
                   isEnrolling={enrollingCourse === course.courseId}
                   onAction={() => setConfirmUnenroll({ id: course.courseId, name: course.name })}
+                  onOpen={() => navigate(`/student/courses-tasks/${course.courseId}`)}
                   darkMode={darkMode}
                   accentColor={accentColor}
                   theme={theme}
@@ -410,6 +413,7 @@ function CourseCard({
   isEnrolled,
   isEnrolling,
   onAction,
+  onOpen,
   darkMode,
   accentColor,
   theme,
@@ -418,6 +422,7 @@ function CourseCard({
   isEnrolled: boolean;
   isEnrolling: boolean;
   onAction: () => void;
+  onOpen: () => void;
   darkMode: boolean;
   accentColor: string;
   theme: ReturnType<typeof getThemeClasses>;
@@ -431,6 +436,9 @@ function CourseCard({
         borderStyle: "solid",
         boxShadow: isEnrolled ? `0 0 20px ${accentColor}30` : "none",
       }}
+      onClick={() => { if (isEnrolled) onOpen(); }}
+      role="button"
+      tabIndex={0}
     >
       {/* Course Header */}
       <div className="mb-4">
@@ -491,7 +499,7 @@ function CourseCard({
 
       {/* Action Button */}
       <button
-        onClick={onAction}
+        onClick={(e) => { e.stopPropagation(); onAction(); }}
         disabled={isEnrolling}
         className="w-full py-2 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
         style={{

@@ -5,10 +5,11 @@ import {
   loginWithGoogle,
 } from "../services/auth/auth.service";
 import { useAuth } from "../context/AuthContext";
+import { AuthAPI } from "@/api/auth.api";
 
 export default function RegisterPage() {
   const navigate = useNavigate();
-  const { user, loading: authLoading } = useAuth();
+  const { user, firebaseUser, loading: authLoading } = useAuth();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,14 +23,35 @@ export default function RegisterPage() {
 
   // Redirect based on role after registration or if already logged in
   useEffect(() => {
-    if (user && !authLoading) {
-      if (user.role === 'teacher' || user.role === 'admin') {
-        navigate('/teacher', { replace: true });
-      } else {
-        navigate('/dashboard', { replace: true });
+    async function bootstrapDefaultUser() {
+      if (!firebaseUser || authLoading) return;
+      // If Firestore user doc not present yet, call backend to create default profile
+      if (!user) {
+        try {
+          const created = await AuthAPI.me();
+          if (created.role === 'teacher' || created.role === 'admin') {
+            navigate('/teacher', { replace: true });
+          } else {
+            navigate('/student', { replace: true });
+          }
+          return;
+        } catch (err: any) {
+          console.error('Failed to initialize default user:', err);
+          // Fall through; user listener may catch up later
+        }
+      }
+      // If user already exists, navigate based on role
+      if (user) {
+        if (user.role === 'teacher' || user.role === 'admin') {
+          navigate('/teacher', { replace: true });
+        } else {
+          navigate('/student', { replace: true });
+        }
       }
     }
-  }, [user, authLoading, navigate]);
+
+    bootstrapDefaultUser();
+  }, [firebaseUser, user, authLoading, navigate]);
 
   // Show loading while checking auth state
   if (authLoading) {
