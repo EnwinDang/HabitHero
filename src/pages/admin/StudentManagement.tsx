@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Trash2, GraduationCap, Loader2, Mail, Shield, Coins, UserPlus, X } from 'lucide-react';
+import { Search, Trash2, GraduationCap, Loader2, Mail, Shield, Coins, UserPlus, X, Trophy } from 'lucide-react';
 import { UsersAPI } from '../../api/users.api';
 import { db } from '../../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -12,6 +12,7 @@ const StudentManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newStudent, setNewStudent] = useState({ displayName: '', email: '' });
+  const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
 
   const loadStudents = async (): Promise<void> => {
     setLoading(true);
@@ -35,15 +36,11 @@ const StudentManagement: React.FC = () => {
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await addDoc(collection(db, 'users'), {
+      await UsersAPI.create({
         displayName: newStudent.displayName,
         email: newStudent.email,
-        role: 'student',
-        status: 'active',
-        createdAt: serverTimestamp(),
-        stats: { hp: 100, gold: 0, level: 1, xp: 0 },
-        settings: { theme: 'light', language: 'nl', notificationsEnabled: true }
-      });
+        role: 'student'
+      } as any);
 
       await addDoc(collection(db, 'logs'), {
         action: `New Student Added: ${newStudent.displayName}`,
@@ -55,8 +52,10 @@ const StudentManagement: React.FC = () => {
       setIsModalOpen(false);
       setNewStudent({ displayName: '', email: '' });
       loadStudents();
-    } catch (err) {
+      alert("Student account created. Default password: ehbleerkracht.123");
+    } catch (err: any) {
       console.error("Fout bij toevoegen student:", err);
+      alert("Failed to create student: " + err.message);
     }
   };
 
@@ -135,7 +134,8 @@ const StudentManagement: React.FC = () => {
           {filteredStudents.map((student) => (
             <div
               key={student.uid}
-              className="bg-white border border-violet-100 p-5 rounded-[2rem] flex items-center justify-between hover:border-violet-300 hover:shadow-md transition-all group"
+              onClick={() => setSelectedStudent(student)}
+              className="bg-white border border-violet-100 p-5 rounded-[2rem] flex items-center justify-between hover:border-violet-300 hover:shadow-md transition-all group cursor-pointer"
             >
               <div className="flex items-center gap-6">
                 <div className="relative">
@@ -165,13 +165,13 @@ const StudentManagement: React.FC = () => {
                     <div className="flex items-center gap-1.5 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100">
                       <Shield size={12} className="text-emerald-500" />
                       <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
-                        {(student.stats as any)?.hp ?? 100} HP
+                        {student.stats?.hp ?? 100} HP
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 bg-amber-50 px-3 py-1 rounded-lg border border-amber-100">
                       <Coins size={12} className="text-amber-500" />
                       <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">
-                        {(student.stats as any)?.gold ?? 0} GOLD
+                        {student.stats?.gold ?? 0} GOLD
                       </span>
                     </div>
                   </div>
@@ -246,6 +246,62 @@ const StudentManagement: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {selectedStudent && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl animate-in zoom-in duration-200">
+            <div className="flex justify-between items-start mb-8">
+              <div className="w-20 h-20 bg-violet-100 rounded-3xl flex items-center justify-center text-violet-600 font-black text-2xl">
+                {selectedStudent.displayName?.substring(0,2).toUpperCase()}
+              </div>
+              <button onClick={() => setSelectedStudent(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                <X size={24} className="text-slate-400" />
+              </button>
+            </div>
+
+            <h2 className="text-2xl font-black text-slate-900 mb-1">{selectedStudent.displayName}</h2>
+            <p className="text-slate-400 font-medium mb-8">Level {selectedStudent.stats?.level || 1} Hero</p>
+
+            {/* Progress Bar voor XP */}
+            <div className="mb-8">
+              <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                <span>Experience</span>
+                <span>{selectedStudent.stats?.xp || 0} / 100 XP</span>
+              </div>
+              <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-violet-500 rounded-full transition-all duration-1000" 
+                  style={{ width: `${Math.min((selectedStudent.stats?.xp || 0), 100)}%` }}
+                ></div>
+              </div>
+            </div>
+
+            {/* Grid met alle Stats */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-emerald-50 p-5 rounded-[2rem] border border-emerald-100">
+                <Shield className="text-emerald-500 mb-2" size={20} />
+                <p className="text-[10px] font-bold text-emerald-600/60 uppercase tracking-widest">Health Points</p>
+                <p className="text-xl font-black text-emerald-700">{selectedStudent.stats?.hp || 100}</p>
+              </div>
+              <div className="bg-amber-50 p-5 rounded-[2rem] border border-amber-100">
+                <Coins className="text-amber-500 mb-2" size={20} />
+                <p className="text-[10px] font-bold text-amber-600/60 uppercase tracking-widest">Gold Balance</p>
+                <p className="text-xl font-black text-amber-700">{selectedStudent.stats?.gold || 0}</p>
+              </div>
+              <div className="bg-blue-50 p-5 rounded-[2rem] border border-blue-100">
+                <Shield className="text-blue-500 mb-2" size={20} />
+                <p className="text-[10px] font-bold text-blue-600/60 uppercase tracking-widest">Streak</p>
+                <p className="text-xl font-black text-blue-700">{selectedStudent.stats?.streak || 0}</p>
+              </div>
+              <div className="bg-purple-50 p-5 rounded-[2rem] border border-purple-100">
+                <Trophy className="text-purple-500 mb-2" size={20} />
+                <p className="text-[10px] font-bold text-purple-600/60 uppercase tracking-widest">Gems</p>
+                <p className="text-xl font-black text-purple-700">{selectedStudent.stats?.gems || 0}</p>
+              </div>
+            </div>
           </div>
         </div>
       )}

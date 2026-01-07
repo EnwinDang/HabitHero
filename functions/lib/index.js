@@ -1167,6 +1167,45 @@ app.get("/reroll-rules/bonus-system", async (req, res) => {
 });
 // ============ USERS ============
 /**
+ * POST /users
+ * Maakeen nieuwe gebruiker aan in Auth en Firestore
+ */
+app.post("/users", requireAuth, async (req, res) => {
+    try {
+        // Check if the requester is an admin
+        const requesterSnap = await db.collection("users").doc(req.user.uid).get();
+        if (!requesterSnap.exists || requesterSnap.data()?.role !== 'admin') {
+            return res.status(403).json({ error: "Forbidden: Only admins can create users" });
+        }
+        const { email, displayName, role } = req.body;
+        const defaultPassword = "ehbleerkracht.123";
+        //Maak de gebruiker aan in Firebase Authentication
+        const userRecord = await admin.auth().createUser({
+            email,
+            password: defaultPassword,
+            displayName,
+        });
+        //Sla de aanvullende gegevens op in Firestore
+        const userData = {
+            uid: userRecord.uid,
+            email,
+            displayName,
+            role: role || 'student',
+            status: 'active',
+            mustChangePassword: true, //Gebruiker moet wachtwoord wijzigen bij eerste login
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            settings: { theme: 'light', language: 'nl', notificationsEnabled: true }
+        };
+        await admin.firestore().collection("users").doc(userRecord.uid).set(userData);
+        return res.status(201).json(userData);
+    }
+    catch (e) {
+        console.error("Error creating user:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
  * GET /users/{uid}
  */
 app.get("/users/:uid", async (req, res) => {

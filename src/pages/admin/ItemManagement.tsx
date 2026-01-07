@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ItemsAPI } from "../../api/items.api";
 import { AchievementsAPI } from "../../api/achievements.api";
-import { Sword, Dog, Gift, Trophy, Plus, Loader2, Trash2, Edit2 } from 'lucide-react';
+import { LootboxesAPI } from "../../api/lootboxes.api";
+import { Sword, Dog, Gift, Trophy, Plus, Loader2, Trash2, Edit2, Eye, EyeOff } from 'lucide-react';
 import AddItemModal from './AddItemModal';
 
 const ItemManagement: React.FC = () => {
@@ -22,60 +23,46 @@ const ItemManagement: React.FC = () => {
           ItemsAPI.list({ collection: "items_armor" }),
           ItemsAPI.list({ collection: "items_arcane" })
         ]);
-
-        setData([
-          ...(weaponsRes.data || []),
-          ...(armorRes.data || []),
-          ...(arcaneRes.data || [])
-        ]);
+        setData([...(weaponsRes.data || []), ...(armorRes.data || []), ...(arcaneRes.data || [])]);
       } else if (activeTab === 'pets') {
         const [normalPetsRes, arcanePetsRes] = await Promise.all([
           ItemsAPI.list({ collection: "items_pets" }),
           ItemsAPI.list({ collection: "pets_arcane" })
         ]);
-
-        setData([
-          ...(normalPetsRes.data || []),
-          ...(arcanePetsRes.data || [])
-        ]);
+        setData([...(normalPetsRes.data || []), ...(arcanePetsRes.data || [])]);
       } else if (activeTab === 'lootboxes') {
-        const [standardRes, tweaksRes] = await Promise.all([
-          ItemsAPI.list({ collection: "lootboxes" }),
-          ItemsAPI.list({ collection: "lootboxesArcaneTweaks" })
-        ]);
-
-        setData([
-          ...(standardRes.data || []),
-          ...(tweaksRes.data || [])
-        ]);
+        const response = await LootboxesAPI.list();
+        setData(Array.isArray(response) ? response : []);
       } else if (activeTab === 'achievements') {
         const response = await AchievementsAPI.list();
         const finalData = Array.isArray(response) ? response : (response as any).data || [];
         setData(finalData);
       }
     } catch (e: any) {
-      const errorMsg = e?.message || "Failed to load items";
-      console.error(e);
-      setError(errorMsg);
+      setError(e?.message || "Failed to load data");
       setData([]);
     }
     setLoading(false);
   };
 
-  const getCollectionForItem = (itemId: string, itemData: any) => {
-    if (activeTab === 'achievements') return "achievements";
-    if (activeTab === 'pets') return itemData.element === 'arcane' || itemData.arcaneBonus ? "pets_arcane" : "items_pets";
-    if (activeTab === 'lootboxes') return itemData.arcaneBonus ? "lootboxesArcaneTweaks" : "lootboxes";
-    if (itemId.includes('weapon')) return "items_weapons";
-    if (itemId.includes('armor')) return "items_armor";
-    return "items_arcane";
+  const handleToggleLootboxStatus = async (lootbox: any) => {
+    try {
+      const newStatus = lootbox.enable === false; 
+      await LootboxesAPI.patch(lootbox.lootboxId, { enable: newStatus });
+      await fetchData();
+    } catch (e) {
+      console.error("Toggle failed", e);
+    }
   };
 
   const handleDelete = async (itemId: string, itemData: any) => {
-    if (!window.confirm(`Weet je zeker dat je "${itemData.title || itemData.name || itemId}" wilt verwijderen?`)) return;
+    if (!window.confirm(`Weet je zeker dat je wilt verwijderen?`)) return;
     try {
-      const collection = getCollectionForItem(itemId, itemData);
-      await ItemsAPI.delete(itemId, collection);
+      if (activeTab === 'lootboxes') {
+        await LootboxesAPI.delete(itemId);
+      } else {
+        await ItemsAPI.delete(itemId, activeTab);
+      }
       await fetchData();
     } catch (error) {
       console.error(error);
@@ -83,9 +70,8 @@ const ItemManagement: React.FC = () => {
   };
 
   const handleEdit = (item: any) => {
-    const itemId = item.itemId || item.achievementId || item.id;
-    const collection = getCollectionForItem(itemId, item);
-    setEditingItem({ item, collection });
+    const itemId = item.lootboxId || item.itemId || item.id || item.achievementId;
+    setEditingItem({ item, collection: activeTab });
     setIsModalOpen(true);
   };
 
@@ -120,25 +106,14 @@ const ItemManagement: React.FC = () => {
         <div className="flex justify-center p-20">
           <Loader2 className="animate-spin text-violet-500" size={40} />
         </div>
-      ) : error ? (
-        <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-8 text-center">
-          <p className="text-rose-700 font-semibold mb-4">⚠️ {error}</p>
-          <p className="text-rose-600 text-sm mb-6">Make sure you're logged in as an admin</p>
-          <button 
-            onClick={fetchData}
-            className="px-6 py-3 bg-rose-500 text-white rounded-xl hover:bg-rose-600 transition-all font-semibold"
-          >
-            🔄 Retry Loading
-          </button>
-        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {data.map((item: any, index: number) => {
-            const uniqueId = item.itemId || item.achievementId || item.id || `item-${index}`;
-            const itemKey = `${activeTab}-${uniqueId}-${index}`;
+            const uniqueId = item.lootboxId || item.id || item.itemId || item.achievementId || `item-${index}`;
+            const displayName = item.name || item.title || uniqueId.replace(/_/g, ' ');
 
             return (
-              <div key={itemKey} className="bg-white p-6 rounded-[2rem] border border-violet-100 shadow-sm hover:shadow-md transition-all flex flex-col h-full group">
+              <div key={`${activeTab}-${uniqueId}`} className={`bg-white p-6 rounded-[2rem] border border-violet-100 shadow-sm hover:shadow-md transition-all flex flex-col h-full group ${item.enable === false ? 'opacity-60 grayscale-[0.5]' : ''}`}>
                 <div className="flex justify-between items-start mb-4">
                   <div className="w-12 h-12 bg-violet-50 rounded-2xl flex items-center justify-center text-violet-500">
                     {activeTab === 'items' && <Sword size={24} />}
@@ -147,33 +122,33 @@ const ItemManagement: React.FC = () => {
                     {activeTab === 'achievements' && <Trophy size={24} />}
                   </div>
                   <div className="flex items-center gap-1">
-                    <button 
-                      onClick={() => handleEdit(item)}
-                      className="p-2 text-slate-300 hover:text-violet-600 hover:bg-violet-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
-                    >
+                    {activeTab === 'lootboxes' && (
+                      <button onClick={() => handleToggleLootboxStatus(item)} className="p-2 text-slate-400 hover:text-violet-600 transition-all">
+                        {item.enable === false ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    )}
+                    <button onClick={() => handleEdit(item)} className="p-2 text-slate-300 hover:text-violet-600 transition-all opacity-0 group-hover:opacity-100">
                       <Edit2 size={16} />
                     </button>
-                    <button 
-                      onClick={() => handleDelete(uniqueId, item)}
-                      className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"
-                    >
+                    <button onClick={() => handleDelete(uniqueId, item)} className="p-2 text-slate-300 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100">
                       <Trash2 size={16} />
                     </button>
-                    <div className={`w-2 h-2 rounded-full ml-1 ${item.isActive || item.enabled || item.reward ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
+                    <div className={`w-2 h-2 rounded-full ml-1 ${item.enable !== false ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
                   </div>
                 </div>
 
-                <h3 className="font-bold text-lg text-slate-900 leading-tight">
-                  {item.title || item.name || item.id || "Unnamed"}
+                <h3 className="font-bold text-lg text-slate-900 leading-tight capitalize">
+                  {displayName}
                 </h3>
                 
                 <p className="text-[10px] font-black text-violet-400 uppercase tracking-tighter mb-2">
                   {uniqueId}
                 </p>
 
-                {(item.passive || item.description || item.condition?.description) && (
+                {/* Beschrijving wordt alleen getoond bij Achievements */}
+                {activeTab === 'achievements' && item.description && (
                   <p className="text-xs text-slate-500 mb-4 line-clamp-3 italic">
-                    {item.passive || item.description || item.condition?.description}
+                    {item.description}
                   </p>
                 )}
 
@@ -183,19 +158,9 @@ const ItemManagement: React.FC = () => {
                       {item.rarity}
                     </span>
                   )}
-                  {item.element && (
-                    <span className="text-[10px] font-black px-2 py-1 rounded bg-blue-50 text-blue-500 uppercase">
-                      {item.element}
-                    </span>
-                  )}
-                  {item.sellValue && (
+                  {(item.priceGold || item.price) && (
                     <span className="text-[10px] font-black px-2 py-1 rounded bg-amber-50 text-amber-600 uppercase">
-                      {item.sellValue} Gold
-                    </span>
-                  )}
-                  {item.reward?.gold && (
-                    <span className="text-[10px] font-black px-2 py-1 rounded bg-emerald-50 text-emerald-600 uppercase">
-                      Reward: {item.reward.gold}G
+                      {item.priceGold || item.price} Gold
                     </span>
                   )}
                 </div>
@@ -203,12 +168,9 @@ const ItemManagement: React.FC = () => {
             );
           })}
           
-          <button 
-            onClick={() => { setEditingItem(null); setIsModalOpen(true); }}
-            className="border-2 border-dashed border-violet-200 rounded-[2rem] flex flex-col items-center justify-center p-8 text-violet-300 hover:border-violet-400 hover:text-violet-400 transition-all min-h-[200px]"
-          >
+          <button onClick={() => { setEditingItem(null); setIsModalOpen(true); }} className="border-2 border-dashed border-violet-200 rounded-[2rem] flex flex-col items-center justify-center p-8 text-violet-300 hover:border-violet-400 transition-all min-h-[200px]">
             <Plus size={32} />
-            <span className="font-bold mt-2 uppercase text-sm tracking-widest">Add New</span>
+            <span className="font-bold mt-2 uppercase text-sm tracking-widest">Add New {activeTab.slice(0, -1)}</span>
           </button>
         </div>
       )}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Save } from 'lucide-react';
 import { ItemsAPI } from '../../api/items.api';
 import { AchievementsAPI } from '../../api/achievements.api';
+import { LootboxesAPI } from '../../api/lootboxes.api';
 
 interface AddItemModalProps {
   isOpen: boolean;
@@ -20,9 +21,9 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onSuccess,
     collection: 'items_weapons',
     goldReward: 100,
     category: 'difficulty',
-    element: 'none',
-    sellValue: 0,
-    passive: ''
+    priceGold: 0,
+    petChance: 0.1,
+    enable: true
   });
 
   useEffect(() => {
@@ -31,14 +32,14 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onSuccess,
       setFormData({
         name: item.name || '',
         title: item.title || '',
-        description: item.description || item.condition?.description || '',
+        description: item.description || (item.condition?.description) || '',
         rarity: item.rarity || 'common',
         collection: editData.collection || 'items_weapons',
         goldReward: item.reward?.gold || 100,
         category: item.category || 'difficulty',
-        element: item.element || 'none',
-        sellValue: item.sellValue || 0,
-        passive: item.passive || ''
+        priceGold: item.priceGold || 0,
+        petChance: item.petChance || 0,
+        enable: item.enable !== undefined ? item.enable : true
       });
     } else {
       setFormData({
@@ -49,9 +50,9 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onSuccess,
         collection: activeTab === 'items' ? 'items_weapons' : (activeTab === 'pets' ? 'items_pets' : 'lootboxes'),
         goldReward: 100,
         category: 'difficulty',
-        element: 'none',
-        sellValue: 0,
-        passive: ''
+        priceGold: 0,
+        petChance: 0.1,
+        enable: true
       });
     }
   }, [editData, isOpen, activeTab]);
@@ -61,7 +62,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onSuccess,
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const itemId = editData?.item?.itemId || editData?.item?.achievementId || editData?.item?.id;
+      const id = editData?.item?.lootboxId || editData?.item?.itemId || editData?.item?.achievementId || editData?.item?.id;
 
       if (activeTab === 'achievements') {
         const data = {
@@ -70,21 +71,30 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onSuccess,
           category: formData.category,
           reward: { gold: formData.goldReward, xp: formData.goldReward * 1.5 }
         };
-        if (editData && itemId) {
-          await AchievementsAPI.replace(itemId, data as any);
+        if (editData && id) {
+          await AchievementsAPI.replace(id, data as any);
         } else {
           await AchievementsAPI.create(data as any);
+        }
+      } else if (activeTab === 'lootboxes') {
+        const data = {
+          name: formData.name,
+          priceGold: formData.priceGold,
+          petChance: formData.petChance,
+          enable: formData.enable
+        };
+        if (editData && id) {
+          await LootboxesAPI.replace(id, data as any);
+        } else {
+          await LootboxesAPI.create(data as any);
         }
       } else {
         const data = {
           name: formData.name,
-          rarity: formData.rarity,
-          element: formData.element !== 'none' ? formData.element : undefined,
-          sellValue: formData.sellValue,
-          passive: formData.passive
+          rarity: formData.rarity
         };
-        if (editData && itemId) {
-          await ItemsAPI.replace(itemId, data as any, formData.collection);
+        if (editData && id) {
+          await ItemsAPI.replace(id, data as any, formData.collection);
         } else {
           await ItemsAPI.create(data as any, formData.collection);
         }
@@ -117,6 +127,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onSuccess,
                   <input required className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
                     value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} />
                 </div>
+                {/* Beschrijving veld alleen zichtbaar voor Achievements */}
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Description</label>
                   <textarea className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
@@ -135,6 +146,33 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onSuccess,
                   </div>
                 </div>
               </>
+            ) : activeTab === 'lootboxes' ? (
+              <>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Lootbox Name</label>
+                  <input required className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
+                    value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Price (Gold)</label>
+                    <input type="number" className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
+                      value={formData.priceGold} onChange={(e) => setFormData({...formData, priceGold: parseInt(e.target.value)})} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Pet Chance</label>
+                    <input type="number" step="0.01" className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
+                      value={formData.petChance} onChange={(e) => setFormData({...formData, petChance: parseFloat(e.target.value)})} />
+                  </div>
+                </div>
+                <div className="flex flex-col">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Status</label>
+                  <button type="button" onClick={() => setFormData({...formData, enable: !formData.enable})}
+                    className={`h-[50px] rounded-2xl font-bold transition-all border ${formData.enable ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
+                    {formData.enable ? 'ACTIVE' : 'DISABLED'}
+                  </button>
+                </div>
+              </>
             ) : (
               <>
                 <div>
@@ -142,13 +180,6 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onSuccess,
                   <input required className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
                     value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
                 </div>
-                {activeTab === 'pets' && (
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Passive Ability</label>
-                    <input className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
-                      value={formData.passive} onChange={(e) => setFormData({...formData, passive: e.target.value})} />
-                  </div>
-                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Rarity</label>
@@ -168,27 +199,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onSuccess,
                       <option value="items_armor">Armor</option>
                       <option value="items_arcane">Arcane</option>
                       <option value="items_pets">Pets</option>
-                      <option value="pets_arcane">Pets Arcane</option>
                     </select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Element</label>
-                    <select className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none" 
-                      value={formData.element} onChange={(e) => setFormData({...formData, element: e.target.value})}>
-                      <option value="none">None</option>
-                      <option value="fire">Fire</option>
-                      <option value="water">Water</option>
-                      <option value="earth">Earth</option>
-                      <option value="air">Air</option>
-                      <option value="arcane">Arcane</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Sell Value</label>
-                    <input type="number" className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
-                      value={formData.sellValue} onChange={(e) => setFormData({...formData, sellValue: parseInt(e.target.value)})} />
                   </div>
                 </div>
               </>

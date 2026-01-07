@@ -4,7 +4,7 @@ export interface Lootbox {
   lootboxId: string;
   name: string;
   description?: string | null;
-  isActive: boolean;
+  enable: boolean;
 }
 
 export interface LootboxOpenResult {

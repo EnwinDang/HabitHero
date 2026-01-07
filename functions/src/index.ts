@@ -2,6 +2,7 @@ import * as admin from "firebase-admin";
 import { onRequest } from "firebase-functions/v1/https";
 import express from "express";
 import cors from "cors";
+import { a } from "framer-motion/dist/types.d-a9pt5qxk";
 
 // Initialize Admin SDK
 admin.initializeApp();
@@ -444,10 +445,24 @@ app.post("/achievements", requireAuth, async (req, res) => {
 app.get("/users/:uid/inventory", requireAuth, async (req, res) => {
   try {
     const { uid } = req.params;
+    
+    // Get user document for gold and other data
     const userSnap = await db.collection("users").doc(uid).get();
-
     const user = userSnap.data() || {};
-    return res.status(200).json(user.inventory || {});
+    
+    // Get inventory subcollection
+    const inventorySnapshot = await db.collection("users").doc(uid).collection("inventory").get();
+    const items = inventorySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Normalize the inventory structure
+    const normalizedInventory = {
+      gold: user.stats?.gold || user.inventory?.gold || 0,
+      items: items,
+      materials: user.inventory?.materials || {},
+      lastUpdatedAt: user.inventory?.lastUpdatedAt || Date.now()
+    };
+    
+    return res.status(200).json(normalizedInventory);
   } catch (e: any) {
     console.error("Error in GET /users/:uid/inventory:", e);
     return res.status(500).json({ error: e?.message });
@@ -1290,6 +1305,52 @@ app.get("/reroll-rules/bonus-system", async (req, res) => {
 // ============ USERS ============
 
 /**
+ * POST /users
+ * Maakeen nieuwe gebruiker aan in Auth en Firestore
+ */
+app.post("/users", requireAuth, async (req, res) => {
+  try {
+    // Check if the requester is an admin
+    const requesterSnap = await db.collection("users").doc((req as any).user.uid).get();
+    if (!requesterSnap.exists || requesterSnap.data()?.role !== 'admin') {
+      return res.status(403).json({ error: "Forbidden: Only admins can create users" });
+    }
+
+    const { email, displayName, role } = req.body;
+    const defaultPassword = "ehbleerkracht.123";
+
+    //Maak de gebruiker aan in Firebase Authentication
+    const userRecord = await admin.auth().createUser({
+      email,
+      password: defaultPassword,
+      displayName,
+    });
+
+    //Sla de aanvullende gegevens op in Firestore
+    const userData = {
+      uid: userRecord.uid,
+      email,
+      displayName,
+      role: role || 'student',
+      status: 'active',
+      mustChangePassword: true, //Gebruiker moet wachtwoord wijzigen bij eerste login
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      stats: { hp: 100, gold: 0, level: 1, xp: 0 },
+      inventory: { gold: 0, items: [], materials: {} },
+      settings: { theme: 'light', language: 'nl', notificationsEnabled: true }
+    };
+
+    await admin.firestore().collection("users").doc(userRecord.uid).set(userData);
+
+    return res.status(201).json(userData);
+  } catch (e: any) {
+    console.error("Error creating user:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
  * GET /users/{uid}
  */
 app.get("/users/:uid", async (req, res) => {
@@ -1323,7 +1384,6 @@ app.patch("/users/:uid", requireAuth, async (req, res) => {
       ...req.body,
       updatedAt: Date.now(),
     });
-
     const updated = await userRef.get();
     return res.status(200).json({
       uid: updated.id,
