@@ -1,156 +1,175 @@
 import { useState, useMemo, useEffect } from "react";
-import { WorldsAPI } from "@/api/worlds.api";
 import { useNavigate } from "react-router-dom";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
-import { Map, Lock, ArrowLeft, Flame, Snowflake, Mountain, Zap, HelpCircle } from "lucide-react";
+import { Map, Lock, ArrowLeft, Flame, Snowflake, Mountain, Zap } from "lucide-react";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/firebase";
 import type { Realm, Level } from "@/models/worldMap.model";
-import type { BattleEnemy } from "@/models/battle.model";
+import type { World } from "@/models/world.model";
+import type { Monster } from "@/models/monster.model";
 
 export default function WorldMapPage() {
     const { darkMode, accentColor } = useTheme();
     const { user } = useRealtimeUser();
     const theme = getThemeClasses(darkMode, accentColor);
     const navigate = useNavigate();
-    const [selectedRealm, setSelectedRealm] = useState<Realm | null>(null);
+    const [selectedWorld, setSelectedWorld] = useState<{ world: World; monsters: Monster[] } | null>(null);
 
     const userLevel = user?.stats?.level || 1;
     const userXP = user?.stats?.xp || 0;
     const worldMapProgress = user?.worldMapProgress || {};
 
-    // State for API data
-    const [apiWorlds, setApiWorlds] = useState<any[]>([]);
-    const [realmStages, setRealmStages] = useState<Record<string, any[]>>({});
+    // State for Firestore data
+    const [worlds, setWorlds] = useState<World[]>([]);
+    const [worldMonsters, setWorldMonsters] = useState<Record<string, Monster[]>>({});
     const [loading, setLoading] = useState(true);
 
-    // Fetch worlds on mount
+    // Fetch worlds and monsters from Firestore
     useEffect(() => {
-        const fetchWorlds = async () => {
+        const fetchData = async () => {
             try {
-                const worlds = await WorldsAPI.list();
-                setApiWorlds(worlds);
-
-                // Fetch stages for all worlds
-                const stagesPromises = worlds.map(w => WorldsAPI.stages(w.worldId).then(stages => ({ worldId: w.worldId, stages })));
-                const stagesResults = await Promise.all(stagesPromises);
-
-                const newStages: Record<string, any[]> = {};
-                stagesResults.forEach(r => {
-                    newStages[r.worldId] = r.stages;
+                console.log("🔍 Fetching worlds from Firestore...");
+                
+                // Get all worlds (try without isActive filter first)
+                const worldsSnapshot = await getDocs(collection(db, "worlds"));
+                console.log("📦 Found", worldsSnapshot.docs.length, "worlds total");
+                
+                const worldsData = worldsSnapshot.docs.map(doc => {
+                    const data = doc.data();
+                    console.log("🌍 World:", doc.id, data);
+                    return {
+                        worldId: doc.id,
+                        ...data
+                    } as World;
                 });
-                setRealmStages(newStages);
+                
+                setWorlds(worldsData);
+
+                // Get monsters for each world in parallel
+                const monstersPromises = worldsData.map(async (world) => {
+                    console.log("🔍 Fetching monsters for world:", world.worldId);
+                    const monstersSnapshot = await getDocs(
+                        query(
+                            collection(db, "monsters"),
+                            where("worldId", "==", world.worldId)
+                        )
+                    );
+                    console.log("👹 Found", monstersSnapshot.docs.length, "monsters for", world.name);
+                    
+                    const monsters = monstersSnapshot.docs.map(doc => ({
+                        monsterId: doc.id,
+                        ...doc.data()
+                    } as Monster));
+                    
+                    return { worldId: world.worldId, monsters };
+                });
+
+                const monstersResults = await Promise.all(monstersPromises);
+                const monstersMap: Record<string, Monster[]> = {};
+                monstersResults.forEach(({ worldId, monsters }) => {
+                    monstersMap[worldId] = monsters;
+                });
+                
+                setWorldMonsters(monstersMap);
+                console.log("✅ Loaded", worldsData.length, "worlds with monsters");
 
             } catch (error) {
-                console.error("Failed to fetch worlds:", error);
+                console.error("❌ Failed to fetch worlds/monsters:", error);
             } finally {
                 setLoading(false);
             }
         };
-        fetchWorlds();
+        fetchData();
     }, []);
 
-    // Helper to determine realm visuals based on name/id/element
-    const getRealmTheme = (name: string, id: string, apiElement?: string): Partial<Realm> => {
-        const lowerName = name.toLowerCase();
-        const lowerId = id.toLowerCase();
-        const element = (apiElement || "").toLowerCase();
-
-        if (element === "fire" || lowerName.includes("fire") || lowerId.includes("fire") || lowerName.includes("inferno")) {
-            return {
-                element: "fire",
-                color: "#ff5722",
-                gradient: "linear-gradient(135deg, #ff5722 0%, #ff9800 100%)",
-                icon: <Flame size={48} />,
-            };
-        } else if (element === "ice" || lowerName.includes("ice") || lowerId.includes("ice") || lowerName.includes("frost") || lowerName.includes("glacier")) {
-            return {
-                element: "ice",
-                color: "#00bcd4",
-                gradient: "linear-gradient(135deg, #00bcd4 0%, #03a9f4 100%)",
-                icon: <Snowflake size={48} />,
-            };
-        } else if (element === "earth" || lowerName.includes("earth") || lowerId.includes("earth") || lowerName.includes("stone") || lowerName.includes("cave")) {
-            return {
-                element: "earth",
-                color: "#795548",
-                gradient: "linear-gradient(135deg, #795548 0%, #8d6e63 100%)",
-                icon: <Mountain size={48} />,
-            };
-        } else if (element === "lightning" || lowerName.includes("storm") || lowerId.includes("lightning") || lowerName.includes("thunder")) {
-            return {
-                element: "lightning",
-                color: "#9c27b0",
-                gradient: "linear-gradient(135deg, #9c27b0 0%, #673ab7 100%)",
-                icon: <Zap size={48} />,
-            };
+    // World element themes - 4 elements
+    const getWorldTheme = (element: string) => {
+        const elem = element.toLowerCase();
+        
+        switch(elem) {
+            case "fire":
+                return {
+                    element: "fire",
+                    color: "#ff5722",
+                    gradient: "linear-gradient(135deg, #ff5722 0%, #ff9800 100%)",
+                    icon: <Flame size={48} />,
+                };
+            case "water":
+                return {
+                    element: "water",
+                    color: "#00bcd4",
+                    gradient: "linear-gradient(135deg, #00bcd4 0%, #03a9f4 100%)",
+                    icon: <Snowflake size={48} />,
+                };
+            case "earth":
+                return {
+                    element: "earth",
+                    color: "#795548",
+                    gradient: "linear-gradient(135deg, #795548 0%, #8d6e63 100%)",
+                    icon: <Mountain size={48} />,
+                };
+            case "wind":
+                return {
+                    element: "wind",
+                    color: "#9c27b0",
+                    gradient: "linear-gradient(135deg, #9c27b0 0%, #673ab7 100%)",
+                    icon: <Zap size={48} />,
+                };
+            default:
+                return {
+                    element: "fire",
+                    color: "#ff5722",
+                    gradient: "linear-gradient(135deg, #ff5722 0%, #ff9800 100%)",
+                    icon: <Flame size={48} />,
+                };
         }
-
-        // Default / Unknown
-        return {
-            element: "earth",
-            color: "#607d8b",
-            gradient: "linear-gradient(135deg, #607d8b 0%, #90a4ae 100%)",
-            icon: <HelpCircle size={48} />,
-        };
     };
 
-    // Build realms from API data
-    const realms: Realm[] = useMemo(() => {
-        return apiWorlds.map((world) => {
-            const themeProps = getRealmTheme(world.name, world.worldId || world.id || "", world.element || world.elementType);
-            const completedLevels = worldMapProgress[world.worldId]?.completedLevels || [];
-
-            const stages = realmStages[world.worldId] || [];
-            const levelCount = stages.length > 0 ? stages.length : 10;
-
-            const levels: Level[] = Array.from({ length: levelCount }, (_, i) => {
-                const stageData = stages[i];
-                const levelId = stageData?.stage || i + 1;
-                const name = stageData?.name || `Level ${levelId}`;
-
-                // Unlock logic
-                // Simple: Unlocked if previous is completed OR it's level 1
-                // We also check userXP based limit as before if desired, or just rely on completion.
-                // Let's stick to the previous XP logic combined with sequential unlock.
-                // Level 1: always unlocked.
-                // Level N: unlocked if Level N-1 completed.
-                // AND XP requirement.
-
-                const isCompleted = completedLevels.includes(levelId);
-                const prevCompleted = levelId === 1 || completedLevels.includes(levelId - 1);
-
-                // Required XP: Level * 100 (example)
-                // const xpReq = (levelId - 1) * 100;
-                // const xpUnlocked = userXP >= xpReq;
-
-                return {
-                    id: levelId,
-                    name: name,
-                    completed: isCompleted,
-                    locked: !prevCompleted // || !xpUnlocked
-                };
-            });
-
-            return {
-                id: world.worldId,
-                name: world.name,
-                description: world.description || "Explore this mysterious realm",
-                requiredLevel: 1, // Could come from API
-                levels,
-                ...themeProps,
-            } as Realm;
-        });
-    }, [apiWorlds, realmStages, worldMapProgress, userXP]);
-
     // Calculate total progress
-    const totalLevels = realms.reduce((sum, realm) => sum + realm.levels.length, 0);
-    const completedLevels = realms.reduce(
-        (sum, realm) => sum + realm.levels.filter((l) => l.completed).length,
-        0
-    );
+    const totalMonsters = Object.values(worldMonsters).reduce((sum, monsters) => sum + monsters.length, 0);
+    const unlockedMonsters = Object.values(worldMonsters).reduce((sum, monsters) => {
+        // First 2 monsters of each world are unlocked
+        return sum + Math.min(monsters.length, 2);
+    }, 0);
 
-    // Realm Overview Component
-    const RealmOverview = () => (
+    if (loading) {
+        return (
+            <div className={`min-h-screen ${theme.bg} flex items-center justify-center`}>
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-16 w-16 border-b-2 mx-auto mb-4" style={{ borderColor: accentColor }}></div>
+                    <p className={theme.textSubtle}>Loading worlds...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Show message if no worlds
+    if (worlds.length === 0) {
+        return (
+            <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
+                <main className="p-8">
+                    <div className="mb-8">
+                        <h2 className={`text-4xl font-bold ${theme.text} flex items-center gap-3`}>
+                            <Map size={40} style={{ color: accentColor }} />
+                            World Map
+                        </h2>
+                    </div>
+                    <div className={`${theme.card} rounded-2xl p-12 text-center`}>
+                        <p className={`${theme.textSubtle} text-lg mb-4`}>No worlds found in database</p>
+                        <p className={`${theme.textSubtle} text-sm`}>
+                            Add worlds to the 'worlds' collection in Firestore with fields: name, elementType, isActive
+                        </p>
+                    </div>
+                </main>
+            </div>
+        );
+    }
+
+    console.log("🎨 Rendering", worlds.length, "worlds");
+
+    // World Overview Component
+    const WorldOverview = () => (
         <div>
             {/* Header */}
             <div className="mb-8">
@@ -159,7 +178,7 @@ export default function WorldMapPage() {
                     World Map
                 </h2>
                 <p className={`${theme.textSubtle} mt-2`}>
-                    Choose your adventure across different realms
+                    Explore 4 elemental worlds and defeat their monsters
                 </p>
             </div>
 
@@ -182,85 +201,70 @@ export default function WorldMapPage() {
                     </div>
                     <div className="text-right">
                         <p className="text-2xl font-bold" style={{ color: accentColor }}>
-                            {completedLevels}
+                            {unlockedMonsters} / {totalMonsters}
                         </p>
-                        <p className={`${theme.textSubtle} text-sm`}>Levels Completed</p>
+                        <p className={`${theme.textSubtle} text-sm`}>Monsters Unlocked</p>
                     </div>
                 </div>
             </div>
 
-            {/* Realms Grid */}
+            {/* Worlds Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                {realms.map((realm) => {
-                    const isLocked = userLevel < realm.requiredLevel;
-                    const progress = realm.levels.filter((l) => l.completed).length;
-                    const total = realm.levels.length;
+                {worlds.map((world) => {
+                    const monsters = worldMonsters[world.worldId] || [];
+                    // Get element from world data
+                    const element = (world as any).element || world.elementType || "fire";
+                    const worldTheme = getWorldTheme(element);
+                    const unlockedCount = Math.min(monsters.length, 2);
 
                     return (
                         <div
-                            key={realm.id}
-                            className={`rounded-2xl p-6 transition-all ${isLocked ? "opacity-60" : "hover:scale-[1.02] cursor-pointer"
-                                }`}
+                            key={world.worldId}
+                            className="rounded-2xl p-6 transition-all hover:scale-[1.02] cursor-pointer"
                             style={{
-                                background: isLocked
-                                    ? darkMode
-                                        ? "rgba(88, 28, 135, 0.3)"
-                                        : "rgba(139, 92, 246, 0.1)"
-                                    : realm.gradient,
+                                background: worldTheme.gradient,
                                 borderWidth: "1px",
                                 borderStyle: "solid",
-                                borderColor: isLocked
-                                    ? `${accentColor}30`
-                                    : `${realm.color}80`,
+                                borderColor: `${worldTheme.color}80`,
                             }}
+                            onClick={() => setSelectedWorld({ world, monsters })}
                         >
-                            {isLocked ? (
-                                <div className="text-center py-8">
-                                    <Lock size={48} className="mx-auto mb-4 text-white/60" />
-                                    <h3 className="text-2xl font-bold text-white mb-2">Locked</h3>
-                                    <p className="text-white/80">Requires Level {realm.requiredLevel}</p>
+                            <div className="flex items-start gap-4 mb-4">\
+                                <div className="text-white text-5xl">{worldTheme.icon}</div>
+                                <div className="flex-1">
+                                    <h3 className="text-2xl font-bold text-white mb-1">
+                                        {world.name}
+                                    </h3>
+                                    <p className="text-sm text-white/90 capitalize">
+                                        {worldTheme.element} Element
+                                    </p>
                                 </div>
-                            ) : (
-                                <>
-                                    <div className="flex items-start gap-4 mb-4">
-                                        <div className="text-5xl">{realm.icon}</div>
-                                        <div className="flex-1">
-                                            <h3 className="text-2xl font-bold text-white mb-1">
-                                                {realm.name}
-                                            </h3>
-                                            <p className="text-sm text-white/90 capitalize">
-                                                {realm.element} Element
-                                            </p>
-                                        </div>
-                                    </div>
+                            </div>
 
-                                    <p className="text-white/90 mb-4 text-sm">{realm.description}</p>
+                            <p className="text-white/90 mb-4 text-sm">{world.description || "A mysterious elemental realm"}</p>
 
-                                    {/* Progress Bar */}
-                                    <div className="mb-4">
-                                        <div className="flex justify-between text-sm text-white/90 mb-2">
-                                            <span>Progress</span>
-                                            <span>
-                                                {progress} / {total}
-                                            </span>
-                                        </div>
-                                        <div className="w-full bg-white/20 rounded-full h-2">
-                                            <div
-                                                className="bg-white rounded-full h-2 transition-all"
-                                                style={{ width: `${(progress / total) * 100}%` }}
-                                            />
-                                        </div>
-                                    </div>
+                            {/* Monsters Progress */}
+                            <div className="mb-4">
+                                <div className="flex justify-between text-sm text-white/90 mb-2">
+                                    <span>Monsters</span>
+                                    <span>
+                                        {unlockedCount} / {monsters.length} Unlocked
+                                    </span>
+                                </div>
+                                <div className="w-full bg-white/20 rounded-full h-2">
+                                    <div
+                                        className="bg-white rounded-full h-2 transition-all"
+                                        style={{ width: `${monsters.length > 0 ? (unlockedCount / monsters.length) * 100 : 0}%` }}
+                                    />
+                                </div>
+                            </div>
 
-                                    {/* Enter Button */}
-                                    <button
-                                        onClick={() => setSelectedRealm(realm)}
-                                        className="w-full py-3 px-4 rounded-xl font-semibold transition-all bg-white/20 hover:bg-white/30 text-white border border-white/30"
-                                    >
-                                        Enter World
-                                    </button>
-                                </>
-                            )}
+                            {/* Enter Button */}
+                            <button
+                                className="w-full py-3 px-4 rounded-xl font-semibold transition-all bg-white/20 hover:bg-white/30 text-white border border-white/30"
+                            >
+                                Enter World
+                            </button>
                         </div>
                     );
                 })}
@@ -276,25 +280,25 @@ export default function WorldMapPage() {
                 }}
             >
                 <h3 className={`text-xl font-bold ${theme.text} mb-4`}>
-                    Tips for World Exploration
+                    World Exploration Tips
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className={`${theme.inputBg} rounded-xl p-4 text-center`}>
-                        <div className="text-3xl mb-2">💪</div>
+                        <div className="text-3xl mb-2">🔓</div>
                         <p className={`${theme.textSubtle} text-sm`}>
-                            Gain XP to unlock new levels (100 XP per level)
+                            First 2 monsters unlocked in each world
                         </p>
                     </div>
                     <div className={`${theme.inputBg} rounded-xl p-4 text-center`}>
                         <div className="text-3xl mb-2">🔥</div>
                         <p className={`${theme.textSubtle} text-sm`}>
-                            Each realm has unique elemental enemies
+                            Each world has unique elemental monsters
                         </p>
                     </div>
                     <div className={`${theme.inputBg} rounded-xl p-4 text-center`}>
-                        <div className="text-3xl mb-2">🎁</div>
+                        <div className="text-3xl mb-2">⚔️</div>
                         <p className={`${theme.textSubtle} text-sm`}>
-                            Earn rewards for completing realms
+                            Defeat monsters to unlock rewards
                         </p>
                     </div>
                 </div>
@@ -302,23 +306,21 @@ export default function WorldMapPage() {
         </div>
     );
 
-    // Realm Detail Component
-    const RealmDetail = ({ realm }: { realm: Realm }) => {
-        const completedCount = realm.levels.filter((l) => l.completed).length;
-        const nextLevel = realm.levels.find((l) => !l.completed && !l.locked);
+    // World Detail Component
+    const WorldDetail = ({ world, monsters }: { world: World; monsters: Monster[] }) => {
+        const element = (world as any).element || world.elementType || "fire";
+        const worldTheme = getWorldTheme(element);
 
-        // Navigate to battle with enemy data
-        const startBattle = (level: Level) => {
-            if (level.locked || level.completed) return;
+        // Navigate to battle with monster data
+        const startBattle = (monster: Monster, isLocked: boolean) => {
+            if (isLocked) return;
 
-            // Navigate to battle page with world and level info
-            // The BattlePage will handle fetching the actual enemy via CombatAPI
             navigate('/dashboard/battle', {
                 state: {
-                    worldId: realm.id,
-                    levelId: level.id,
-                    levelName: level.name,
-                    element: realm.element // Pass element for initial theming
+                    worldId: world.worldId,
+                    monsterId: monster.monsterId,
+                    monsterName: monster.name,
+                    element: worldTheme.element
                 }
             });
         };
@@ -327,7 +329,7 @@ export default function WorldMapPage() {
             <div>
                 {/* Back Button */}
                 <button
-                    onClick={() => setSelectedRealm(null)}
+                    onClick={() => setSelectedWorld(null)}
                     className={`mb-6 flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${theme.text}`}
                     style={{
                         borderWidth: "1px",
@@ -340,82 +342,77 @@ export default function WorldMapPage() {
                     Back to Map
                 </button>
 
-                {/* Realm Header */}
+                {/* World Header */}
                 <div className="mb-8">
                     <div className="flex items-center gap-4 mb-2">
-                        <span className="text-5xl">{realm.icon}</span>
+                        <span className="text-white text-5xl">{worldTheme.icon}</span>
                         <div>
-                            <h2 className={`text-4xl font-bold ${theme.text}`}>{realm.name}</h2>
-                            <p className={`${theme.textSubtle} mt-1`}>{realm.description}</p>
+                            <h2 className={`text-4xl font-bold ${theme.text}`}>{world.name}</h2>
+                            <p className={`${theme.textSubtle} mt-1 capitalize`}>{worldTheme.element} Element World</p>
                         </div>
-                    </div>
-                    <div className="flex items-center gap-2 mt-4">
-                        <span className="text-2xl">{realm.icon}</span>
-                        <span className={`${theme.text} font-medium`}>
-                            Recommended Level {realm.requiredLevel}
-                        </span>
                     </div>
                 </div>
 
-                {/* Levels Grid */}
+                {/* Monsters Grid */}
                 <div
                     className="rounded-3xl p-8 mb-8"
                     style={{
-                        background: realm.gradient,
+                        background: worldTheme.gradient,
                     }}
                 >
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                        {realm.levels.map((level) => (
-                            <div
-                                key={level.id}
-                                onClick={() => !level.locked && !level.completed && startBattle(level)}
-                                className={`rounded-2xl p-6 text-center transition-all ${level.locked
-                                    ? "bg-black/30"
-                                    : level.completed
-                                        ? "bg-white/90"
-                                        : "bg-white/70 hover:bg-white/80 cursor-pointer hover:scale-105"
+                    <h3 className="text-2xl font-bold text-white mb-6">Monsters</h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                        {monsters.map((monster, index) => {
+                            const isUnlocked = index < 2; // First 2 unlocked
+                            const tierEmojis = {
+                                normal: "⚔️",
+                                elite: "🗡️",
+                                miniBoss: "👹",
+                                boss: "💀"
+                            };
+                            
+                            return (
+                                <div
+                                    key={monster.monsterId}
+                                    onClick={() => startBattle(monster, !isUnlocked)}
+                                    className={`rounded-2xl p-6 text-center transition-all ${
+                                        !isUnlocked
+                                            ? "bg-black/40 cursor-not-allowed"
+                                            : "bg-white/80 hover:bg-white/90 cursor-pointer hover:scale-105"
                                     }`}
-                                style={{
-                                    borderWidth: "2px",
-                                    borderStyle: "solid",
-                                    borderColor: level.locked
-                                        ? "rgba(255,255,255,0.2)"
-                                        : level.completed
-                                            ? "rgba(34,197,94,0.5)"
-                                            : "rgba(255,255,255,0.3)",
-                                }}
-                            >
-                                {level.locked ? (
-                                    <>
-                                        <Lock size={32} className="mx-auto mb-2 text-white/60" />
-                                        <p className="text-sm text-white/60 font-medium">Locked</p>
-                                        <p className="text-xs text-white/40 mt-1">
-                                            {level.id * 100} XP needed
-                                        </p>
-                                    </>
-                                ) : (
-                                    <>
-                                        <div className="relative mb-2">
-                                            <span className="text-3xl">⚔️</span>
-                                            {level.completed && (
-                                                <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
-                                                    <span className="text-white text-xs">✓</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <p
-                                            className="text-sm font-bold mb-1"
-                                            style={{ color: realm.color }}
-                                        >
-                                            {level.id}
-                                        </p>
-                                        <p className="text-xs text-gray-700 font-medium">
-                                            {level.name}
-                                        </p>
-                                    </>
-                                )}
-                            </div>
-                        ))}
+                                    style={{
+                                        borderWidth: "2px",
+                                        borderStyle: "solid",
+                                        borderColor: !isUnlocked
+                                            ? "rgba(255,255,255,0.2)"
+                                            : "rgba(255,255,255,0.4)",
+                                    }}
+                                >
+                                    {!isUnlocked ? (
+                                        <>
+                                            <Lock size={32} className="mx-auto mb-2 text-white/60" />
+                                            <p className="text-sm text-white/60 font-medium">Locked</p>
+                                            <p className="text-xs text-white/40 mt-1">Defeat previous</p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="relative mb-2">
+                                                <span className="text-3xl">{tierEmojis[monster.tier] || "⚔️"}</span>
+                                            </div>
+                                            <p
+                                                className="text-sm font-bold mb-1"
+                                                style={{ color: worldTheme.color }}
+                                            >
+                                                {monster.name}
+                                            </p>
+                                            <p className="text-xs text-gray-600 font-medium capitalize">
+                                                {monster.tier}
+                                            </p>
+                                        </>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -429,11 +426,9 @@ export default function WorldMapPage() {
                             borderStyle: "solid",
                         }}
                     >
-                        <h3 className={`${theme.textSubtle} text-sm mb-2`}>
-                            Levels Completed
-                        </h3>
+                        <h3 className={`${theme.textSubtle} text-sm mb-2`}>Total Monsters</h3>
                         <p className="text-3xl font-bold" style={{ color: accentColor }}>
-                            {completedCount} / {realm.levels.length}
+                            {monsters.length}
                         </p>
                     </div>
 
@@ -447,9 +442,9 @@ export default function WorldMapPage() {
                     >
                         <h3 className={`${theme.textSubtle} text-sm mb-2`}>Element Type</h3>
                         <div className="flex items-center gap-2">
-                            <span className="text-2xl">{realm.icon}</span>
-                            <p className="text-xl font-bold capitalize" style={{ color: realm.color }}>
-                                {realm.element}
+                            <span className="text-2xl text-white">{worldTheme.icon}</span>
+                            <p className="text-xl font-bold capitalize" style={{ color: worldTheme.color }}>
+                                {worldTheme.element}
                             </p>
                         </div>
                     </div>
@@ -462,9 +457,9 @@ export default function WorldMapPage() {
                             borderStyle: "solid",
                         }}
                     >
-                        <h3 className={`${theme.textSubtle} text-sm mb-2`}>Next Challenge</h3>
+                        <h3 className={`${theme.textSubtle} text-sm mb-2`}>Unlocked</h3>
                         <p className="text-xl font-bold" style={{ color: accentColor }}>
-                            {nextLevel ? `Level ${nextLevel.id}` : "All Complete!"}
+                            {Math.min(monsters.length, 2)} / {monsters.length}
                         </p>
                     </div>
                 </div>
@@ -475,10 +470,10 @@ export default function WorldMapPage() {
     return (
         <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
             <main className="p-8 overflow-y-auto">
-                {selectedRealm ? (
-                    <RealmDetail realm={selectedRealm} />
+                {selectedWorld ? (
+                    <WorldDetail world={selectedWorld.world} monsters={selectedWorld.monsters} />
                 ) : (
-                    <RealmOverview />
+                    <WorldOverview />
                 )}
             </main>
         </div>
