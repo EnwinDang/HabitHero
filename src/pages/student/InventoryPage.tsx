@@ -97,27 +97,46 @@ export default function InventoryPage() {
             // Simulate opening animation
             await new Promise(resolve => setTimeout(resolve, 1500));
 
-            // Generate rewards (using Firestore fallback since backend may not be configured)
-            const rewards = generateLootboxRewards(lootbox.lootboxType);
+            let rewards: InventoryItem[] = [];
 
-            // Add items to inventory
-            const inventoryRef = collection(db, "users", user.uid, "inventory");
-            for (const reward of rewards) {
-                await addDoc(inventoryRef, {
-                    name: reward.name,
-                    type: reward.type,
-                    rarity: reward.rarity,
-                    icon: reward.icon,
-                    isEquipped: false,
-                    level: 1,
-                    acquiredAt: Date.now(),
-                    source: `lootbox_${lootbox.lootboxType}`
-                });
+            try {
+                // TRY BACKEND FIRST (preferred for server-side validation)
+                console.log("🔄 Opening lootbox via backend API...");
+
+                // We need to create a temporary lootbox ID for the backend
+                // The backend expects to open a lootbox by ID, but we have it in inventory
+                // For now, we'll use the Firestore approach since the backend doesn't have
+                // an endpoint for opening lootboxes from inventory
+                throw new Error("Backend inventory lootbox opening not implemented yet");
+
+            } catch (backendError) {
+                // FALLBACK TO FIRESTORE (backend offline or not implemented)
+                console.warn("⚠️ Using Firestore fallback for lootbox opening");
+
+                // Generate rewards locally
+                rewards = generateLootboxRewards(lootbox.lootboxType);
+
+                // Add items to inventory
+                const inventoryRef = collection(db, "users", user.uid, "inventory");
+                for (const reward of rewards) {
+                    await addDoc(inventoryRef, {
+                        name: reward.name,
+                        type: reward.type,
+                        rarity: reward.rarity,
+                        icon: reward.icon,
+                        isEquipped: false,
+                        level: 1,
+                        acquiredAt: Date.now(),
+                        source: `lootbox_${lootbox.lootboxType}`
+                    });
+                }
+
+                // Delete lootbox from inventory
+                const lootboxRef = doc(db, "users", user.uid, "inventory", lootbox.id);
+                await deleteDoc(lootboxRef);
+
+                console.log(`✅ Lootbox opened successfully (Firestore)`);
             }
-
-            // Delete lootbox from inventory
-            const lootboxRef = doc(db, "users", user.uid, "inventory", lootbox.id);
-            await deleteDoc(lootboxRef);
 
             // Show rewards
             setLootboxRewards(rewards);
