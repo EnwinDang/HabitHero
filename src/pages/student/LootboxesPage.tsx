@@ -1,9 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
-import { db } from "@/firebase";
-import { collection, addDoc, updateDoc, doc } from "firebase/firestore";
 import { LootboxesAPI } from "@/api/lootboxes.api";
+import type { Lootbox } from "@/models/lootbox.model";
 import {
     Gift,
     Box,
@@ -15,9 +14,6 @@ import {
     Lock,
     Check
 } from "lucide-react";
-
-// Lootbox types
-type LootboxType = "common" | "rare" | "epic";
 
 // Item types (matching InventoryPage)
 type ItemType = "weapon" | "armor" | "accessory" | "potion";
@@ -32,73 +28,71 @@ interface GeneratedItem {
     level: number;
 }
 
-interface Lootbox {
-    id: string;
-    type: LootboxType;
-    name: string;
-    price: number;
-    quality: string;
-    rewards: string[];
-    gradient: string;
-    glowColor: string;
-}
-
-const lootboxes: Lootbox[] = [
-    {
-        id: "common",
-        type: "common",
-        name: "Common Chest",
-        price: 100,
-        quality: "Common Quality",
-        rewards: [
-            "+1 random item",
-            "+Slightly extra chance",
-            "+Common quality loot",
-        ],
-        gradient: "from-purple-600 to-purple-700",
-        glowColor: "#9333ea" // Exact purple from Level card
-    },
-    {
-        id: "rare",
-        type: "rare",
-        name: "Rare Chest",
-        price: 250,
-        quality: "Rare Quality",
-        rewards: [
-            "+2 random items",
-            "+Higher rarity chance",
-            "+Guaranteed rare+ item",
-        ],
-        gradient: "from-orange-600 to-orange-700",
-        glowColor: "#ea580c" // Exact orange from XP Progress card
-    },
-    {
-        id: "epic",
-        type: "epic",
-        name: "Epic Chest",
-        price: 500,
-        quality: "Epic Quality",
-        rewards: [
-            "+3 random items",
-            "+Higher rarity chance",
-            "+Guaranteed epic+ item",
-        ],
-        gradient: "from-yellow-600 to-yellow-700",
-        glowColor: "#ca8a04" // Exact gold from Gold card
+// Helper to get lootbox display properties
+const getLootboxDisplayProps = (lootbox: Lootbox) => {
+    const id = lootbox.lootboxId.toLowerCase();
+    if (id.includes("common")) {
+        return {
+            gradient: "from-purple-600 to-purple-700",
+            glowColor: "#9333ea",
+            quality: "Common Quality",
+            rewards: ["+1 random item", "+Slightly extra chance", "+Common quality loot"]
+        };
+    } else if (id.includes("rare") || id.includes("advanced")) {
+        return {
+            gradient: "from-orange-600 to-orange-700",
+            glowColor: "#ea580c",
+            quality: "Rare Quality",
+            rewards: ["+2 random items", "+Higher rarity chance", "+Guaranteed rare+ item"]
+        };
+    } else if (id.includes("epic") || id.includes("legendary")) {
+        return {
+            gradient: "from-yellow-600 to-yellow-700",
+            glowColor: "#ca8a04",
+            quality: "Epic Quality",
+            rewards: ["+3 random items", "+Higher rarity chance", "+Guaranteed epic+ item"]
+        };
     }
-];
+    // Default
+    return {
+        gradient: "from-gray-600 to-gray-700",
+        glowColor: "#6b7280",
+        quality: "Standard Quality",
+        rewards: ["+Random items", "+Various rewards"]
+    };
+};
 
 export default function LootboxesPage() {
     const { user, loading: userLoading } = useRealtimeUser();
     const { darkMode, accentColor } = useTheme();
     const theme = getThemeClasses(darkMode, accentColor);
 
+    // Lootboxes from API
+    const [lootboxes, setLootboxes] = useState<Lootbox[]>([]);
+    const [lootboxesLoading, setLootboxesLoading] = useState(true);
+    
     // Opening state
     const [openingBox, setOpeningBox] = useState<string | null>(null);
     const [revealedItems, setRevealedItems] = useState<GeneratedItem[]>([]);
     const [showRewards, setShowRewards] = useState(false);
 
-    if (userLoading) {
+    // Load lootboxes from API
+    useEffect(() => {
+        const loadLootboxes = async () => {
+            try {
+                setLootboxesLoading(true);
+                const data = await LootboxesAPI.list();
+                setLootboxes(data);
+            } catch (err) {
+                console.error("Failed to load lootboxes:", err);
+            } finally {
+                setLootboxesLoading(false);
+            }
+        };
+        loadLootboxes();
+    }, []);
+
+    if (userLoading || lootboxesLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <div className="text-xl animate-pulse" style={theme.accentText}>
@@ -113,108 +107,46 @@ export default function LootboxesPage() {
     }
 
     const handleOpenChest = async (lootbox: Lootbox) => {
-        if (user.stats.gold < lootbox.price) {
-            alert("Niet genoeg goud!");
+        const price = (lootbox as any).priceGold || 100;
+        if (user.stats.gold < price) {
+            alert("Not enough gold!");
             return;
         }
 
-        setOpeningBox(lootbox.id);
+        setOpeningBox(lootbox.lootboxId);
 
         try {
             // Simulate opening animation
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            try {
-                // TRY BACKEND FIRST (preferred for security)
-                console.log("🔄 Trying backend API for lootbox opening...");
-                const result = await LootboxesAPI.open(lootbox.id);
+            // Use backend API
+            console.log("🔄 Opening lootbox via API...", lootbox.lootboxId);
+            const result = await LootboxesAPI.open(lootbox.lootboxId);
 
-                // Backend success - use backend result
-                const items = result.results.map((r: any) => ({
-                    name: r.name || "Unknown Item",
-                    type: r.type || "misc",
-                    rarity: r.rarity || "common",
-                    icon: r.icon || "📦",
-                    isEquipped: false,
-                    level: 1,
-                    ...(r.stats ? { stats: r.stats } : {})
-                }));
+            // Map backend results to display format
+            const items = result.results.map((r: any) => ({
+                name: r.name || r.itemId || "Unknown Item",
+                type: (r.type || r.itemType || "misc") as ItemType,
+                rarity: (r.rarity || "common") as ItemRarity,
+                icon: r.icon || "📦",
+                isEquipped: false,
+                level: 1,
+                ...(r.stats ? { stats: r.stats } : {})
+            }));
 
-                console.log("✅ Backend lootbox opening successful");
-                setRevealedItems(items);
-                setShowRewards(true);
-                setOpeningBox(null);
-
-            } catch (backendError) {
-                // FALLBACK TO FIRESTORE (backend offline)
-                console.warn("⚠️ Backend offline, using Firestore fallback:", backendError);
-
-                // Generate items locally
-                const items = generateRewards(lootbox.type);
-
-                // Deduct gold from user
-                const userRef = doc(db, "users", user.uid);
-                await updateDoc(userRef, {
-                    "stats.gold": user.stats.gold - lootbox.price
-                });
-
-                // Add items to inventory
-                const inventoryRef = collection(db, "users", user.uid, "inventory");
-                for (const item of items) {
-                    await addDoc(inventoryRef, {
-                        ...item,
-                        acquiredAt: Date.now(),
-                        source: `lootbox_${lootbox.type}`
-                    });
-                }
-
-                console.log(`✅ Firestore fallback successful`);
-                console.log(`   Lootbox: ${lootbox.name}`);
-                console.log(`   Gold deducted: -${lootbox.price}`);
-                console.log(`   Items added: ${items.length}`);
-
-                setRevealedItems(items);
-                setShowRewards(true);
-                setOpeningBox(null);
-            }
+            console.log("✅ Lootbox opened successfully:", result);
+            setRevealedItems(items);
+            setShowRewards(true);
+            setOpeningBox(null);
 
             // User data will auto-refresh via useRealtimeUser hook
         } catch (error: any) {
             console.error("Failed to open lootbox:", error);
-            alert(error.message || "Er is iets misgegaan bij het openen.");
+            alert(error.message || "Failed to open lootbox. Please try again.");
             setOpeningBox(null);
         }
     };
 
-const generateRewards = (type: LootboxType): GeneratedItem[] => {
-    const commonItems: GeneratedItem[] = [
-        { name: "Iron Sword", type: "weapon", rarity: "common", icon: "⚔️", isEquipped: false, level: 1 },
-        { name: "Wooden Shield", type: "armor", rarity: "common", icon: "🛡️", isEquipped: false, level: 1 },
-        { name: "Health Potion", type: "potion", rarity: "common", icon: "🧪", isEquipped: false, level: 1 }
-    ];
-    const rareItems: GeneratedItem[] = [
-        { name: "Steel Sword", type: "weapon", rarity: "rare", icon: "⚔️", isEquipped: false, level: 1 },
-        { name: "Iron Shield", type: "armor", rarity: "rare", icon: "🛡️", isEquipped: false, level: 1 },
-        { name: "Mana Potion", type: "potion", rarity: "rare", icon: "🧪", isEquipped: false, level: 1 },
-        { name: "Lucky Charm", type: "accessory", rarity: "rare", icon: "📿", isEquipped: false, level: 1 }
-    ];
-    const epicItems: GeneratedItem[] = [
-        { name: "Legendary Blade", type: "weapon", rarity: "epic", icon: "⚔️", isEquipped: false, level: 1 },
-        { name: "Dragon Shield", type: "armor", rarity: "epic", icon: "🛡️", isEquipped: false, level: 1 },
-        { name: "Elixir of Life", type: "potion", rarity: "epic", icon: "🧪", isEquipped: false, level: 1 },
-        { name: "Crown of Wisdom", type: "accessory", rarity: "epic", icon: "👑", isEquipped: false, level: 1 }
-    ];
-
-    const getRandom = (arr: GeneratedItem[]) => arr[Math.floor(Math.random() * arr.length)];
-
-    if (type === "common") {
-        return [getRandom(commonItems)];
-    } else if (type === "rare") {
-        return [getRandom(rareItems), getRandom(commonItems)];
-    } else {
-        return [getRandom(epicItems), getRandom(rareItems), getRandom(commonItems)];
-    }
-};
 
     return (
         <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
@@ -232,19 +164,31 @@ const generateRewards = (type: LootboxType): GeneratedItem[] => {
                 </div>
 
                 {/* Lootbox Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    {lootboxes.map((lootbox) => (
-                        <LootboxCard
-                            key={lootbox.id}
-                            lootbox={lootbox}
-                            onOpen={() => handleOpenChest(lootbox)}
-                            isOpening={openingBox === lootbox.id}
-                            darkMode={darkMode}
-                            accentColor={accentColor}
-                            theme={theme}
-                        />
-                    ))}
-                </div>
+                {lootboxes.length === 0 ? (
+                    <div className={`${theme.card} rounded-2xl p-8 text-center`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+                        <p className={theme.textMuted}>No lootboxes available. Please add lootboxes in the admin panel.</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        {lootboxes.map((lootbox) => {
+                            const displayProps = getLootboxDisplayProps(lootbox);
+                            const price = (lootbox as any).priceGold || 100;
+                            return (
+                                <LootboxCard
+                                    key={lootbox.lootboxId}
+                                    lootbox={lootbox}
+                                    price={price}
+                                    displayProps={displayProps}
+                                    onOpen={() => handleOpenChest(lootbox)}
+                                    isOpening={openingBox === lootbox.lootboxId}
+                                    darkMode={darkMode}
+                                    accentColor={accentColor}
+                                    theme={theme}
+                                />
+                            );
+                        })}
+                    </div>
+                )}
 
                 {/* How Lootboxes Work */}
                 <div className={`${theme.card} rounded-2xl p-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
@@ -318,6 +262,8 @@ const generateRewards = (type: LootboxType): GeneratedItem[] => {
 /* Lootbox Card Component */
 function LootboxCard({
     lootbox,
+    price,
+    displayProps,
     onOpen,
     isOpening,
     darkMode,
@@ -325,6 +271,8 @@ function LootboxCard({
     theme
 }: {
     lootbox: Lootbox;
+    price: number;
+    displayProps: { gradient: string; glowColor: string; quality: string; rewards: string[] };
     onOpen: () => void;
     isOpening: boolean;
     darkMode: boolean;
@@ -332,16 +280,15 @@ function LootboxCard({
     theme: ReturnType<typeof getThemeClasses>;
 }) {
     const getIcon = () => {
-        switch (lootbox.type) {
-            case "common":
-                return <Box size={48} />;
-            case "rare":
-                return <Gift size={48} />;
-            case "epic":
-                return <Gem size={48} />;
-            default:
-                return <Box size={48} />;
+        const id = lootbox.lootboxId.toLowerCase();
+        if (id.includes("common")) {
+            return <Box size={48} />;
+        } else if (id.includes("rare") || id.includes("advanced")) {
+            return <Gift size={48} />;
+        } else if (id.includes("epic") || id.includes("legendary")) {
+            return <Gem size={48} />;
         }
+        return <Box size={48} />;
     };
 
     return (
@@ -353,31 +300,31 @@ function LootboxCard({
                     backgroundColor: darkMode ? 'rgba(31, 41, 55, 0.8)' : 'rgba(255, 255, 255, 1)',
                     borderWidth: '2px',
                     borderStyle: 'solid',
-                    borderColor: lootbox.glowColor
+                    borderColor: displayProps.glowColor
                 }}
             >
                 {/* Icon */}
                 <div className="text-center mb-4">
-                    <div className={`inline-flex items-center justify-center p-6 rounded-2xl bg-gradient-to-br ${lootbox.gradient} text-white`}>
+                    <div className={`inline-flex items-center justify-center p-6 rounded-2xl bg-gradient-to-br ${displayProps.gradient} text-white`}>
                         {getIcon()}
                     </div>
                 </div>
 
                 {/* Name & Quality */}
                 <h3 className={`text-xl font-bold ${theme.text} text-center mb-1`}>{lootbox.name}</h3>
-                <p className={`text-sm ${theme.textMuted} text-center mb-4`}>{lootbox.quality}</p>
+                <p className={`text-sm ${theme.textMuted} text-center mb-4`}>{displayProps.quality}</p>
 
                 {/* Price */}
                 <div className="flex items-center justify-center gap-2 mb-4">
                     <Coins className="text-yellow-500" size={24} />
-                    <span className="text-xl font-bold text-yellow-500">{lootbox.price}</span>
+                    <span className="text-xl font-bold text-yellow-500">{price}</span>
                 </div>
 
                 {/* Rewards */}
                 <div className="mb-4">
                     <p className={`text-sm font-medium ${theme.text} mb-2`}>Rewards:</p>
                     <ul className="space-y-1">
-                        {lootbox.rewards.map((reward, index) => (
+                        {displayProps.rewards.map((reward, index) => (
                             <li key={index} className={`text-sm ${theme.textMuted}`}>• {reward}</li>
                         ))}
                     </ul>
@@ -388,7 +335,7 @@ function LootboxCard({
                     onClick={onOpen}
                     disabled={isOpening}
                     className={`w-full py-3 rounded-xl font-medium text-white transition-all flex items-center justify-center gap-2 ${isOpening ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
-                    style={{ backgroundColor: lootbox.glowColor }}
+                    style={{ backgroundColor: displayProps.glowColor }}
                 >
                     {isOpening ? (
                         <>

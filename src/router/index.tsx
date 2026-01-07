@@ -35,6 +35,7 @@ import {
   WorldMapPage,
   CoursesPage,
 } from "../pages/student";
+import AutoBattlePage from "../pages/student/AutoBattlePage";
 
 export const AppRoutes = () => {
   return (
@@ -53,6 +54,18 @@ export const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
+      
+      {/* Student Dashboard Battle Route */}
+      <Route
+        path="/dashboard/battle"
+        element={
+          <ProtectedRoute>
+            <StudentLayout />
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<AutoBattlePage />} />
+      </Route>
 
       {/* Admin Routes (Nested in AdminLayout) */}
       <Route

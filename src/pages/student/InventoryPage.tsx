@@ -1,9 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
-import { db, auth } from "@/firebase";
-import { collection, query, onSnapshot, doc, deleteDoc, updateDoc } from "firebase/firestore";
-import { useEffect } from "react";
+import { InventoryAPI } from "@/api/inventory.api";
+import { ItemsAPI } from "@/api/items.api";
 import {
     Package,
     Sword,
@@ -44,29 +43,95 @@ export default function InventoryPage() {
     const theme = getThemeClasses(darkMode, accentColor);
 
     const [items, setItems] = useState<InventoryItem[]>([]);
+    const [equipped, setEquipped] = useState<any>({});
     const [loading, setLoading] = useState(true);
     const [selectedCategory, setSelectedCategory] = useState<string>("all");
-    const [mergeMessage, setMergeMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null); // Feedback state
+    const [mergeMessage, setMergeMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-    // Fetch inventory items from Firebase
-    useEffect(() => {
-        const firebaseUser = auth.currentUser;
-        if (!firebaseUser) return;
-
-        const inventoryRef = collection(db, "users", firebaseUser.uid, "inventory");
-        const q = query(inventoryRef);
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const inventoryItems: InventoryItem[] = [];
-            snapshot.forEach((doc) => {
-                inventoryItems.push({ id: doc.id, ...doc.data() } as InventoryItem);
+    // Fetch inventory from API
+    const loadInventory = useCallback(async () => {
+        if (!user) return;
+        
+        try {
+            setLoading(true);
+            // Get inventory from API
+            const inventory = await InventoryAPI.get();
+            
+            // Get equipped items
+            const equippedData = await InventoryAPI.getEquipped();
+            setEquipped(equippedData || {});
+            
+            // Map inventory items to display format
+            // Items in inventory only have itemId, need to fetch item details
+            const inventoryItemIds = (inventory?.inventory?.items || []).map((item: any) => ({
+                itemId: item.itemId,
+                collection: item.collection,
+                rarity: item.rarity,
+                type: item.type,
+                level: item.level || item.meta?.level || 1,
+                bonus: item.bonus,
+            }));
+            
+            // Group items by collection to batch fetch
+            const itemsByCollection: Record<string, any[]> = {};
+            inventoryItemIds.forEach((invItem: any) => {
+                const collection = invItem.collection || "items_weapons";
+                if (!itemsByCollection[collection]) {
+                    itemsByCollection[collection] = [];
+                }
+                itemsByCollection[collection].push(invItem);
             });
-            setItems(inventoryItems);
+            
+            // Fetch all items from each collection
+            const allItemDetails: Record<string, any> = {};
+            await Promise.all(
+                Object.keys(itemsByCollection).map(async (collection) => {
+                    try {
+                        const response = await ItemsAPI.list({ collection });
+                        const items = response.data || [];
+                        items.forEach((item: any) => {
+                            allItemDetails[item.itemId] = item;
+                        });
+                    } catch (err) {
+                        console.warn(`Failed to fetch items from collection ${collection}:`, err);
+                    }
+                })
+            );
+            
+            // Map inventory items with details
+            const itemsWithDetails = inventoryItemIds.map((invItem: any, index: number) => {
+                const itemDetails = allItemDetails[invItem.itemId];
+                
+                // Check if item is equipped
+                const isEquipped = 
+                    equippedData?.weapon === invItem.itemId ||
+                    Object.values(equippedData?.armor || {}).includes(invItem.itemId) ||
+                    Object.values(equippedData?.pets || {}).includes(invItem.itemId) ||
+                    Object.values(equippedData?.accessoiries || {}).includes(invItem.itemId);
+                
+                return {
+                    id: invItem.itemId || `item_${index}`,
+                    itemId: invItem.itemId,
+                    name: itemDetails?.name || invItem.itemId || "Unknown Item",
+                    type: (itemDetails?.type || itemDetails?.itemType || invItem.type || "misc") as ItemType,
+                    rarity: (invItem.rarity || itemDetails?.rarity || "common") as ItemRarity,
+                    icon: itemDetails?.icon || "📦",
+                    isEquipped: isEquipped,
+                    level: invItem.level || 1,
+                } as InventoryItem;
+            });
+            
+            setItems(itemsWithDetails);
+        } catch (err) {
+            console.error("Failed to load inventory:", err);
+        } finally {
             setLoading(false);
-        });
+        }
+    }, [user]);
 
-        return () => unsubscribe();
-    }, []);
+    useEffect(() => {
+        loadInventory();
+    }, [loadInventory]);
 
     if (userLoading || loading) {
         return (
@@ -82,8 +147,15 @@ export default function InventoryPage() {
         return null;
     }
 
-    // Filter items
-    const equippedItems = items.filter(item => item.isEquipped);
+    // Filter items - get equipped items from equipped state
+    const equippedItemIds = new Set([
+        equipped?.weapon,
+        ...Object.values(equipped?.armor || {}),
+        ...Object.values(equipped?.pets || {}),
+        ...Object.values(equipped?.accessoiries || {}),
+    ].filter(Boolean));
+    
+    const equippedItems = items.filter(item => equippedItemIds.has(item.itemId));
     const filteredItems = selectedCategory === "all"
         ? items
         : items.filter(item => item.type === selectedCategory);
@@ -98,93 +170,82 @@ export default function InventoryPage() {
         }
     };
 
-    // MERGE LOGIC
+    // MERGE LOGIC - Using reroll API endpoint
     const handleMerge = async (targetItem: InventoryItem) => {
         if (!user) return;
 
-        // 1. Find a duplicate (same name, same level, NOT the same ID)
-        const duplicate = items.find(i =>
-            i.name === targetItem.name &&
+        // 1. Find 2 duplicates (same name, same level, NOT the same ID) - need 3 items total for reroll
+        const duplicates = items.filter(i =>
+            i.itemId === targetItem.itemId &&
             i.id !== targetItem.id &&
-            (i.level || 1) === (targetItem.level || 1) // Only merge same levels
+            (i.level || 1) === (targetItem.level || 1)
         );
 
-        if (!duplicate) {
-            setMergeMessage({ type: 'error', text: "No duplicate item found to merge!" });
+        if (duplicates.length < 2) {
+            setMergeMessage({ type: 'error', text: "Need 3 identical items to merge! (including this one)" });
             setTimeout(() => setMergeMessage(null), 3000);
             return;
         }
 
-        const MERGE_COST = 500; // Fixed cost for now
-        if (user.stats.gold < MERGE_COST) {
-            setMergeMessage({ type: 'error', text: `Not enough gold! Need ${MERGE_COST}g` });
-            setTimeout(() => setMergeMessage(null), 3000);
-            return;
-        }
+        const itemIds = [targetItem.itemId, duplicates[0].itemId, duplicates[1].itemId];
 
         try {
-            // Optimistic update / Loading state could be added here
-
-            // 1. Deduct Gold
-            const userRef = doc(db, "users", user.uid);
-            await updateDoc(userRef, {
-                "stats.gold": user.stats.gold - MERGE_COST
+            // Use reroll API endpoint
+            const { apiFetch } = await import("@/api/client");
+            const result = await apiFetch(`/users/${user.uid}/reroll`, {
+                method: "POST",
+                body: JSON.stringify({ itemIds }),
             });
 
-            // 2. Delete the specific duplicate item
-            const duplicateRef = doc(db, "users", user.uid, "inventory", duplicate.id);
-            await deleteDoc(duplicateRef);
-
-            // 3. Upgrade the target item
-            const targetRef = doc(db, "users", user.uid, "inventory", targetItem.id);
-            const newLevel = (targetItem.level || 1) + 1;
-            await updateDoc(targetRef, {
-                level: newLevel,
-                // name: `${targetItem.name} +${newLevel}` // Optional: rename item? Keeping simple for now.
-            });
-
-            setMergeMessage({ type: 'success', text: `Success! Upgraded to Level ${newLevel}!` });
+            const resultItem = result.result || result;
+            const itemName = resultItem.name || resultItem.itemId || 'new item';
+            const upgraded = result.upgraded ? ' (Upgraded!)' : '';
+            
+            setMergeMessage({ type: 'success', text: `Success! Merged items and got ${itemName}${upgraded}!` });
             setTimeout(() => setMergeMessage(null), 3000);
-
-        } catch (error) {
+            
+            // Reload inventory
+            await loadInventory();
+        } catch (error: any) {
             console.error("Merge failed:", error);
-            setMergeMessage({ type: 'error', text: "Merge failed due to an error." });
+            setMergeMessage({ type: 'error', text: error.message || "Merge failed due to an error." });
             setTimeout(() => setMergeMessage(null), 3000);
         }
     };
 
-    // Helper to check if merge is possible for an item
+    // Helper to check if merge is possible for an item (need 3 identical items)
     const canMerge = (item: InventoryItem) => {
-        return items.some(i =>
-            i.name === item.name &&
+        const duplicates = items.filter(i =>
+            i.itemId === item.itemId &&
             i.id !== item.id &&
             (i.level || 1) === (item.level || 1)
         );
+        return duplicates.length >= 2; // Need at least 2 duplicates (3 total including this one)
     };
 
-    // EQUIP LOGIC
+    // EQUIP LOGIC - Using API
     const handleEquip = async (item: InventoryItem) => {
         if (!user) return;
 
         try {
-            // 1. Find currently equipped item of same type
-            const currentEquipped = items.find(i => i.type === item.type && i.isEquipped);
-
-            // 2. Unequip current item if exists
-            if (currentEquipped) {
-                const currentRef = doc(db, "users", user.uid, "inventory", currentEquipped.id);
-                await updateDoc(currentRef, { isEquipped: false });
+            // Determine slot based on item type
+            let slot = "weapon";
+            if (item.type === "armor") {
+                // For armor, we'd need to know which piece, but for now use a default
+                slot = "helmet";
+            } else if (item.type === "accessory") {
+                slot = "accessory1";
             }
 
-            // 3. Equip new item
-            const itemRef = doc(db, "users", user.uid, "inventory", item.id);
-            await updateDoc(itemRef, { isEquipped: true });
-
+            await InventoryAPI.equip(item.itemId, slot);
             setMergeMessage({ type: 'success', text: `Equipped ${item.name}!` });
             setTimeout(() => setMergeMessage(null), 3000);
-        } catch (error) {
+            
+            // Reload inventory to reflect changes
+            await loadInventory();
+        } catch (error: any) {
             console.error("Equip failed:", error);
-            setMergeMessage({ type: 'error', text: "Failed to equip item." });
+            setMergeMessage({ type: 'error', text: error.message || "Failed to equip item." });
             setTimeout(() => setMergeMessage(null), 3000);
         }
     };
@@ -192,12 +253,31 @@ export default function InventoryPage() {
     const handleUnequip = async (item: InventoryItem) => {
         if (!user) return;
         try {
-            const itemRef = doc(db, "users", user.uid, "inventory", item.id);
-            await updateDoc(itemRef, { isEquipped: false });
+            // Determine slot - need to find which slot this item is in
+            let slot = "weapon";
+            if (equipped.weapon === item.itemId) {
+                slot = "weapon";
+            } else if (Object.values(equipped.armor || {}).includes(item.itemId)) {
+                const armorSlot = Object.entries(equipped.armor || {}).find(([_, id]) => id === item.itemId)?.[0];
+                slot = armorSlot || "helmet";
+            } else if (Object.values(equipped.pets || {}).includes(item.itemId)) {
+                const petSlot = Object.entries(equipped.pets || {}).find(([_, id]) => id === item.itemId)?.[0];
+                slot = petSlot || "pet1";
+            } else if (Object.values(equipped.accessoiries || {}).includes(item.itemId)) {
+                const accSlot = Object.entries(equipped.accessoiries || {}).find(([_, id]) => id === item.itemId)?.[0];
+                slot = accSlot || "accessory1";
+            }
+
+            await InventoryAPI.unequip(slot);
             setMergeMessage({ type: 'success', text: `Unequipped ${item.name}` });
             setTimeout(() => setMergeMessage(null), 3000);
-        } catch (error) {
+            
+            // Reload inventory
+            await loadInventory();
+        } catch (error: any) {
             console.error("Unequip failed:", error);
+            setMergeMessage({ type: 'error', text: error.message || "Failed to unequip item." });
+            setTimeout(() => setMergeMessage(null), 3000);
         }
     };
 
