@@ -29,9 +29,17 @@ service cloud.firestore {
       // User can read their own profile
       allow read: if isAuthenticated() && request.auth.uid == uid;
       
-      // User can write their own profile (except role)
-      allow write: if isAuthenticated() && request.auth.uid == uid && 
-                      !('role' in request.resource.data.diff(resource.data).affectedKeys());
+      // Create: user may create own doc but cannot set role
+      allow create: if isAuthenticated() && request.auth.uid == uid &&
+                      !('role' in request.resource.data);
+
+      // Update: user may update own doc but role must remain unchanged
+      allow update: if isAuthenticated() && request.auth.uid == uid &&
+                      resource != null &&
+                      request.resource.data.role == resource.data.role;
+
+      // Delete: user may delete own doc
+      allow delete: if isAuthenticated() && request.auth.uid == uid;
       
       // Role is readable by authenticated users (for rule checks)
       // Role cannot be written by users themselves

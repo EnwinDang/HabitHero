@@ -23,6 +23,54 @@ app.options("*", cors());
 app.use(express.json());
 
 /**
+ * Calculate current level from total XP using Firestore level definitions
+ */
+async function calculateLevelFromXP(totalXP: number): Promise<{
+  level: number;
+  currentXP: number;
+  nextLevelXP: number;
+  rewards?: any;
+}> {
+  try {
+    const levelsSnap = await db.collection("levels").doc("definitions").get();
+    if (!levelsSnap.exists) {
+      console.error("Level definitions not found in Firestore");
+      return { level: 1, currentXP: 0, nextLevelXP: 100 };
+    }
+
+    const levelsData = levelsSnap.data() || {};
+    const levels = levelsData.levels || [];
+
+    let currentLevel = 1;
+    let currentXP = totalXP;
+    let nextLevelXP = 100;
+    let rewards = undefined;
+
+    // Find current level
+    for (let i = 0; i < levels.length; i++) {
+      const levelDef = levels[i];
+      if (totalXP >= levelDef.xpRequiredTotal) {
+        currentLevel = levelDef.level;
+        currentXP = totalXP - levelDef.xpRequiredTotal;
+        
+        // Get next level XP if exists
+        if (i + 1 < levels.length) {
+          nextLevelXP = levels[i + 1].xpRequiredTotal - levelDef.xpRequiredTotal;
+          rewards = levels[i + 1].rewards;
+        }
+      } else {
+        break;
+      }
+    }
+
+    return { level: currentLevel, currentXP, nextLevelXP, rewards };
+  } catch (error) {
+    console.error("Error calculating level from XP:", error);
+    return { level: 1, currentXP: 0, nextLevelXP: 100 };
+  }
+}
+
+/**
  * Auth middleware
  */
 async function requireAuth(
@@ -60,6 +108,10 @@ app.get("/auth/me", requireAuth, async (req, res) => {
     const snap = await userRef.get();
 
     if (!snap.exists) {
+      // Get defaultPlayer template from Firestore
+      const templateSnap = await db.collection("templates").doc("defaultPlayer").get();
+      const defaultPlayer = templateSnap.data()?.player || {};
+
       const newUser = {
         uid,
         email: decoded.email,
@@ -70,16 +122,7 @@ app.get("/auth/me", requireAuth, async (req, res) => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
         lastLoginAt: Date.now(),
-        stats: {
-          level: 1,
-          xp: 0,
-          nextLevelXP: 100,
-          totalXP: 0,
-          gold: 0,
-          gems: 0,
-          streak: 0,
-          maxStreak: 0,
-        },
+        ...defaultPlayer,
         settings: {
           notificationsEnabled: true,
           theme: "dark",
@@ -261,13 +304,28 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
     const user = userSnap.data() || {};
     const task = taskSnap.data() || {};
 
-    const newXP = (user.stats?.xp || 0) + (task.xp || 0);
-    const newGold = (user.stats?.gold || 0) + (task.gold || 0);
+    const oldLevel = user.stats?.level || 1;
+    const newTotalXP = (user.stats?.totalXP || 0) + (task.xp || 0);
+    let newGold = (user.stats?.gold || 0) + (task.gold || 0);
+
+    // Calculate new level from total XP
+    const levelData = await calculateLevelFromXP(newTotalXP);
+    const leveledUp = levelData.level > oldLevel;
+
+    // Add level-up rewards if leveled up
+    let levelUpRewards = undefined;
+    if (leveledUp && levelData.rewards) {
+      newGold += levelData.rewards.gold || 0;
+      levelUpRewards = levelData.rewards;
+    }
 
     const statsUpdate = {
-      "stats.xp": newXP,
+      "stats.level": levelData.level,
+      "stats.xp": levelData.currentXP,
+      "stats.nextLevelXP": levelData.nextLevelXP,
+      "stats.totalXP": newTotalXP,
       "stats.gold": newGold,
-      "stats.totalXP": (user.stats?.totalXP || 0) + (task.xp || 0),
+      updatedAt: Date.now(),
     };
 
     await userRef.update(statsUpdate);
@@ -282,6 +340,11 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
         xp: task.xp,
         gold: task.gold,
       },
+      leveledUp,
+      newLevel: levelData.level,
+      currentXP: levelData.currentXP,
+      nextLevelXP: levelData.nextLevelXP,
+      levelUpRewards,
     });
   } catch (e: any) {
     console.error("Error in POST /tasks/:taskId/complete:", e);
@@ -407,6 +470,819 @@ app.patch("/users/:uid/inventory", requireAuth, async (req, res) => {
     return res.status(200).json(req.body);
   } catch (e: any) {
     console.error("Error in PATCH /users/:uid/inventory:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+// ============ EQUIPMENT ============
+
+/**
+ * POST /users/{uid}/equip
+ * Equip an item from inventory
+ */
+app.post("/users/:uid/equip", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { itemId, slot } = req.body; // slot: 'weapon', 'helmet', 'chestplate', 'pants', 'boots', 'pet1', 'pet2', 'accessory1', 'accessory2'
+
+    if (!itemId || !slot) {
+      return res.status(400).json({ error: "itemId and slot are required" });
+    }
+
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userSnap.data() as any;
+    const inventory = user.inventory || {};
+    const equipped = inventory.equiped || { armor: {}, pets: {}, accessoiries: {}, weapon: "" };
+    const items = inventory.inventory?.items || [];
+
+    // Check if item exists in inventory
+    const itemInInventory = items.find((i: any) => i.itemId === itemId);
+    if (!itemInInventory) {
+      return res.status(404).json({ error: "Item not found in inventory" });
+    }
+
+    // Validate slot based on item type
+    const itemType = itemInInventory.type || itemInInventory.itemType;
+    const validSlots: Record<string, string[]> = {
+      weapon: ["weapon"],
+      helmet: ["helmet"],
+      chestplate: ["chestplate"],
+      pants: ["pants"],
+      boots: ["boots"],
+      pet: ["pet1", "pet2"],
+      accessory: ["accessory1", "accessory2"],
+    };
+
+    const allowedSlots = validSlots[itemType] || [];
+    if (!allowedSlots.includes(slot)) {
+      return res.status(400).json({ 
+        error: `Item type '${itemType}' cannot be equipped in slot '${slot}'`,
+        allowedSlots 
+      });
+    }
+
+    // Unequip current item in slot if exists
+    let unequippedItem = null;
+    if (slot === "weapon") {
+      if (equipped.weapon) {
+        unequippedItem = equipped.weapon;
+        // Add back to inventory
+        items.push({ itemId: equipped.weapon });
+      }
+      equipped.weapon = itemId;
+    } else if (["helmet", "chestplate", "pants", "boots"].includes(slot)) {
+      if (equipped.armor[slot]) {
+        unequippedItem = equipped.armor[slot];
+        items.push({ itemId: equipped.armor[slot] });
+      }
+      equipped.armor[slot] = itemId;
+    } else if (slot === "pet1" || slot === "pet2") {
+      if (equipped.pets[slot]) {
+        unequippedItem = equipped.pets[slot];
+        items.push({ itemId: equipped.pets[slot] });
+      }
+      equipped.pets[slot] = itemId;
+    } else if (slot === "accessory1" || slot === "accessory2") {
+      if (equipped.accessoiries[slot]) {
+        unequippedItem = equipped.accessoiries[slot];
+        items.push({ itemId: equipped.accessoiries[slot] });
+      }
+      equipped.accessoiries[slot] = itemId;
+    }
+
+    // Remove equipped item from inventory
+    const updatedItems = items.filter((i: any) => i.itemId !== itemId);
+
+    await userRef.update({
+      "inventory.equiped": equipped,
+      "inventory.inventory.items": updatedItems,
+      updatedAt: Date.now(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      equipped: itemId,
+      slot,
+      unequipped: unequippedItem,
+      equiped: equipped,
+    });
+  } catch (e: any) {
+    console.error("Error in POST /users/:uid/equip:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * POST /users/{uid}/unequip
+ * Unequip an item and move it back to inventory
+ */
+app.post("/users/:uid/unequip", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { slot } = req.body; // slot: 'weapon', 'helmet', 'chestplate', 'pants', 'boots', 'pet1', 'pet2', 'accessory1', 'accessory2'
+
+    if (!slot) {
+      return res.status(400).json({ error: "slot is required" });
+    }
+
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userSnap.data() as any;
+    const inventory = user.inventory || {};
+    const equipped = inventory.equiped || { armor: {}, pets: {}, accessoiries: {}, weapon: "" };
+    const items = inventory.inventory?.items || [];
+
+    let unequippedItemId = null;
+
+    // Find and remove item from equipped slot
+    if (slot === "weapon") {
+      if (!equipped.weapon) {
+        return res.status(400).json({ error: "No weapon equipped" });
+      }
+      unequippedItemId = equipped.weapon;
+      equipped.weapon = "";
+    } else if (["helmet", "chestplate", "pants", "boots"].includes(slot)) {
+      if (!equipped.armor[slot]) {
+        return res.status(400).json({ error: `No armor equipped in ${slot}` });
+      }
+      unequippedItemId = equipped.armor[slot];
+      delete equipped.armor[slot];
+    } else if (slot === "pet1" || slot === "pet2") {
+      if (!equipped.pets[slot]) {
+        return res.status(400).json({ error: `No pet equipped in ${slot}` });
+      }
+      unequippedItemId = equipped.pets[slot];
+      delete equipped.pets[slot];
+    } else if (slot === "accessory1" || slot === "accessory2") {
+      if (!equipped.accessoiries[slot]) {
+        return res.status(400).json({ error: `No accessory equipped in ${slot}` });
+      }
+      unequippedItemId = equipped.accessoiries[slot];
+      delete equipped.accessoiries[slot];
+    } else {
+      return res.status(400).json({ error: `Invalid slot: ${slot}` });
+    }
+
+    // Add item back to inventory
+    items.push({ itemId: unequippedItemId });
+
+    await userRef.update({
+      "inventory.equiped": equipped,
+      "inventory.inventory.items": items,
+      updatedAt: Date.now(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      unequipped: unequippedItemId,
+      slot,
+      equiped: equipped,
+    });
+  } catch (e: any) {
+    console.error("Error in POST /users/:uid/unequip:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /users/{uid}/equipped
+ * Get all equipped items
+ */
+app.get("/users/:uid/equipped", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const userSnap = await db.collection("users").doc(uid).get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userSnap.data() || {};
+    const equipped = user.inventory?.equiped || { armor: {}, pets: {}, accessoiries: {}, weapon: "" };
+
+    return res.status(200).json(equipped);
+  } catch (e: any) {
+    console.error("Error in GET /users/:uid/equipped:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * POST /users/{uid}/inventory/add-item
+ * Add item to inventory (from lootbox, quest reward, etc)
+ */
+app.post("/users/:uid/inventory/add-item", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { itemId, quantity = 1 } = req.body;
+
+    if (!itemId) {
+      return res.status(400).json({ error: "itemId is required" });
+    }
+
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userSnap.data() as any;
+    const inventory = user.inventory || {};
+    const items = inventory.inventory?.items || [];
+
+    // Add item(s) to inventory
+    for (let i = 0; i < quantity; i++) {
+      items.push({ itemId, addedAt: Date.now() });
+    }
+
+    await userRef.update({
+      "inventory.inventory.items": items,
+      updatedAt: Date.now(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      itemId,
+      quantity,
+      totalItems: items.length,
+    });
+  } catch (e: any) {
+    console.error("Error in POST /users/:uid/inventory/add-item:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * POST /users/{uid}/inventory/add-lootbox
+ * Add lootbox to inventory (from level-up reward, quest, etc)
+ */
+app.post("/users/:uid/inventory/add-lootbox", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { lootboxId, quantity = 1 } = req.body;
+
+    if (!lootboxId) {
+      return res.status(400).json({ error: "lootboxId is required" });
+    }
+
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userSnap.data() as any;
+    const inventory = user.inventory || {};
+    const lootboxes = inventory.inventory?.lootboxes || [];
+
+    // Add lootbox(es) to inventory
+    for (let i = 0; i < quantity; i++) {
+      lootboxes.push({ lootboxId, addedAt: Date.now() });
+    }
+
+    await userRef.update({
+      "inventory.inventory.lootboxes": lootboxes,
+      updatedAt: Date.now(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      lootboxId,
+      quantity,
+      totalLootboxes: lootboxes.length,
+    });
+  } catch (e: any) {
+    console.error("Error in POST /users/:uid/inventory/add-lootbox:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * DELETE /users/{uid}/inventory/item/:itemId
+ * Remove item from inventory (consumed, sold, etc)
+ */
+app.delete("/users/:uid/inventory/item/:itemId", requireAuth, async (req, res) => {
+  try {
+    const { uid, itemId } = req.params;
+
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userSnap.data() as any;
+    const inventory = user.inventory || {};
+    const items = inventory.inventory?.items || [];
+
+    // Find and remove first occurrence of item
+    const itemIndex = items.findIndex((i: any) => i.itemId === itemId);
+    if (itemIndex === -1) {
+      return res.status(404).json({ error: "Item not found in inventory" });
+    }
+
+    items.splice(itemIndex, 1);
+
+    await userRef.update({
+      "inventory.inventory.items": items,
+      updatedAt: Date.now(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      removed: itemId,
+      remainingItems: items.length,
+    });
+  } catch (e: any) {
+    console.error("Error in DELETE /users/:uid/inventory/item/:itemId:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * POST /users/{uid}/reroll
+ * Reroll 3 items of same rarity + gold for chance at better item
+ */
+app.post("/users/:uid/reroll", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { itemIds } = req.body; // Array of 3 itemIds
+
+    // Validate input
+    if (!itemIds || !Array.isArray(itemIds) || itemIds.length !== 3) {
+      return res.status(400).json({ error: "Must provide exactly 3 items to reroll" });
+    }
+
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userSnap.data() as any;
+    const inventory = user.inventory || {};
+    const items = inventory.inventory?.items || [];
+    const currentGold = user.stats?.gold || 0;
+
+    // Find the 3 items in inventory
+    const itemsToReroll: any[] = [];
+    const rarities = new Set();
+
+    for (const itemId of itemIds) {
+      const item = items.find((i: any) => i.itemId === itemId);
+      if (!item) {
+        return res.status(404).json({ error: `Item ${itemId} not found in inventory` });
+      }
+      itemsToReroll.push(item);
+      rarities.add(item.rarity);
+    }
+
+    // Validate all items have same rarity
+    if (rarities.size !== 1) {
+      return res.status(400).json({ 
+        error: "All 3 items must have the same rarity",
+        rarities: Array.from(rarities)
+      });
+    }
+
+    const baseRarity = itemsToReroll[0].rarity;
+
+    // Get reroll rules
+    const rerollRulesSnap = await db.collection("rerollRules").get();
+    const rerollRules: any = {};
+    rerollRulesSnap.docs.forEach((doc) => {
+      rerollRules[doc.id] = doc.data();
+    });
+
+    const goldCosts = rerollRules.goldCosts || {};
+    const rarityOrder = rerollRules.rarityOrder?.value || ["common", "uncommon", "rare", "epic", "legendary"];
+    const rarityMultipliers = rerollRules.rarityMultipliers || {};
+    const bonusSystem = rerollRules.bonusSystem || {};
+
+    // Determine gold cost based on rarity
+    const goldCostKey = `${baseRarity}_to_${rarityOrder[rarityOrder.indexOf(baseRarity) + 1] || "legendary"}`;
+    const goldCost = goldCosts[goldCostKey] || 500;
+
+    // Check if user has enough gold
+    if (currentGold < goldCost) {
+      return res.status(400).json({ 
+        error: `Not enough gold. Need ${goldCost}, have ${currentGold}`,
+        required: goldCost,
+        current: currentGold
+      });
+    }
+
+    // Get failure protection (pity counter)
+    const failureProtection = rerollRules.failureProtection || {};
+    const pityEnabled = failureProtection.enabled || false;
+    const pityCounter = failureProtection.pityCounter || {};
+    const maxFails = pityCounter.maxFails || 5;
+    const guaranteedBonusOnNext = pityCounter.guaranteedBonusOnNext || false;
+
+    // Get user's current pity counter
+    const userPityCount = user.stats?.rerollPityCount || 0;
+
+    // Determine new rarity based on multipliers
+    const baseRarityIndex = rarityOrder.indexOf(baseRarity);
+    let newRarity = baseRarity;
+    let guaranteedUpgrade = false;
+
+    // Check if pity system triggers
+    if (pityEnabled && userPityCount >= maxFails) {
+      guaranteedUpgrade = true;
+      // Guaranteed upgrade to at least next tier
+      if (baseRarityIndex < rarityOrder.length - 1) {
+        newRarity = rarityOrder[baseRarityIndex + 1];
+      }
+    } else {
+      // Roll for rarity upgrade
+      const roll = Math.random();
+      let cumulativeChance = 0;
+
+      // Check from highest to lowest
+      for (let i = rarityOrder.length - 1; i > baseRarityIndex; i--) {
+        const targetRarity = rarityOrder[i];
+        const multiplier = rarityMultipliers[targetRarity] || 1;
+        const chance = 1 / multiplier; // Higher multiplier = lower chance
+        
+        cumulativeChance += chance;
+        if (roll <= cumulativeChance) {
+          newRarity = targetRarity;
+          break;
+        }
+      }
+
+      // If no upgrade, stay at same rarity
+      if (newRarity === baseRarity && baseRarityIndex < rarityOrder.length - 1) {
+        // Small chance to upgrade by 1 tier
+        if (Math.random() < 0.3) {
+          newRarity = rarityOrder[baseRarityIndex + 1];
+        }
+      }
+    }
+
+    // Get random item of new rarity from allowed item types
+    const allowedTypes = rerollRules.allowedItemTypes || { weapon: true, armor: true, pet: true, accessory: true };
+    const collections = [];
+    if (allowedTypes.weapon) collections.push("items_weapons");
+    if (allowedTypes.armor) collections.push("items_armor");
+    if (allowedTypes.pet) collections.push("items_pets");
+    if (allowedTypes.accessory) collections.push("items_arcane");
+
+    const randomCollection = collections[Math.floor(Math.random() * collections.length)];
+    const itemsSnap = await db.collection(randomCollection).get();
+    const availableItems = itemsSnap.docs
+      .map(doc => ({ itemId: doc.id, ...doc.data() }))
+      .filter((item: any) => item.rarity === newRarity && item.isActive !== false);
+
+    let newItem: any = null;
+
+    if (availableItems.length > 0) {
+      newItem = availableItems[Math.floor(Math.random() * availableItems.length)];
+    } else {
+      // Fallback: create generic item
+      newItem = {
+        itemId: `rerolled_${newRarity}_${Date.now()}`,
+        name: `Rerolled ${newRarity.charAt(0).toUpperCase() + newRarity.slice(1)} Item`,
+        rarity: newRarity,
+        type: "weapon",
+      };
+    }
+
+    // Determine if reroll was successful (upgraded)
+    const upgraded = newRarity !== baseRarity;
+    
+    // Update pity counter
+    let newPityCount = userPityCount;
+    if (pityEnabled) {
+      if (upgraded) {
+        newPityCount = 0; // Reset on success
+      } else {
+        newPityCount = userPityCount + 1; // Increment on fail
+      }
+    }
+
+    // Roll for bonus stats (higher chance on reroll)
+    let bonusStats = null;
+    let bonusChance = (bonusSystem.bonusChance || 0) * 2; // 2x chance on reroll
+    
+    // Guaranteed bonus if pity triggered
+    if (guaranteedUpgrade && guaranteedBonusOnNext) {
+      bonusChance = 1; // 100% bonus chance
+    }
+    
+    if (bonusSystem.enabled && Math.random() <= bonusChance) {
+      bonusStats = {};
+      const possibleBonuses = bonusSystem.possibleBonuses || {};
+      const bonusTypes = Object.keys(possibleBonuses);
+      
+      if (bonusTypes.length > 0) {
+        // Higher rarity = more bonus stats
+        const rarityIndex = rarityOrder.indexOf(newRarity);
+        const numBonuses = Math.min(rarityIndex + 1, 3); // 1-3 bonuses
+        
+        for (let b = 0; b < numBonuses && bonusTypes.length > 0; b++) {
+          const randomIndex = Math.floor(Math.random() * bonusTypes.length);
+          const bonusType = bonusTypes.splice(randomIndex, 1)[0];
+          
+          const bonusRange = possibleBonuses[bonusType];
+          const min = bonusRange?.min || 0;
+          const max = bonusRange?.max || 0;
+          const bonusValue = min + Math.random() * (max - min);
+          
+          if (bonusType === "critChance" || bonusType === "critDamage") {
+            bonusStats[bonusType] = Math.round(bonusValue * 1000) / 1000;
+          } else {
+            bonusStats[bonusType] = Math.round(bonusValue);
+          }
+        }
+      }
+    }
+
+    // Remove the 3 items from inventory
+    const updatedItems = items.filter((i: any) => !itemIds.includes(i.itemId));
+
+    // Add new item to inventory
+    updatedItems.push({
+      itemId: newItem.itemId,
+      rarity: newRarity,
+      type: newItem.type,
+      collection: randomCollection,
+      bonus: bonusStats,
+      rerolled: true,
+      addedAt: Date.now(),
+    });
+
+    // Update user
+    const updateData: any = {
+      "inventory.inventory.items": updatedItems,
+      "stats.gold": currentGold - goldCost,
+      updatedAt: Date.now(),
+    };
+
+    // Update pity counter if enabled
+    if (pityEnabled) {
+      updateData["stats.rerollPityCount"] = newPityCount;
+    }
+
+    await userRef.update(updateData);
+
+    return res.status(200).json({
+      success: true,
+      consumed: {
+        items: itemIds,
+        rarity: baseRarity,
+        gold: goldCost,
+      },
+      result: {
+        itemId: newItem.itemId,
+        name: newItem.name,
+        rarity: newRarity,
+        upgraded,
+        guaranteedUpgrade,
+        bonus: bonusStats,
+        ...newItem,
+      },
+      pitySystem: pityEnabled ? {
+        previousCount: userPityCount,
+        newCount: newPityCount,
+        maxFails,
+        nextIsGuaranteed: newPityCount >= maxFails,
+      } : null,
+      remainingGold: currentGold - goldCost,
+    });
+  } catch (e: any) {
+    console.error("Error in POST /users/:uid/reroll:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+// ============ GAME CONFIG & RULES ============
+
+/**
+ * GET /game-config
+ * Get game configuration (economy, stamina, leaderboards, etc)
+ */
+app.get("/game-config", async (req, res) => {
+  try {
+    const configSnap = await db.collection("gameConfig").get();
+    
+    const configs: any = {};
+    configSnap.docs.forEach((doc) => {
+      configs[doc.id] = doc.data();
+    });
+
+    return res.status(200).json(configs);
+  } catch (e: any) {
+    console.error("Error in GET /game-config:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /world-config
+ * Get world configuration (monster scaling, player scaling, stage structure, etc)
+ */
+app.get("/world-config", async (req, res) => {
+  try {
+    const configSnap = await db.collection("worldConfig").get();
+    
+    const configs: any = {};
+    configSnap.docs.forEach((doc) => {
+      configs[doc.id] = doc.data();
+    });
+
+    return res.status(200).json(configs);
+  } catch (e: any) {
+    console.error("Error in GET /world-config:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /templates/:templateId
+ * Get template data
+ */
+app.get("/templates/:templateId", async (req, res) => {
+  try {
+    const { templateId } = req.params;
+    const templateSnap = await db.collection("templates").doc(templateId).get();
+    
+    if (!templateSnap.exists) {
+      return res.status(404).json({ error: "Template not found" });
+    }
+
+    return res.status(200).json(templateSnap.data());
+  } catch (e: any) {
+    console.error("Error in GET /templates/:templateId:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /game-rules
+ * Get all game rules (combat, elements, scaling, etc)
+ */
+app.get("/game-rules", async (req, res) => {
+  try {
+    const rulesSnap = await db.collection("gameRules").doc("main").get();
+    
+    if (!rulesSnap.exists) {
+      return res.status(404).json({ error: "Game rules not found" });
+    }
+
+    return res.status(200).json(rulesSnap.data());
+  } catch (e: any) {
+    console.error("Error in GET /game-rules:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /game-rules/combat
+ * Get combat-specific rules
+ */
+app.get("/game-rules/combat", async (req, res) => {
+  try {
+    const rulesSnap = await db.collection("gameRules").doc("main").get();
+    
+    if (!rulesSnap.exists) {
+      return res.status(404).json({ error: "Game rules not found" });
+    }
+
+    const rules = rulesSnap.data() || {};
+    
+    return res.status(200).json({
+      combatRules: rules.combatRules || {},
+      caps: rules.caps || {},
+      difficultyMultipliers: rules.difficultyMultipliers || {},
+    });
+  } catch (e: any) {
+    console.error("Error in GET /game-rules/combat:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /game-rules/elements
+ * Get element effectiveness matrix and properties
+ */
+app.get("/game-rules/elements", async (req, res) => {
+  try {
+    const rulesSnap = await db.collection("gameRules").doc("main").get();
+    
+    if (!rulesSnap.exists) {
+      return res.status(404).json({ error: "Game rules not found" });
+    }
+
+    const rules = rulesSnap.data() || {};
+    
+    return res.status(200).json(rules.elements || {});
+  } catch (e: any) {
+    console.error("Error in GET /game-rules/elements:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /levels/definitions
+ * Get all level definitions with XP requirements and rewards
+ */
+app.get("/levels/definitions", async (req, res) => {
+  try {
+    const levelsSnap = await db.collection("levels").doc("definitions").get();
+    
+    if (!levelsSnap.exists) {
+      return res.status(404).json({ error: "Level definitions not found" });
+    }
+
+    return res.status(200).json(levelsSnap.data());
+  } catch (e: any) {
+    console.error("Error in GET /levels/definitions:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /levels/:level
+ * Get specific level definition
+ */
+app.get("/levels/:level", async (req, res) => {
+  try {
+    const { level } = req.params;
+    const levelNum = parseInt(level);
+    
+    const levelsSnap = await db.collection("levels").doc("definitions").get();
+    
+    if (!levelsSnap.exists) {
+      return res.status(404).json({ error: "Level definitions not found" });
+    }
+
+    const levelsData = levelsSnap.data() || {};
+    const levels = levelsData.levels || [];
+    const levelDef = levels.find((l: any) => l.level === levelNum);
+
+    if (!levelDef) {
+      return res.status(404).json({ error: `Level ${levelNum} not found` });
+    }
+
+    return res.status(200).json(levelDef);
+  } catch (e: any) {
+    console.error("Error in GET /levels/:level:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /reroll-rules
+ * Get reroll system configuration (bonus system, gold costs, rarity multipliers, etc)
+ */
+app.get("/reroll-rules", async (req, res) => {
+  try {
+    const rerollSnap = await db.collection("rerollRules").get();
+    
+    const rules: any = {};
+    rerollSnap.docs.forEach((doc) => {
+      rules[doc.id] = doc.data();
+    });
+
+    return res.status(200).json(rules);
+  } catch (e: any) {
+    console.error("Error in GET /reroll-rules:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /reroll-rules/bonus-system
+ * Get item bonus system configuration
+ */
+app.get("/reroll-rules/bonus-system", async (req, res) => {
+  try {
+    const bonusSnap = await db.collection("rerollRules").doc("bonusSystem").get();
+    
+    if (!bonusSnap.exists) {
+      return res.status(404).json({ error: "Bonus system config not found" });
+    }
+
+    return res.status(200).json(bonusSnap.data());
+  } catch (e: any) {
+    console.error("Error in GET /reroll-rules/bonus-system:", e);
     return res.status(500).json({ error: e?.message });
   }
 });
@@ -983,6 +1859,123 @@ app.delete("/modules/:moduleId", requireAuth, async (req, res) => {
 // ============ COMBAT ============
 
 /**
+ * GET /combat/player-stats/:level
+ * Calculate player stats based on level from worldConfig
+ */
+app.get("/combat/player-stats/:level", requireAuth, async (req, res) => {
+  try {
+    const { level } = req.params;
+    const playerLevel = parseInt(level);
+
+    // Get worldConfig
+    const configSnap = await db.collection("worldConfig").doc("playerScaling").get();
+    if (!configSnap.exists) {
+      return res.status(404).json({ error: "Player scaling config not found" });
+    }
+
+    const config = configSnap.data() || {};
+    const baseStats = config.baseStats || {};
+    const perLevel = config.perLevel || {};
+
+    // Calculate stats: baseStats + (perLevel × (level - 1))
+    const playerStats = {
+      level: playerLevel,
+      attack: Math.round(baseStats.attack + (perLevel.attack * (playerLevel - 1))),
+      defense: Math.round(baseStats.defense + (perLevel.defense * (playerLevel - 1))),
+      health: Math.round(baseStats.health + (perLevel.health * (playerLevel - 1))),
+      magic: Math.round(baseStats.magic + (perLevel.magic * (playerLevel - 1))),
+      magicResist: Math.round(baseStats.magicResist + (perLevel.magicResist * (playerLevel - 1))),
+    };
+
+    return res.status(200).json(playerStats);
+  } catch (e: any) {
+    console.error("Error in GET /combat/player-stats:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /combat/stage-multipliers/:stageType
+ * Get enemy and reward multipliers for a stage type
+ */
+app.get("/combat/stage-multipliers/:stageType", async (req, res) => {
+  try {
+    const { stageType } = req.params;
+
+    // Get worldConfig
+    const configSnap = await db.collection("worldConfig").doc("stageTypes").get();
+    if (!configSnap.exists) {
+      return res.status(404).json({ error: "Stage types config not found" });
+    }
+
+    const config = configSnap.data() || {};
+    const typeConfig = config[stageType];
+
+    if (!typeConfig) {
+      return res.status(404).json({ error: `Stage type '${stageType}' not found` });
+    }
+
+    return res.status(200).json({
+      stageType,
+      enemy: {
+        damageMultiplier: typeConfig.enemy?.damageMultiplier || 1,
+        hpMultiplier: typeConfig.enemy?.hpMultiplier || 1,
+      },
+      rewards: {
+        goldMultiplier: typeConfig.rewards?.goldMultiplier || 1,
+        xpMultiplier: typeConfig.rewards?.xpMultiplier || 1,
+      },
+    });
+  } catch (e: any) {
+    console.error("Error in GET /combat/stage-multipliers:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /combat/stage-type/:stage
+ * Determine stage type based on stageStructure config
+ */
+app.get("/combat/stage-type/:stage", async (req, res) => {
+  try {
+    const { stage } = req.params;
+    const stageNum = parseInt(stage);
+
+    // Get worldConfig
+    const configSnap = await db.collection("worldConfig").doc("stageStructure").get();
+    if (!configSnap.exists) {
+      return res.status(404).json({ error: "Stage structure config not found" });
+    }
+
+    const config = configSnap.data() || {};
+    const bossStage = config.bossStage || 10;
+    const miniBossStage = config.miniBossStage || 5;
+    const eliteStages = config.eliteStages || [];
+
+    let stageType = "normal";
+    
+    if (stageNum === bossStage) {
+      stageType = "boss";
+    } else if (stageNum === miniBossStage) {
+      stageType = "miniBoss";
+    } else if (eliteStages.includes(stageNum)) {
+      stageType = "elite";
+    }
+
+    return res.status(200).json({
+      stage: stageNum,
+      type: stageType,
+      bossStage,
+      miniBossStage,
+      eliteStages,
+    });
+  } catch (e: any) {
+    console.error("Error in GET /combat/stage-type:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
  * POST /combat/start
  */
 app.post("/combat/start", requireAuth, async (req, res) => {
@@ -1028,6 +2021,157 @@ app.get("/combat/:combatId", requireAuth, async (req, res) => {
     });
   } catch (e: any) {
     console.error("Error in GET /combat/:combatId:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /combat/monster-stats/:worldId/:stage
+ * Calculate monster stats based on worldConfig
+ */
+app.get("/combat/monster-stats/:worldId/:stage", async (req, res) => {
+  try {
+    const { worldId, stage } = req.params;
+    const stageNum = parseInt(stage);
+
+    // Get worldConfig
+    const configSnap = await db.collection("worldConfig").doc("monsterScaling").get();
+    if (!configSnap.exists) {
+      return res.status(404).json({ error: "Monster scaling config not found" });
+    }
+
+    const config = configSnap.data() || {};
+    const baseStats = config.basePerWorld?.[worldId];
+    const multipliers = config.perStageMultiplier || [];
+
+    if (!baseStats) {
+      return res.status(404).json({ error: `No base stats found for ${worldId}` });
+    }
+
+    // Get stage multiplier (array is 0-indexed, stage 1 = index 1)
+    const stageMultiplier = multipliers[stageNum] || 1;
+
+    const monsterStats = {
+      worldId,
+      stage: stageNum,
+      baseAttack: baseStats.attack,
+      baseHp: baseStats.hp,
+      multiplier: stageMultiplier,
+      attack: Math.round(baseStats.attack * stageMultiplier),
+      hp: Math.round(baseStats.hp * stageMultiplier),
+    };
+
+    return res.status(200).json(monsterStats);
+  } catch (e: any) {
+    console.error("Error in GET /combat/monster-stats:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * POST /combat/results
+ * Save combat results with full battle data, rewards, and achievement triggers
+ */
+app.post("/combat/results", requireAuth, async (req, res) => {
+  try {
+    const uid = (req as any).user.uid;
+    const {
+      battle,
+      context,
+      rewards,
+      progressUpdate,
+      achievementTriggers,
+    } = req.body;
+
+    // Update user stats if victory
+    let leveledUp = false;
+    let newLevel = 1;
+    let levelUpRewards = undefined;
+    let updatedProgressUpdate = { ...progressUpdate };
+
+    if (battle.result === "win") {
+      const userRef = db.collection("users").doc(uid);
+      const userSnap = await userRef.get();
+      const user = userSnap.data() || {};
+
+      const oldLevel = user.stats?.level || 1;
+      const newTotalXP = (user.stats?.totalXP || 0) + (rewards?.xpGained || 0);
+      let newGold = (user.stats?.gold || 0) + (rewards?.goldGained || 0);
+
+      // Calculate new level from total XP
+      const levelData = await calculateLevelFromXP(newTotalXP);
+      leveledUp = levelData.level > oldLevel;
+      newLevel = levelData.level;
+
+      // Add level-up rewards if leveled up
+      if (leveledUp && levelData.rewards) {
+        newGold += levelData.rewards.gold || 0;
+        levelUpRewards = levelData.rewards;
+      }
+
+      // Update user stats with level data
+      await userRef.update({
+        "stats.level": levelData.level,
+        "stats.xp": levelData.currentXP,
+        "stats.nextLevelXP": levelData.nextLevelXP,
+        "stats.totalXP": newTotalXP,
+        "stats.gold": newGold,
+        updatedAt: Date.now(),
+      });
+
+      // Update progress update with level-up info
+      updatedProgressUpdate = {
+        ...progressUpdate,
+        totalXPAfter: newTotalXP,
+        totalGoldAfter: newGold,
+        leveledUp,
+        newLevel: levelData.level,
+        levelUpRewards,
+      };
+    }
+
+    // Create combat result document
+    const resultRef = db.collection("combat_results").doc();
+    const combatResult = {
+      userId: uid,
+      timestamp: new Date().toISOString(),
+      battle: {
+        worldId: battle.worldId,
+        stage: battle.stage,
+        monsterId: battle.monsterId,
+        monsterType: battle.monsterType || "normal",
+        result: battle.result, // "win" or "loss"
+        turns: battle.turns || 0,
+      },
+      context: {
+        source: context?.source || "combat",
+        courseId: context?.courseId || null,
+        moduleId: context?.moduleId || null,
+        taskId: context?.taskId || null,
+      },
+      rewards: {
+        xpGained: rewards?.xpGained || 0,
+        goldGained: rewards?.goldGained || 0,
+        loot: {
+          items: rewards?.loot?.items || [],
+        },
+      },
+      progressUpdate: updatedProgressUpdate,
+      achievementTriggers: {
+        monstersDefeated: achievementTriggers?.monstersDefeated || 0,
+        tasksCompleted: achievementTriggers?.tasksCompleted || 0,
+        moduleProgress: achievementTriggers?.moduleProgress || {},
+      },
+    };
+
+    await resultRef.set(combatResult);
+
+    return res.status(201).json({
+      resultId: resultRef.id,
+      ...combatResult,
+    });
+  } catch (e: any) {
+    console.error("Error in POST /combat/results:", e);
     return res.status(500).json({ error: e?.message });
   }
 });
@@ -1211,14 +2355,14 @@ app.patch("/worlds/:worldId", requireAuth, async (req, res) => {
 /**
  * DELETE /worlds/:worldId
  */
-app.delete("/worlds/:id", requireAuth, async (req, res) => {
+app.delete("/worlds/:worldId", requireAuth, async (req, res) => {
   try {
-    const { id } = req.params;
+    const { worldId } = req.params;
     
-    await db.collection("worlds").doc(id).delete();
+    await db.collection("worlds").doc(worldId).delete();
 
     return res.status(200).json({ 
-      message: `World ${id} has been destroyed` 
+      message: `World ${worldId} has been destroyed` 
     });
   } catch (e: any) {
     console.error("Error in DELETE /worlds:", e);
@@ -1521,14 +2665,14 @@ app.patch("/monsters/:monsterId", requireAuth, async (req, res) => {
 /**
  * DELETE /monsters/:monsterId
  */
-app.delete("/monsters/:id", requireAuth, async (req, res) => {
+app.delete("/monsters/:monsterId", requireAuth, async (req, res) => {
   try {
-    const { id } = req.params;
+    const { monsterId } = req.params;
     
-    await db.collection("monsters").doc(id).delete();
+    await db.collection("monsters").doc(monsterId).delete();
 
     return res.status(200).json({ 
-      message: `Entity ${id} successfully banished from the bestiary` 
+      message: `Entity ${monsterId} successfully banished from the bestiary` 
     });
   } catch (e: any) {
     console.error("Error in DELETE /monsters:", e);
@@ -1543,7 +2687,7 @@ app.delete("/monsters/:id", requireAuth, async (req, res) => {
  */
 app.get("/lootboxes", async (req, res) => {
   try {
-    const lootboxesSnap = await db.collection("lootboxes").get();
+    const lootboxesSnap = await db.collection("lootboxes").where("enable", "==", true).get();
     const lootboxes = lootboxesSnap.docs.map((doc) => ({
       lootboxId: doc.id,
       ...doc.data(),
@@ -1669,22 +2813,230 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
     const { lootboxId } = req.params;
     const { count = 1 } = req.body;
 
+    // 1. Get lootbox config
     const lootboxSnap = await db.collection("lootboxes").doc(lootboxId).get();
     if (!lootboxSnap.exists) {
       return res.status(404).json({ error: "Lootbox not found" });
     }
+    const lootbox = lootboxSnap.data() as any;
 
-    // Simple loot generation - can be expanded
-    const rewards = [];
-    for (let i = 0; i < count; i++) {
-      rewards.push({
-        type: "gold",
-        amount: Math.floor(Math.random() * 100) + 50,
-      });
+    // 2. Get user and check gold
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const user = userSnap.data() as any;
+    const totalCost = (lootbox.priceGold || 0) * count;
+    const currentGold = user.stats?.gold || 0;
+
+    if (currentGold < totalCost) {
+      return res.status(400).json({ error: `Not enough gold. Need ${totalCost}, have ${currentGold}` });
     }
 
+    // 3. Determine minimum items based on box type
+    let minItems = 1; // default
+    if (lootboxId.includes("legendary")) {
+      minItems = 3;
+    } else if (lootboxId.includes("advanced") || lootboxId.includes("epic")) {
+      minItems = 2;
+    }
+
+    // 4. Roll loot for each box
+    const results: any[] = [];
+    
+    // Get bonus system config
+    const bonusSystemSnap = await db.collection("rerollRules").doc("bonusSystem").get();
+    const bonusSystem = bonusSystemSnap.exists ? bonusSystemSnap.data() : null;
+    const bonusEnabled = bonusSystem?.enabled || false;
+    const bonusChance = bonusSystem?.bonusChance || 0;
+    const possibleBonuses = bonusSystem?.possibleBonuses || {};
+    
+    for (let i = 0; i < count; i++) {
+      // Roll minimum guaranteed items
+      for (let itemSlot = 0; itemSlot < minItems; itemSlot++) {
+        // Determine rarity based on dropChances
+        const rarityRoll = Math.random();
+        let cumulativeChance = 0;
+        let selectedRarity = "common";
+        
+        const dropChances = lootbox.dropChances || {};
+        const rarities = ["legendary", "epic", "rare", "uncommon", "common"]; // Check rarest first
+        
+        for (const rarity of rarities) {
+          cumulativeChance += dropChances[rarity] || 0;
+          if (rarityRoll <= cumulativeChance) {
+            selectedRarity = rarity;
+            break;
+          }
+        }
+
+        // Get item pool for this rarity (with fallback)
+        const itemPools = lootbox.itemPools || {};
+        let poolCollections = itemPools[selectedRarity] || [];
+        let itemAdded = false;
+        
+        // Try selected rarity first, then fallback to lower rarities if empty
+        const fallbackRarities = [selectedRarity, "rare", "uncommon", "common"];
+        
+        for (const fallbackRarity of fallbackRarities) {
+          if (itemAdded) break;
+          
+          poolCollections = itemPools[fallbackRarity] || [];
+          
+          if (poolCollections.length > 0) {
+            // Pick random collection from pool
+            const randomCollection = poolCollections[Math.floor(Math.random() * poolCollections.length)];
+            
+            // Get all items from that collection
+            const itemsSnap = await db.collection(randomCollection).get();
+            const availableItems = itemsSnap.docs
+              .map(doc => ({ itemId: doc.id, ...doc.data() }))
+              .filter((item: any) => item.isActive !== false);
+
+            if (availableItems.length > 0) {
+              // Pick random item
+              const randomItem = availableItems[Math.floor(Math.random() * availableItems.length)];
+              
+              // Roll for bonus stats
+              let bonusStats = null;
+              if (bonusEnabled && Math.random() <= bonusChance) {
+                bonusStats = {};
+                // Roll random bonus type(s)
+                const bonusTypes = Object.keys(possibleBonuses);
+                if (bonusTypes.length > 0) {
+                  // Pick 1-2 random bonus types
+                  const numBonuses = Math.random() > 0.7 ? 2 : 1;
+                  const selectedBonusTypes = [];
+                  
+                  for (let b = 0; b < numBonuses && bonusTypes.length > 0; b++) {
+                    const randomIndex = Math.floor(Math.random() * bonusTypes.length);
+                    const bonusType = bonusTypes.splice(randomIndex, 1)[0];
+                    selectedBonusTypes.push(bonusType);
+                    
+                    const bonusRange = possibleBonuses[bonusType];
+                    const min = bonusRange?.min || 0;
+                    const max = bonusRange?.max || 0;
+                    const bonusValue = min + Math.random() * (max - min);
+                    
+                    // Round based on type
+                    if (bonusType === "critChance" || bonusType === "critDamage") {
+                      bonusStats[bonusType] = Math.round(bonusValue * 1000) / 1000; // 3 decimals
+                    } else {
+                      bonusStats[bonusType] = Math.round(bonusValue); // Whole numbers
+                    }
+                  }
+                }
+              }
+              
+              results.push({
+                type: "item",
+                rarity: fallbackRarity, // Use actual rarity found
+                collection: randomCollection,
+                bonus: bonusStats,
+                ...randomItem,
+              });
+              itemAdded = true;
+            }
+          }
+        }
+        
+        // GUARANTEE: If still no item, give a fallback common item
+        if (!itemAdded) {
+          results.push({
+            type: "item",
+            rarity: "common",
+            itemId: "fallback_gold",
+            name: "Gold Coins",
+            description: "Better luck next time!",
+            value: 50,
+          });
+        }
+      }
+
+      // BONUS: Check for pet drop (extra, not part of minimum items)
+      const petChance = lootbox.petChance || 0;
+      if (Math.random() <= petChance) {
+        // Determine pet rarity
+        const petRarityRoll = Math.random();
+        let petCumulativeChance = 0;
+        let selectedPetRarity = "common";
+        
+        const petRarityChances = lootbox.petRarityChances || {};
+        const petRarities = ["legendary", "epic", "rare", "uncommon", "common"];
+        for (const rarity of petRarities) {
+          petCumulativeChance += petRarityChances[rarity] || 0;
+          if (petRarityRoll <= petCumulativeChance) {
+            selectedPetRarity = rarity;
+            break;
+          }
+        }
+
+        // Get pet from items_pets or pets_arcane
+        const petCollection = selectedPetRarity === "legendary" || selectedPetRarity === "epic" 
+          ? "pets_arcane" 
+          : "items_pets";
+        
+        const petsSnap = await db.collection(petCollection).get();
+        const availablePets = petsSnap.docs
+          .map(doc => ({ itemId: doc.id, ...doc.data() }))
+          .filter((pet: any) => pet.isActive !== false && pet.rarity === selectedPetRarity);
+
+        if (availablePets.length > 0) {
+          const randomPet = availablePets[Math.floor(Math.random() * availablePets.length)];
+          results.push({
+            type: "pet",
+            rarity: selectedPetRarity,
+            collection: petCollection,
+            ...randomPet,
+          });
+        }
+      }
+    }
+
+    // 5. Deduct gold from user
+    await userRef.update({
+      "stats.gold": currentGold - totalCost,
+      updatedAt: Date.now(),
+    });
+
+    // 6. Add items to user inventory
+    const inventory = user.inventory || {};
+    const inventoryItems = inventory.inventory?.items || [];
+    const lootboxes = inventory.inventory?.lootboxes || [];
+
+    // Add all dropped items to inventory
+    results.forEach((item: any) => {
+      inventoryItems.push({
+        itemId: item.itemId,
+        type: item.type,
+        rarity: item.rarity,
+        collection: item.collection,
+        addedAt: Date.now(),
+      });
+    });
+
+    // Remove used lootbox(es) from inventory
+    for (let i = 0; i < count; i++) {
+      const lootboxIndex = lootboxes.findIndex((lb: any) => lb.lootboxId === lootboxId);
+      if (lootboxIndex !== -1) {
+        lootboxes.splice(lootboxIndex, 1);
+      }
+    }
+
+    await userRef.update({
+      "inventory.inventory.items": inventoryItems,
+      "inventory.inventory.lootboxes": lootboxes,
+      updatedAt: Date.now(),
+    });
+
     return res.status(200).json({
-      rewards,
+      lootboxId,
+      opened: count,
+      cost: totalCost,
+      remainingGold: currentGold - totalCost,
+      minItemsPerBox: minItems,
+      results,
       openedAt: Date.now(),
     });
   } catch (e: any) {
