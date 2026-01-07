@@ -12,9 +12,35 @@ import {
   onLevelUp,
   onTaskCompleted,
   onFocusSessionCompleted,
+  syncAllAchievements,
 } from "@/services/achievement.service";
 import { AchievementsAPI } from "@/api/achievements.api";
-import { Trophy, Star, TrendingUp, Coins, Lock, Check, Gift } from "lucide-react";
+import { Trophy, Star, TrendingUp, Coins, Lock, Check, Gift, Flame, Target, Zap, BookOpen, Swords, Globe } from "lucide-react";
+
+// Helper function to get Lucide icon based on achievement category/id
+function getAchievementIcon(achievement: { achievementId: string; category?: string | null; icon?: string }) {
+  const id = achievement.achievementId.toLowerCase();
+  const category = achievement.category?.toLowerCase();
+
+  // Match by achievement ID patterns
+  if (id.includes("streak")) return <Flame size={24} />;
+  if (id.includes("pomodoro") || id.includes("focus")) return <Target size={24} />;
+  if (id.includes("monster") || id.includes("combat")) return <Swords size={24} />;
+  if (id.includes("world")) return <Globe size={24} />;
+  if (id.includes("module")) return <BookOpen size={24} />;
+  if (id.includes("level")) return <Star size={24} />;
+
+  // Match by category
+  if (category === "streak") return <Flame size={24} />;
+  if (category === "productivity") return <Target size={24} />;
+  if (category === "combat") return <Swords size={24} />;
+  if (category === "world") return <Globe size={24} />;
+  if (category === "module") return <BookOpen size={24} />;
+  if (category === "difficulty") return <TrendingUp size={24} />;
+
+  // Default
+  return <Trophy size={24} />;
+}
 
 export default function AchievementsPage() {
   const { user, loading: userLoading } = useRealtimeUser();
@@ -83,26 +109,14 @@ export default function AchievementsPage() {
     }
   };
 
-  // Sync achievements with user stats when they load
+  // Sync ALL achievements with user stats when they load
   useEffect(() => {
     if (user && !userLoading) {
-      // Update streak achievements
-      if (user.stats.streak > 0) {
-        onStreakUpdated(user.stats.streak);
-      }
-
-      // Update level achievements - use calculated level from XP
       const calculatedLevel = getLevelFromXP(user.stats.xp);
-      if (calculatedLevel > 0) {
-        onLevelUp(calculatedLevel);
-      }
 
-      // Update focus session achievements - use Firestore value
-      const focusSessions = user.stats.focusSessionsCompleted || 0;
-      if (focusSessions > 0) {
-        console.log(`🔄 Syncing focus achievements with ${focusSessions} sessions`);
-        onFocusSessionCompleted(focusSessions);
-      }
+      // Sync all achievements from database with current user stats
+      console.log("🔄 Syncing all achievements with user stats...");
+      syncAllAchievements(user.stats, calculatedLevel);
     }
   }, [user, userLoading]);
 
@@ -327,7 +341,7 @@ function AchievementCard({
             borderColor: achievement.isUnlocked ? accentColor : "transparent",
           }}
         >
-          {achievement.isUnlocked ? achievement.icon : <Lock size={20} />}
+          {achievement.isUnlocked ? getAchievementIcon(achievement) : <Lock size={20} />}
         </div>
         <div className="flex-1">
           <h3 className={`font-bold ${theme.text}`}>{achievement.title}</h3>

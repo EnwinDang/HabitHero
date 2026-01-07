@@ -9,9 +9,21 @@ export interface AchievementWithProgress {
     description?: string | null;
     category?: string | null;
     icon?: string;
+    iconLocked?: string;
+    iconUnlocked?: string;
     reward?: {
         xp?: number;
         gold?: number;
+        lootbox?: string;
+    };
+    condition?: {
+        key?: string;
+        operator?: string;
+        type?: string;
+        value?: number;
+        days?: number;
+        moduleId?: string;
+        worldId?: string;
     };
     progress: number;
     target: number;
@@ -21,117 +33,27 @@ export interface AchievementWithProgress {
     claimedAt?: number;
 }
 
-// Pre-defined achievements for the app
-const ACHIEVEMENTS_CATALOG: Omit<AchievementWithProgress, 'progress' | 'isUnlocked' | 'unlockedAt'>[] = [
-    {
-        achievementId: "first_task",
-        title: "First Steps",
-        description: "Complete your first task",
-        category: "Tasks",
-        icon: "🎯",
-        target: 1,
-        reward: { xp: 50, gold: 25 }
-    },
-    {
-        achievementId: "task_master_10",
-        title: "Task Hunter",
-        description: "Complete 10 tasks",
-        category: "Tasks",
-        icon: "⚔️",
-        target: 10,
-        reward: { xp: 200, gold: 100 }
-    },
-    {
-        achievementId: "task_master_50",
-        title: "Task Warrior",
-        description: "Complete 50 tasks",
-        category: "Tasks",
-        icon: "🛡️",
-        target: 50,
-        reward: { xp: 500, gold: 250 }
-    },
-    {
-        achievementId: "task_master_100",
-        title: "Task Legend",
-        description: "Complete 100 tasks",
-        category: "Tasks",
-        icon: "👑",
-        target: 100,
-        reward: { xp: 1000, gold: 500 }
-    },
-    {
-        achievementId: "focus_first",
-        title: "Focus Initiate",
-        description: "Complete your first focus session",
-        category: "Focus",
-        icon: "⏱️",
-        target: 1,
-        reward: { xp: 50, gold: 25 }
-    },
-    {
-        achievementId: "focus_10",
-        title: "Deep Focus",
-        description: "Complete 10 focus sessions",
-        category: "Focus",
-        icon: "🧘",
-        target: 10,
-        reward: { xp: 300, gold: 150 }
-    },
-    {
-        achievementId: "streak_3",
-        title: "Getting Started",
-        description: "Reach a 3-day streak",
-        category: "Streak",
-        icon: "🔥",
-        target: 3,
-        reward: { xp: 100, gold: 50 }
-    },
-    {
-        achievementId: "streak_7",
-        title: "Week Warrior",
-        description: "Reach a 7-day streak",
-        category: "Streak",
-        icon: "💪",
-        target: 7,
-        reward: { xp: 250, gold: 125 }
-    },
-    {
-        achievementId: "streak_30",
-        title: "Monthly Master",
-        description: "Reach a 30-day streak",
-        category: "Streak",
-        icon: "🏆",
-        target: 30,
-        reward: { xp: 1000, gold: 500 }
-    },
-    {
-        achievementId: "level_5",
-        title: "Rising Star",
-        description: "Reach level 5",
-        category: "Level",
-        icon: "⭐",
-        target: 5,
-        reward: { xp: 200, gold: 100 }
-    },
-    {
-        achievementId: "level_10",
-        title: "Hero",
-        description: "Reach level 10",
-        category: "Level",
-        icon: "🌟",
-        target: 10,
-        reward: { xp: 500, gold: 250 }
-    },
-    {
-        achievementId: "level_25",
-        title: "Champion",
-        description: "Reach level 25",
-        category: "Level",
-        icon: "💎",
-        target: 25,
-        reward: { xp: 1000, gold: 500 }
-    },
-];
+interface FirestoreAchievement {
+    title: string;
+    description?: string;
+    category?: string;
+    iconLocked?: string;
+    iconUnlocked?: string;
+    reward?: {
+        xp?: number;
+        gold?: number;
+        lootbox?: string;
+    };
+    condition?: {
+        key?: string;
+        operator?: string;
+        type?: string;
+        value?: number;
+        days?: number;
+        moduleId?: string;
+        worldId?: string;
+    };
+}
 
 export function useRealtimeAchievements() {
     const [achievements, setAchievements] = useState<AchievementWithProgress[]>([]);
@@ -141,65 +63,98 @@ export function useRealtimeAchievements() {
     useEffect(() => {
         const user = auth.currentUser;
         if (!user) {
-            // Return default achievements with 0 progress
-            setAchievements(
-                ACHIEVEMENTS_CATALOG.map(a => ({
-                    ...a,
-                    progress: 0,
-                    isUnlocked: false
-                }))
-            );
+            setAchievements([]);
             setLoading(false);
             return;
         }
 
+        // Listen to achievements collection (definitions)
+        const achievementsRef = collection(db, "achievements");
+        const achievementsQuery = query(achievementsRef);
+
+        // Listen to user progress
         const progressRef = collection(db, "users", user.uid, "achievements");
-        const q = query(progressRef);
+        const progressQuery = query(progressRef);
 
-        const unsubscribe = onSnapshot(
-            q,
+        let achievementsCatalog: Map<string, FirestoreAchievement> = new Map();
+        let userProgressMap: Map<string, UserAchievementProgress> = new Map();
+        let achievementsLoaded = false;
+        let progressLoaded = false;
+
+        const mergeData = () => {
+            if (!achievementsLoaded || !progressLoaded) return;
+
+            const merged: AchievementWithProgress[] = [];
+
+            achievementsCatalog.forEach((achData, achId) => {
+                const userProgress = userProgressMap.get(achId);
+                // Get target from condition.value OR condition.days (for streak achievements)
+                const target = achData.condition?.value || achData.condition?.days || 1;
+
+                merged.push({
+                    achievementId: achId,
+                    title: achData.title,
+                    description: achData.description,
+                    category: achData.category,
+                    icon: achData.iconUnlocked || "🏆",
+                    iconLocked: achData.iconLocked,
+                    iconUnlocked: achData.iconUnlocked,
+                    reward: achData.reward,
+                    condition: achData.condition,
+                    progress: userProgress?.progress || 0,
+                    target: target,
+                    isUnlocked: userProgress?.isUnlocked || false,
+                    unlockedAt: userProgress?.unlockedAt,
+                    claimed: userProgress?.claimed || false,
+                    claimedAt: userProgress?.claimedAt,
+                });
+            });
+
+            setAchievements(merged);
+            setLoading(false);
+            setError(null);
+            console.log("🏆 Realtime achievements updated:", merged.length);
+        };
+
+        // Subscribe to achievements definitions
+        const unsubscribeAchievements = onSnapshot(
+            achievementsQuery,
             (snapshot) => {
-                const progressMap = new Map<string, UserAchievementProgress>();
+                achievementsCatalog.clear();
                 snapshot.docs.forEach((doc) => {
-                    const data = doc.data() as UserAchievementProgress;
-                    progressMap.set(doc.id, data);
+                    achievementsCatalog.set(doc.id, doc.data() as FirestoreAchievement);
                 });
-
-                // Merge catalog with user progress
-                const mergedAchievements = ACHIEVEMENTS_CATALOG.map(achievement => {
-                    const userProgress = progressMap.get(achievement.achievementId);
-                    return {
-                        ...achievement,
-                        progress: userProgress?.progress || 0,
-                        isUnlocked: userProgress?.isUnlocked || false,
-                        unlockedAt: userProgress?.unlockedAt,
-                        claimed: userProgress?.claimed || false,
-                        claimedAt: userProgress?.claimedAt,
-                    };
-                });
-
-                setAchievements(mergedAchievements);
-                setLoading(false);
-                setError(null);
-                console.log("🏆 Realtime achievements updated:", mergedAchievements.length);
+                achievementsLoaded = true;
+                mergeData();
             },
             (err) => {
-                console.error("❌ Firestore achievements error:", err);
-                // On error, still show achievements with 0 progress
-                setAchievements(
-                    ACHIEVEMENTS_CATALOG.map(a => ({
-                        ...a,
-                        progress: 0,
-                        isUnlocked: false
-                    }))
-                );
+                console.error("❌ Firestore achievements catalog error:", err);
+                setError("Could not load achievements catalog");
+                setLoading(false);
+            }
+        );
+
+        // Subscribe to user progress
+        const unsubscribeProgress = onSnapshot(
+            progressQuery,
+            (snapshot) => {
+                userProgressMap.clear();
+                snapshot.docs.forEach((doc) => {
+                    userProgressMap.set(doc.id, doc.data() as UserAchievementProgress);
+                });
+                progressLoaded = true;
+                mergeData();
+            },
+            (err) => {
+                console.error("❌ Firestore achievement progress error:", err);
                 setError("Could not load achievement progress");
                 setLoading(false);
             }
         );
 
         return () => {
-            unsubscribe();
+            unsubscribeAchievements();
+            unsubscribeProgress();
         };
     }, []);
 

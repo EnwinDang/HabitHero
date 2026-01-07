@@ -20,7 +20,7 @@ export default defineConfig({
     // Proxy naar Firebase Cloud Functions (local emulator)
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:5001/habithero-73d98/us-central1",
+        target: "http://127.0.0.1:5001/demo-no-project/us-central1",
         changeOrigin: true,
         secure: false,
         timeout: 120000,

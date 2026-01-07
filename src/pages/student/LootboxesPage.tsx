@@ -125,8 +125,8 @@ export default function LootboxesPage() {
             await new Promise(resolve => setTimeout(resolve, 2000));
 
             try {
-                // TRY BACKEND FIRST (preferred for security)
-                console.log("🔄 Trying backend API for lootbox opening...");
+                // Try backend API first
+                console.log("🔄 Opening lootbox via backend API...");
                 const result = await LootboxesAPI.open(lootbox.id);
 
                 // Backend success - use backend result
@@ -140,14 +140,13 @@ export default function LootboxesPage() {
                     ...(r.stats ? { stats: r.stats } : {})
                 }));
 
-                console.log("✅ Backend lootbox opening successful");
+                console.log("✅ Lootbox opened successfully (backend)");
                 setRevealedItems(items);
                 setShowRewards(true);
                 setOpeningBox(null);
-
-            } catch (backendError) {
-                // FALLBACK TO FIRESTORE (backend offline)
-                console.warn("⚠️ Backend offline, using Firestore fallback:", backendError);
+            } catch (backendError: any) {
+                // Fallback to Firestore if backend fails (auth issues, offline, etc.)
+                console.warn("⚠️ Backend failed, using Firestore fallback:", backendError.message);
 
                 // Generate items locally
                 const items = generateRewards(lootbox.type);
@@ -168,11 +167,7 @@ export default function LootboxesPage() {
                     });
                 }
 
-                console.log(`✅ Firestore fallback successful`);
-                console.log(`   Lootbox: ${lootbox.name}`);
-                console.log(`   Gold deducted: -${lootbox.price}`);
-                console.log(`   Items added: ${items.length}`);
-
+                console.log(`✅ Lootbox opened successfully (Firestore)`);
                 setRevealedItems(items);
                 setShowRewards(true);
                 setOpeningBox(null);

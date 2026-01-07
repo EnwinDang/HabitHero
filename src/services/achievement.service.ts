@@ -1,5 +1,5 @@
 import { db, auth } from "@/firebase";
-import { doc, setDoc, getDoc, increment, updateDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, increment, updateDoc, collection, getDocs } from "firebase/firestore";
 
 /**
  * Achievement Progress Service
@@ -150,3 +150,105 @@ export async function onLevelUp(currentLevel: number) {
     await updateAchievementProgress("level_10", currentLevel);
     await updateAchievementProgress("level_25", currentLevel);
 }
+
+/**
+ * Sync all achievements from database with current user stats
+ * This reads achievement conditions from Firestore and updates progress accordingly
+ */
+export async function syncAllAchievements(userStats: {
+    streak?: number;
+    xp?: number;
+    focusSessionsCompleted?: number;
+    tasksCompleted?: number;
+    monstersDefeated?: number;
+    [key: string]: any;
+}, currentLevel: number) {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    try {
+        // Get all achievement definitions from database
+        const achievementsRef = collection(db, "achievements");
+        const achievementsSnapshot = await getDocs(achievementsRef);
+
+        console.log(`🔄 Syncing ${achievementsSnapshot.docs.length} achievements with user stats...`);
+
+        // Process each achievement
+        for (const achDoc of achievementsSnapshot.docs) {
+            const achId = achDoc.id;
+            const achData = achDoc.data();
+            const condition = achData.condition;
+
+            if (!condition) continue;
+
+            let currentValue = 0;
+            const targetValue = condition.value || condition.days || 1;
+
+            // Special handling for streak achievements
+            if (condition.type === "streak") {
+                currentValue = userStats.streak || 0;
+            }
+            // Determine current value based on condition key
+            else if (condition.key) {
+                switch (condition.key) {
+                    case "easy_tasks_completed":
+                    case "medium_tasks_completed":
+                    case "hard_tasks_completed":
+                    case "extreme_tasks_completed":
+                        // For now, use total tasks completed
+                        // TODO: Track difficulty-specific task counts
+                        currentValue = userStats.tasksCompleted || 0;
+                        break;
+
+                    case "pomodoro_completed":
+                        currentValue = userStats.focusSessionsCompleted || 0;
+                        break;
+
+                    case "monsters_defeated":
+                        currentValue = userStats.monstersDefeated || 0;
+                        break;
+
+                    case "days":
+                        // Streak achievements
+                        currentValue = userStats.streak || 0;
+                        break;
+
+                    default:
+                        // Check if it's a direct stat key
+                        if (condition.key in userStats) {
+                            currentValue = userStats[condition.key] || 0;
+                        }
+                        break;
+                }
+            }
+
+            // Special handling for module/world completion
+            if (condition.type === "module_complete" || condition.type === "world_complete") {
+                // These need special tracking - skip for now
+                continue;
+            }
+
+            // Update achievement progress
+            const isUnlocked = currentValue >= targetValue;
+            const achievementRef = doc(db, "users", user.uid, "achievements", achId);
+
+            await setDoc(achievementRef, {
+                achievementId: achId,
+                progress: currentValue,
+                isUnlocked,
+                ...(isUnlocked ? { unlockedAt: Date.now() } : {}),
+            }, { merge: true });
+
+            if (isUnlocked) {
+                console.log(`  ✅ ${achId}: ${currentValue}/${targetValue} - UNLOCKED`);
+            } else {
+                console.log(`  📊 ${achId}: ${currentValue}/${targetValue}`);
+            }
+        }
+
+        console.log(`✅ All achievements synced successfully`);
+    } catch (error) {
+        console.error("❌ Failed to sync achievements:", error);
+    }
+}
+
