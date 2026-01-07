@@ -280,13 +280,25 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
                       const newLevel = getLevelFromXP(newTotalXP);
 
                       if (newLevel > oldLevel) {
-                        // Fetch level rewards from backend
+                        // Fetch level rewards from Firestore
                         try {
                           const levelsSnap = await getDoc(doc(db, "levels", "definitions"));
                           const levelsData = levelsSnap.data();
                           const levels = levelsData?.levels || [];
                           const levelDef = levels.find((l: any) => l.level === newLevel);
                           const reward = levelDef?.rewards || {};
+
+                          // Update user's level and apply rewards to Firestore
+                          const updates: any = {
+                            "stats.level": newLevel,
+                          };
+                          if (reward.gold) {
+                            updates["stats.gold"] = increment(reward.gold);
+                          }
+                          if (reward.gems) {
+                            updates["stats.gems"] = increment(reward.gems);
+                          }
+                          await updateDoc(userRef, updates);
 
                           setLevelUpReward({ oldLevel, newLevel, reward });
                           // Auto-clear after animation

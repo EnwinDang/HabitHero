@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { db } from "@/firebase";
 import { doc, updateDoc, increment } from "firebase/firestore";
 import { getLevelFromXP } from "@/utils/xpCurve";
+import { addXPWithLevelUp } from "@/utils/xpHelpers";
 import {
   onStreakUpdated,
   onLevelUp,
@@ -49,11 +50,18 @@ export default function AchievementsPage() {
       const xpReward = achievement.reward?.xp || 0;
       const goldReward = achievement.reward?.gold || 0;
 
-      // Update user XP and Gold
-      await updateDoc(userRef, {
-        "stats.xp": increment(xpReward),
-        "stats.gold": increment(goldReward),
-      });
+      // Add XP with automatic level-up handling
+      let levelUpResult = null;
+      if (xpReward > 0) {
+        levelUpResult = await addXPWithLevelUp(firebaseUser.uid, xpReward);
+      }
+
+      // Add gold separately (not tied to level-up)
+      if (goldReward > 0) {
+        await updateDoc(userRef, {
+          "stats.gold": increment(goldReward),
+        });
+      }
 
       // Mark achievement as claimed
       await updateDoc(achievementRef, {
@@ -65,6 +73,16 @@ export default function AchievementsPage() {
       const rewards = [];
       if (xpReward > 0) rewards.push(`+${xpReward} XP`);
       if (goldReward > 0) rewards.push(`+${goldReward} Gold`);
+      if (levelUpResult?.leveledUp) {
+        rewards.push(`🎉 LEVEL UP! ${levelUpResult.oldLevel} → ${levelUpResult.newLevel}`);
+        if (levelUpResult.rewards?.gold) rewards.push(`+${levelUpResult.rewards.gold} Bonus Gold`);
+        if (levelUpResult.rewards?.gems) rewards.push(`+${levelUpResult.rewards.gems} Gems`);
+      }
+      if (levelUpResult?.leveledUp) {
+        rewards.push(`\n🎉 LEVEL UP! ${levelUpResult.oldLevel} → ${levelUpResult.newLevel}`);
+        if (levelUpResult.rewards?.gold) rewards.push(`+${levelUpResult.rewards.gold} Bonus Gold`);
+        if (levelUpResult.rewards?.gems) rewards.push(`+${levelUpResult.rewards.gems} Gems`);
+      }
 
       if (rewards.length > 0) {
         alert(`🎉 Claimed!\n${rewards.join(' • ')}`);

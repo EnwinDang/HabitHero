@@ -2210,10 +2210,31 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
       const userSnap = await userRef.get();
       const user = userSnap.data() || {};
 
+      const oldLevel = user.stats?.level || 1;
+      const newTotalXP = (user.stats?.totalXP || 0) + xpGained;
+      let newGold = (user.stats?.gold || 0) + goldGained;
+
+      // Calculate new level from total XP
+      const levelData = await calculateLevelFromXP(newTotalXP);
+      const leveledUp = levelData.level > oldLevel;
+
+      // Add level-up rewards if leveled up
+      if (leveledUp && levelData.rewards) {
+        newGold += levelData.rewards.gold || 0;
+        if (levelData.rewards.gems) {
+          await userRef.update({
+            "stats.gems": (user.stats?.gems || 0) + levelData.rewards.gems,
+          });
+        }
+      }
+
       await userRef.update({
-        "stats.xp": (user.stats?.xp || 0) + xpGained,
-        "stats.gold": (user.stats?.gold || 0) + goldGained,
-        "stats.totalXP": (user.stats?.totalXP || 0) + xpGained,
+        "stats.level": levelData.level,
+        "stats.xp": levelData.currentXP,
+        "stats.nextLevelXP": levelData.nextLevelXP,
+        "stats.totalXP": newTotalXP,
+        "stats.gold": newGold,
+        updatedAt: Date.now(),
       });
     }
 
