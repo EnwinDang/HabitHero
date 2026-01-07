@@ -12,6 +12,7 @@ export type PomodoroContextValue = PomodoroSettings & {
   // Shared timer state
   status: "idle" | "running" | "paused";
   timeLeftSeconds: number;
+  phase: "focus" | "break";
 
   // Shared stats
   sessionsCompleted: number;
@@ -25,6 +26,7 @@ export type PomodoroContextValue = PomodoroSettings & {
 
   // Optional UI signal
   xpGained: number | null;
+  levelUpReward: { oldLevel: number; newLevel: number; reward?: any } | null;
 };
 
 export const STORAGE_KEY = "habithero:pomodoroSettings:v1";
