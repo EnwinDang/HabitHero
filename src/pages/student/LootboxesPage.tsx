@@ -3,6 +3,7 @@ import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { db, auth } from "@/firebase";
 import { collection, addDoc, updateDoc, doc } from "firebase/firestore";
+import { LootboxesAPI } from "@/api/lootboxes.api";
 import {
     Gift,
     Box,
@@ -17,6 +18,19 @@ import {
 
 // Lootbox types
 type LootboxType = "common" | "rare" | "epic";
+
+// Item types (matching InventoryPage)
+type ItemType = "weapon" | "armor" | "accessory" | "potion";
+type ItemRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
+
+interface GeneratedItem {
+    name: string;
+    type: ItemType;
+    rarity: ItemRarity;
+    icon: string;
+    isEquipped: boolean;
+    level: number;
+}
 
 interface Lootbox {
     id: string;
@@ -81,7 +95,7 @@ export default function LootboxesPage() {
 
     // Opening state
     const [openingBox, setOpeningBox] = useState<string | null>(null);
-    const [revealedItems, setRevealedItems] = useState<string[]>([]);
+    const [revealedItems, setRevealedItems] = useState<GeneratedItem[]>([]);
     const [showRewards, setShowRewards] = useState(false);
 
     if (userLoading) {
@@ -100,54 +114,96 @@ export default function LootboxesPage() {
 
     const handleOpenChest = async (lootbox: Lootbox) => {
         if (user.stats.gold < lootbox.price) {
-            alert("Not enough gold!");
+            alert("Niet genoeg goud!");
             return;
         }
 
         setOpeningBox(lootbox.id);
 
         try {
-            const firebaseUser = auth.currentUser;
-            if (!firebaseUser) {
-                console.error("No authenticated user");
-                return;
-            }
-
             // Simulate opening animation
             await new Promise(resolve => setTimeout(resolve, 2000));
 
-            // Generate random rewards based on lootbox type
-            const items = generateRewards(lootbox.type);
+            try {
+                // TRY BACKEND FIRST (preferred for security)
+                console.log("🔄 Trying backend API for lootbox opening...");
+                const result = await LootboxesAPI.open(lootbox.id);
 
-            // Save lootbox opening to Firebase
-            const lootboxesRef = collection(db, "users", firebaseUser.uid, "lootboxes");
-            await addDoc(lootboxesRef, {
-                lootboxType: lootbox.type,
-                lootboxName: lootbox.name,
-                price: lootbox.price,
-                rewards: items,
-                openedAt: Date.now()
-            });
+                // Backend success - use backend result
+                const items = result.results.map((r: any) => ({
+                    name: r.name || "Unknown Item",
+                    type: r.type || "misc",
+                    rarity: r.rarity || "common",
+                    icon: r.icon || "📦",
+                    isEquipped: false,
+                    level: 1,
+                    ...(r.stats ? { stats: r.stats } : {})
+                }));
 
-            // Update user gold (deduct lootbox price)
-            const userRef = doc(db, "users", firebaseUser.uid);
-            await updateDoc(userRef, {
-                "stats.gold": user.stats.gold - lootbox.price
-            });
+                console.log("✅ Backend lootbox opening successful");
+                setRevealedItems(items);
+                setShowRewards(true);
+                setOpeningBox(null);
 
-            setRevealedItems(items);
-            setShowRewards(true);
-            setOpeningBox(null);
-        } catch (error) {
+            } catch (backendError) {
+                // FALLBACK TO FIRESTORE (backend offline)
+                console.warn("⚠️ Backend offline, using Firestore fallback:", backendError);
+
+                // Generate items locally
+                const items = generateRewards(lootbox.type);
+
+                // Deduct gold from user
+                const userRef = doc(db, "users", user.uid);
+                await updateDoc(userRef, {
+                    "stats.gold": user.stats.gold - lootbox.price
+                });
+
+                // Add items to inventory
+                const inventoryRef = collection(db, "users", user.uid, "inventory");
+                for (const item of items) {
+                    await addDoc(inventoryRef, {
+                        ...item,
+                        acquiredAt: Date.now(),
+                        source: `lootbox_${lootbox.type}`
+                    });
+                }
+
+                console.log(`✅ Firestore fallback successful`);
+                console.log(`   Lootbox: ${lootbox.name}`);
+                console.log(`   Gold deducted: -${lootbox.price}`);
+                console.log(`   Items added: ${items.length}`);
+
+                setRevealedItems(items);
+                setShowRewards(true);
+                setOpeningBox(null);
+            }
+
+            // User data will auto-refresh via useRealtimeUser hook
+        } catch (error: any) {
             console.error("Failed to open lootbox:", error);
+            alert(error.message || "Er is iets misgegaan bij het openen.");
             setOpeningBox(null);
         }
     };
 
-    const generateRewards = (type: LootboxType): string[] => {
-        const commonItems = ["⚔️ Iron Sword", "🛡️ Wooden Shield", "🧪 Health Potion"];
-        const rareItems = ["⚔️ Steel Sword", "🛡️ Iron Shield", "🧪 Mana Potion", "📿 Lucky Charm"];
-        const epicItems = ["⚔️ Legendary Blade", "🛡️ Dragon Shield", "🧪 Elixir of Life", "👑 Crown of Wisdom"];
+    const generateRewards = (type: LootboxType): GeneratedItem[] => {
+        const commonItems: GeneratedItem[] = [
+            { name: "Iron Sword", type: "weapon", rarity: "common", icon: "⚔️", isEquipped: false, level: 1 },
+            { name: "Wooden Shield", type: "armor", rarity: "common", icon: "🛡️", isEquipped: false, level: 1 },
+            { name: "Health Potion", type: "potion", rarity: "common", icon: "🧪", isEquipped: false, level: 1 }
+        ];
+        const rareItems: GeneratedItem[] = [
+            { name: "Steel Sword", type: "weapon", rarity: "rare", icon: "⚔️", isEquipped: false, level: 1 },
+            { name: "Iron Shield", type: "armor", rarity: "rare", icon: "🛡️", isEquipped: false, level: 1 },
+            { name: "Mana Potion", type: "potion", rarity: "rare", icon: "🧪", isEquipped: false, level: 1 },
+            { name: "Lucky Charm", type: "accessory", rarity: "rare", icon: "📿", isEquipped: false, level: 1 }
+        ];
+        const epicItems: GeneratedItem[] = [
+            { name: "Legendary Blade", type: "weapon", rarity: "epic", icon: "⚔️", isEquipped: false, level: 1 },
+            { name: "Dragon Shield", type: "armor", rarity: "epic", icon: "🛡️", isEquipped: false, level: 1 },
+            { name: "Elixir of Life", type: "potion", rarity: "epic", icon: "🧪", isEquipped: false, level: 1 },
+            { name: "Crown of Wisdom", type: "accessory", rarity: "epic", icon: "👑", isEquipped: false, level: 1 }
+        ];
 
         if (type === "common") {
             return [commonItems[Math.floor(Math.random() * commonItems.length)]];
@@ -239,8 +295,12 @@ export default function LootboxesPage() {
                             </div>
                             <div className="space-y-3 mb-6">
                                 {revealedItems.map((item, index) => (
-                                    <div key={index} className={`p-4 rounded-xl ${theme.inputBg} text-center animate-bounce`} style={{ animationDelay: `${index * 0.2}s` }}>
-                                        <p className={`text-lg font-medium ${theme.text}`}>{item}</p>
+                                    <div key={index} className={`p-4 rounded-xl ${theme.inputBg} text-center animate-bounce flex items-center justify-center gap-3`} style={{ animationDelay: `${index * 0.2}s` }}>
+                                        <span className="text-2xl">{item.icon}</span>
+                                        <div>
+                                            <p className={`text-lg font-medium ${theme.text}`}>{item.name}</p>
+                                            <p className={`text-xs ${theme.textMuted} uppercase`}>{item.rarity}</p>
+                                        </div>
                                     </div>
                                 ))}
                             </div>

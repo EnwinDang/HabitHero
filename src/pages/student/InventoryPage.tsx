@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { db, auth } from "@/firebase";
-import { collection, query, onSnapshot } from "firebase/firestore";
+import { collection, query, onSnapshot, doc, deleteDoc, updateDoc } from "firebase/firestore";
 import { useEffect } from "react";
 import {
     Package,
@@ -11,7 +11,10 @@ import {
     Gem,
     Droplet,
     Star,
-    Check
+    Check,
+    Hammer,
+    Zap, // Added Hammer for merge icon
+    ArrowUpCircle
 } from "lucide-react";
 
 // Item types
@@ -25,6 +28,7 @@ interface InventoryItem {
     rarity: ItemRarity;
     icon: string;
     isEquipped: boolean;
+    level?: number; // Added level property (optional for potential backward compatibility)
 }
 
 // Rarity colors matching the screenshot
@@ -44,6 +48,7 @@ export default function InventoryPage() {
     const [items, setItems] = useState<InventoryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedCategory, setSelectedCategory] = useState<string>("all");
+    const [mergeMessage, setMergeMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null); // Feedback state
 
     // Fetch inventory items from Firebase
     useEffect(() => {
@@ -95,13 +100,126 @@ export default function InventoryPage() {
         }
     };
 
+    // MERGE LOGIC
+    const handleMerge = async (targetItem: InventoryItem) => {
+        if (!user) return;
+
+        // 1. Find a duplicate (same name, same level, NOT the same ID)
+        const duplicate = items.find(i =>
+            i.name === targetItem.name &&
+            i.id !== targetItem.id &&
+            (i.level || 1) === (targetItem.level || 1) // Only merge same levels
+        );
+
+        if (!duplicate) {
+            setMergeMessage({ type: 'error', text: "No duplicate item found to merge!" });
+            setTimeout(() => setMergeMessage(null), 3000);
+            return;
+        }
+
+        const MERGE_COST = 500; // Fixed cost for now
+        if (user.stats.gold < MERGE_COST) {
+            setMergeMessage({ type: 'error', text: `Not enough gold! Need ${MERGE_COST}g` });
+            setTimeout(() => setMergeMessage(null), 3000);
+            return;
+        }
+
+        try {
+            // Optimistic update / Loading state could be added here
+
+            // 1. Deduct Gold
+            const userRef = doc(db, "users", user.uid);
+            await updateDoc(userRef, {
+                "stats.gold": user.stats.gold - MERGE_COST
+            });
+
+            // 2. Delete the specific duplicate item
+            const duplicateRef = doc(db, "users", user.uid, "inventory", duplicate.id);
+            await deleteDoc(duplicateRef);
+
+            // 3. Upgrade the target item
+            const targetRef = doc(db, "users", user.uid, "inventory", targetItem.id);
+            const newLevel = (targetItem.level || 1) + 1;
+            await updateDoc(targetRef, {
+                level: newLevel,
+                // name: `${targetItem.name} +${newLevel}` // Optional: rename item? Keeping simple for now.
+            });
+
+            setMergeMessage({ type: 'success', text: `Success! Upgraded to Level ${newLevel}!` });
+            setTimeout(() => setMergeMessage(null), 3000);
+
+        } catch (error) {
+            console.error("Merge failed:", error);
+            setMergeMessage({ type: 'error', text: "Merge failed due to an error." });
+            setTimeout(() => setMergeMessage(null), 3000);
+        }
+    };
+
+    // Helper to check if merge is possible for an item
+    const canMerge = (item: InventoryItem) => {
+        return items.some(i =>
+            i.name === item.name &&
+            i.id !== item.id &&
+            (i.level || 1) === (item.level || 1)
+        );
+    };
+
+    // EQUIP LOGIC
+    const handleEquip = async (item: InventoryItem) => {
+        if (!user) return;
+
+        try {
+            // 1. Find currently equipped item of same type
+            const currentEquipped = items.find(i => i.type === item.type && i.isEquipped);
+
+            // 2. Unequip current item if exists
+            if (currentEquipped) {
+                const currentRef = doc(db, "users", user.uid, "inventory", currentEquipped.id);
+                await updateDoc(currentRef, { isEquipped: false });
+            }
+
+            // 3. Equip new item
+            const itemRef = doc(db, "users", user.uid, "inventory", item.id);
+            await updateDoc(itemRef, { isEquipped: true });
+
+            setMergeMessage({ type: 'success', text: `Equipped ${item.name}!` });
+            setTimeout(() => setMergeMessage(null), 3000);
+        } catch (error) {
+            console.error("Equip failed:", error);
+            setMergeMessage({ type: 'error', text: "Failed to equip item." });
+            setTimeout(() => setMergeMessage(null), 3000);
+        }
+    };
+
+    const handleUnequip = async (item: InventoryItem) => {
+        if (!user) return;
+        try {
+            const itemRef = doc(db, "users", user.uid, "inventory", item.id);
+            await updateDoc(itemRef, { isEquipped: false });
+            setMergeMessage({ type: 'success', text: `Unequipped ${item.name}` });
+            setTimeout(() => setMergeMessage(null), 3000);
+        } catch (error) {
+            console.error("Unequip failed:", error);
+        }
+    };
+
     return (
         <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
             <main className="p-8 overflow-y-auto">
                 {/* Header */}
-                <div className="mb-6">
-                    <h2 className={`text-3xl font-bold ${theme.text}`}>Inventory</h2>
-                    <p className={theme.textMuted}>Manage your equipment and items</p>
+                <div className="mb-6 flex justify-between items-center">
+                    <div>
+                        <h2 className={`text-3xl font-bold ${theme.text}`}>Inventory</h2>
+                        <p className={theme.textMuted}>Manage your equipment and items</p>
+                    </div>
+
+                    {/* Feedback Message */}
+                    {mergeMessage && (
+                        <div className={`px-4 py-2 rounded-xl text-sm font-bold animate-pulse ${mergeMessage.type === 'success' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'
+                            }`}>
+                            {mergeMessage.text}
+                        </div>
+                    )}
                 </div>
 
                 {/* Equipped Items Section */}
@@ -121,6 +239,7 @@ export default function InventoryPage() {
                                     darkMode={darkMode}
                                     theme={theme}
                                     getTypeIcon={getTypeIcon}
+                                    onUnequip={() => handleUnequip(item)}
                                 />
                             ))
                         )}
@@ -189,6 +308,9 @@ export default function InventoryPage() {
                                     darkMode={darkMode}
                                     theme={theme}
                                     getTypeIcon={getTypeIcon}
+                                    canMerge={canMerge(item)}
+                                    onMerge={() => handleMerge(item)}
+                                    onEquip={() => handleEquip(item)}
                                 />
                             ))}
                         </div>
@@ -204,12 +326,14 @@ function EquippedItemCard({
     item,
     darkMode,
     theme,
-    getTypeIcon
+    getTypeIcon,
+    onUnequip
 }: {
     item: InventoryItem;
     darkMode: boolean;
     theme: ReturnType<typeof getThemeClasses>;
     getTypeIcon: (type: ItemType) => React.ReactElement;
+    onUnequip: () => void;
 }) {
     const colors = rarityColors[item.rarity];
 
@@ -227,12 +351,21 @@ function EquippedItemCard({
                 <div className="text-4xl">{item.icon}</div>
                 <div className="flex-1">
                     <h4 className={`font-bold ${theme.text}`}>{item.name}</h4>
-                    <p className={`text-sm ${theme.textMuted} capitalize`}>{item.rarity}</p>
+                    <p className={`text-sm ${theme.textMuted} capitalize`}>{item.rarity} • Lvl {item.level || 1}</p>
                     <div className="flex items-center gap-1 mt-1">
                         <Check size={14} style={{ color: colors.text }} />
                         <span className="text-xs" style={{ color: colors.text }}>Equipped</span>
                     </div>
                 </div>
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onUnequip();
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors"
+                >
+                    Unequip
+                </button>
             </div>
         </div>
     );
@@ -243,12 +376,18 @@ function ItemCard({
     item,
     darkMode,
     theme,
-    getTypeIcon
+    getTypeIcon,
+    canMerge,
+    onMerge,
+    onEquip
 }: {
     item: InventoryItem;
     darkMode: boolean;
     theme: ReturnType<typeof getThemeClasses>;
     getTypeIcon: (type: ItemType) => React.ReactElement;
+    canMerge?: boolean;
+    onMerge?: () => void;
+    onEquip?: () => void;
 }) {
     const colors = rarityColors[item.rarity];
 
@@ -263,9 +402,58 @@ function ItemCard({
             }}
         >
             <div className="text-center">
-                <div className="text-4xl mb-2">{item.icon}</div>
-                <h4 className={`font-medium ${theme.text} text-sm`}>{item.name}</h4>
+                <div className="relative inline-block mb-2">
+                    <div className="text-4xl">{item.icon}</div>
+                    {/* Level Badge */}
+                    <div className={`absolute -bottom-2 -right-2 px-1.5 rounded-full text-[10px] font-bold text-white shadow-sm ${(item.level || 1) > 1 ? 'bg-indigo-500' : 'bg-gray-500'
+                        }`}>
+                        L{(item.level || 1)}
+                    </div>
+                </div>
+
+                <h4 className={`font-medium ${theme.text} text-sm truncate`}>{item.name}</h4>
                 <p className={`text-xs ${theme.textMuted} capitalize`}>{item.rarity}</p>
+
+                {/* Merge Button if available */}
+                {canMerge && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation(); // Prevent card click
+                            onMerge?.();
+                        }}
+                        className="mt-2 text-xs w-full py-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-colors hover:scale-105"
+                        style={{ backgroundColor: 'rgba(234, 179, 8, 0.2)', color: '#eab308' }}
+                        title="Merge with duplicate for 500g"
+                    >
+                        <Hammer size={12} />
+                        Merge (500g)
+                    </button>
+                )}
+
+                {/* Equip Button (if not equipped) */}
+                {!item.isEquipped && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onEquip?.();
+                        }}
+                        className={`mt-2 text-xs w-full py-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-colors hover:scale-105`}
+                        style={{
+                            backgroundColor: darkMode ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)',
+                            color: '#3b82f6'
+                        }}
+                    >
+                        <ArrowUpCircle size={12} />
+                        Equip
+                    </button>
+                )}
+
+                {/* Equipped Indicator */}
+                {item.isEquipped && (
+                    <div className="mt-2 text-xs font-bold text-green-500 flex items-center justify-center gap-1">
+                        <Check size={12} /> Equipped
+                    </div>
+                )}
             </div>
         </div>
     );

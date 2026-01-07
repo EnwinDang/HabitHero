@@ -56,8 +56,13 @@ export const CoursesAPI = {
   },
 
   // Modules under course
-  listModules(courseId: string): Promise<Module[]> {
-    return apiFetch<Module[]>(`/courses/${courseId}/modules`);
+  async listModules(courseId: string): Promise<Module[]> {
+    try {
+      return await apiFetch<Module[]>(`/courses/${courseId}/modules`);
+    } catch (error) {
+      console.warn(`Backend offline, no modules available for course ${courseId}:`, error);
+      return Promise.resolve([]); // Return empty array when backend is offline
+    }
   },
 
   createModule(courseId: string, module: Module): Promise<Module> {

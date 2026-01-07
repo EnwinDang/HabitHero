@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { UsersAPI } from "@/api/users.api";
+import { db } from "@/firebase";
+import { doc, updateDoc, increment } from "firebase/firestore";
 import {
   clampInt,
   DEFAULTS,
@@ -10,6 +12,7 @@ import {
   readStoredSettings,
   STORAGE_KEY,
 } from "./pomodoro";
+import { onFocusSessionCompleted } from "@/services/achievement.service";
 // NOTE: workspace also contains a legacy PomodoroContext.tsx stub.
 // Use explicit extension to avoid ambiguous resolution.
 
@@ -155,6 +158,28 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
 
           // Award XP once when a focus session completes
           if (authUser?.uid) {
+            // IMPORTANT: Calculate new count BEFORE the async call
+            // because sessionsCompleted state won't be updated yet
+            const newSessionCount = sessionsCompleted + 1;
+            console.log(`🎯 Focus session completed! New count: ${newSessionCount}`);
+
+            // Update Firestore with the new session count
+            const userRef = doc(db, "users", authUser.uid);
+            updateDoc(userRef, {
+              "stats.focusSessionsCompleted": increment(1)
+            }).then(() => {
+              console.log(`✅ Firestore updated: focusSessionsCompleted incremented`);
+            }).catch((error) => {
+              console.error(`❌ Failed to update Firestore:`, error);
+            });
+
+            // Update focus achievements FIRST (before backend call)
+            // This ensures achievements work even if backend is offline
+            onFocusSessionCompleted(newSessionCount).catch((error) => {
+              console.error("Failed to update focus achievements:", error);
+            });
+
+            // Then try to award XP via backend
             UsersAPI.completeFocusSession(authUser.uid, settings.focusDuration)
               .then((result) => {
                 setXpGained(result.xpGained);

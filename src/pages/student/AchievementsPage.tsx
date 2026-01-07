@@ -3,15 +3,22 @@ import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useRealtimeAchievements } from "@/hooks/useRealtimeAchievements";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
+import { useAuth } from "@/context/AuthContext";
+import { db } from "@/firebase";
+import { doc, updateDoc, increment } from "firebase/firestore";
+import { getLevelFromXP } from "@/utils/xpCurve";
 import {
   onStreakUpdated,
   onLevelUp,
   onTaskCompleted,
+  onFocusSessionCompleted,
 } from "@/services/achievement.service";
-import { Trophy, Star, TrendingUp, Coins, Lock, Check } from "lucide-react";
+import { AchievementsAPI } from "@/api/achievements.api";
+import { Trophy, Star, TrendingUp, Coins, Lock, Check, Gift } from "lucide-react";
 
 export default function AchievementsPage() {
   const { user, loading: userLoading } = useRealtimeUser();
+  const { firebaseUser } = useAuth();
   const { achievements, loading: achievementsLoading } =
     useRealtimeAchievements();
   const { tasks } = useRealtimeTasks();
@@ -22,6 +29,59 @@ export default function AchievementsPage() {
 
   // Filter state
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [claimedAchievements, setClaimedAchievements] = useState<Set<string>>(new Set());
+
+  // Handle claim achievement (Firestore-based, no backend needed)
+  const handleClaim = async (achievementId: string) => {
+    if (!user || !firebaseUser || claimingId) return;
+
+    const achievement = achievements.find(a => a.achievementId === achievementId);
+    if (!achievement || !achievement.isUnlocked) return;
+
+    try {
+      setClaimingId(achievementId);
+
+      // Update user stats directly in Firestore
+      const userRef = doc(db, "users", firebaseUser.uid);
+      const achievementRef = doc(db, "users", firebaseUser.uid, "achievements", achievementId);
+
+      const xpReward = achievement.reward?.xp || 0;
+      const goldReward = achievement.reward?.gold || 0;
+
+      // Update user XP and Gold
+      await updateDoc(userRef, {
+        "stats.xp": increment(xpReward),
+        "stats.gold": increment(goldReward),
+      });
+
+      // Mark achievement as claimed
+      await updateDoc(achievementRef, {
+        claimed: true,
+        claimedAt: Date.now(),
+      });
+
+      // Show reward notification
+      const rewards = [];
+      if (xpReward > 0) rewards.push(`+${xpReward} XP`);
+      if (goldReward > 0) rewards.push(`+${goldReward} Gold`);
+
+      if (rewards.length > 0) {
+        alert(`🎉 Claimed!\n${rewards.join(' • ')}`);
+      }
+
+      // Mark as claimed locally
+      setClaimedAchievements(prev => new Set([...prev, achievementId]));
+
+      // Refresh page to show updated stats
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (error) {
+      console.error("Failed to claim achievement:", error);
+      alert("Failed to claim reward. Please try again.");
+    } finally {
+      setClaimingId(null);
+    }
+  };
 
   // Sync achievements with user stats when they load
   useEffect(() => {
@@ -31,9 +91,17 @@ export default function AchievementsPage() {
         onStreakUpdated(user.stats.streak);
       }
 
-      // Update level achievements
-      if (user.stats.level > 0) {
-        onLevelUp(user.stats.level);
+      // Update level achievements - use calculated level from XP
+      const calculatedLevel = getLevelFromXP(user.stats.xp);
+      if (calculatedLevel > 0) {
+        onLevelUp(calculatedLevel);
+      }
+
+      // Update focus session achievements - use Firestore value
+      const focusSessions = user.stats.focusSessionsCompleted || 0;
+      if (focusSessions > 0) {
+        console.log(`🔄 Syncing focus achievements with ${focusSessions} sessions`);
+        onFocusSessionCompleted(focusSessions);
       }
     }
   }, [user, userLoading]);
@@ -124,7 +192,7 @@ export default function AchievementsPage() {
               <TrendingUp size={18} />
               <span className="font-medium">Your Level</span>
             </div>
-            <p className="text-3xl font-bold">{user.stats.level}</p>
+            <p className="text-3xl font-bold">{getLevelFromXP(user.stats.xp)}</p>
             <p className="text-green-200 text-sm">Keep going!</p>
           </div>
         </div>
@@ -139,15 +207,15 @@ export default function AchievementsPage() {
               style={
                 selectedCategory === category
                   ? {
-                      background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
-                      color: "white",
-                    }
+                    background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                    color: "white",
+                  }
                   : {
-                      backgroundColor: darkMode
-                        ? "rgba(55, 65, 81, 0.3)"
-                        : "rgba(243, 244, 246, 1)",
-                      color: darkMode ? "#9ca3af" : "#6b7280",
-                    }
+                    backgroundColor: darkMode
+                      ? "rgba(55, 65, 81, 0.3)"
+                      : "rgba(243, 244, 246, 1)",
+                    color: darkMode ? "#9ca3af" : "#6b7280",
+                  }
               }
             >
               {category}
@@ -164,6 +232,9 @@ export default function AchievementsPage() {
               darkMode={darkMode}
               accentColor={accentColor}
               theme={theme}
+              onClaim={handleClaim}
+              isClaiming={claimingId === achievement.achievementId}
+              isClaimed={claimedAchievements.has(achievement.achievementId)}
             />
           ))}
         </div>
@@ -172,9 +243,8 @@ export default function AchievementsPage() {
           <div className="text-center py-12">
             <Trophy
               size={40}
-              className={`mb-4 mx-auto ${
-                darkMode ? "text-gray-500" : "text-gray-400"
-              }`}
+              className={`mb-4 mx-auto ${darkMode ? "text-gray-500" : "text-gray-400"
+                }`}
             />
             <p className={theme.textMuted}>No achievements in this category</p>
           </div>
@@ -190,6 +260,9 @@ function AchievementCard({
   darkMode,
   accentColor,
   theme,
+  onClaim,
+  isClaiming,
+  isClaimed,
 }: {
   achievement: {
     achievementId: string;
@@ -200,21 +273,29 @@ function AchievementCard({
     target: number;
     isUnlocked: boolean;
     reward?: { xp?: number; gold?: number };
+    claimed?: boolean;
+    claimedAt?: number;
   };
   darkMode: boolean;
   accentColor: string;
   theme: ReturnType<typeof getThemeClasses>;
+  onClaim: (achievementId: string) => void;
+  isClaiming: boolean;
+  isClaimed: boolean;
 }) {
   const progressPercent = Math.min(
     100,
     Math.round((achievement.progress / achievement.target) * 100)
   );
 
+  // Use claimed status from Firestore data, fallback to prop for local state
+  const isAlreadyClaimed = achievement.claimed || isClaimed;
+  const canClaim = achievement.isUnlocked && !isAlreadyClaimed;
+
   return (
     <div
-      className={`rounded-2xl p-5 transition-all ${
-        achievement.isUnlocked ? "" : "opacity-70"
-      }`}
+      className={`rounded-2xl p-5 transition-all ${achievement.isUnlocked ? "" : "opacity-70"
+        }`}
       style={{
         backgroundColor: darkMode
           ? "rgba(31, 41, 55, 0.5)"
@@ -224,8 +305,8 @@ function AchievementCard({
         borderColor: achievement.isUnlocked
           ? accentColor
           : darkMode
-          ? "rgba(75, 85, 99, 0.5)"
-          : "rgba(229, 231, 235, 1)",
+            ? "rgba(75, 85, 99, 0.5)"
+            : "rgba(229, 231, 235, 1)",
         boxShadow: achievement.isUnlocked
           ? `0 0 20px ${accentColor}30`
           : "none",
@@ -239,8 +320,8 @@ function AchievementCard({
             backgroundColor: achievement.isUnlocked
               ? `${accentColor}20`
               : darkMode
-              ? "rgba(55, 65, 81, 0.5)"
-              : "rgba(243, 244, 246, 1)",
+                ? "rgba(55, 65, 81, 0.5)"
+                : "rgba(243, 244, 246, 1)",
             borderWidth: "2px",
             borderStyle: "solid",
             borderColor: achievement.isUnlocked ? accentColor : "transparent",
@@ -254,7 +335,7 @@ function AchievementCard({
             {achievement.description}
           </p>
         </div>
-        {achievement.isUnlocked && (
+        {isAlreadyClaimed && (
           <Check size={20} className="text-green-500" />
         )}
       </div>
@@ -274,9 +355,8 @@ function AchievementCard({
           </span>
         </div>
         <div
-          className={`h-2 rounded-full overflow-hidden ${
-            darkMode ? "bg-gray-700" : "bg-gray-200"
-          }`}
+          className={`h-2 rounded-full overflow-hidden ${darkMode ? "bg-gray-700" : "bg-gray-200"
+            }`}
         >
           <div
             className="h-full rounded-full transition-all"
@@ -285,8 +365,8 @@ function AchievementCard({
               background: achievement.isUnlocked
                 ? `linear-gradient(to right, ${accentColor}, #a855f7)`
                 : darkMode
-                ? "#4b5563"
-                : "#9ca3af",
+                  ? "#4b5563"
+                  : "#9ca3af",
             }}
           />
         </div>
@@ -295,7 +375,7 @@ function AchievementCard({
       {/* Rewards */}
       {achievement.reward && (
         <div
-          className="flex gap-3 pt-3"
+          className="flex gap-3 pt-3 mb-3"
           style={{
             borderTopWidth: "1px",
             borderTopStyle: "solid",
@@ -316,6 +396,29 @@ function AchievementCard({
               </span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Claim Button */}
+      {canClaim && (
+        <button
+          onClick={() => onClaim(achievement.achievementId)}
+          disabled={isClaiming}
+          className="w-full py-2 px-4 rounded-xl font-bold text-white transition-all flex items-center justify-center gap-2"
+          style={{
+            backgroundColor: isClaiming ? "#6b7280" : accentColor,
+            opacity: isClaiming ? 0.7 : 1,
+            cursor: isClaiming ? "not-allowed" : "pointer",
+          }}
+        >
+          <Gift size={18} />
+          {isClaiming ? "Claiming..." : "Claim Reward"}
+        </button>
+      )}
+
+      {isAlreadyClaimed && (
+        <div className="w-full py-2 px-4 rounded-xl font-bold text-center bg-green-500 bg-opacity-20 text-green-500 border border-green-500">
+          ✓ Claimed
         </div>
       )}
     </div>
@@ -346,15 +449,15 @@ function NavItem({
         style={
           active
             ? {
-                background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
-                color: accentColor,
-                borderWidth: "1px",
-                borderStyle: "solid",
-                borderColor: `${accentColor}50`,
-              }
+              background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
+              color: accentColor,
+              borderWidth: "1px",
+              borderStyle: "solid",
+              borderColor: `${accentColor}50`,
+            }
             : {
-                color: darkMode ? "#9ca3af" : "#6b7280",
-              }
+              color: darkMode ? "#9ca3af" : "#6b7280",
+            }
         }
       >
         {icon}
