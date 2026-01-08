@@ -116,6 +116,8 @@ async function requireAuth(req, res, next) {
 // ============ AUTH ============
 /**
  * GET /auth/me
+ * Updates login streak on each login
+ * Stores lastLoginAt as ISO string in format "2026-01-08"
  */
 app.get("/auth/me", requireAuth, async (req, res) => {
     try {
@@ -123,6 +125,12 @@ app.get("/auth/me", requireAuth, async (req, res) => {
         const decoded = req.user;
         const userRef = db.collection("users").doc(uid);
         const snap = await userRef.get();
+        // Get today's date in "YYYY-MM-DD" format
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const todayDateString = `${year}-${month}-${day}`; // "2026-01-08"
         if (!snap.exists) {
             // Get defaultPlayer template from Firestore
             const templateSnap = await db.collection("templates").doc("defaultPlayer").get();
@@ -136,20 +144,67 @@ app.get("/auth/me", requireAuth, async (req, res) => {
                 status: "active",
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
-                lastLoginAt: Date.now(),
+                lastLoginAt: todayDateString, // "2026-01-08" as string
                 ...defaultPlayer,
                 settings: {
                     notificationsEnabled: true,
                     theme: "dark",
                     language: "nl",
                 },
+                stats: {
+                    ...(defaultPlayer.stats || {}),
+                    loginStreak: 1,
+                    maxLoginStreak: 1,
+                    lastLoginDate: todayDateString, // Same format for consistency
+                },
             };
             await userRef.set(newUser);
             return res.status(200).json(newUser);
         }
         const user = snap.data();
-        await userRef.update({ updatedAt: Date.now(), lastLoginAt: Date.now() });
-        return res.status(200).json(user);
+        const lastLoginDate = user.stats?.lastLoginDate;
+        // Calculate new login streak
+        let loginStreak = user.stats?.loginStreak || 0;
+        let maxLoginStreak = user.stats?.maxLoginStreak || 0;
+        // Check if user logged in today
+        if (lastLoginDate !== todayDateString) {
+            if (!lastLoginDate) {
+                // No previous login date, this is user's first login
+                loginStreak = 1;
+                maxLoginStreak = 1;
+            }
+            else {
+                // Get yesterday's date
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                const yesterdayYear = yesterday.getFullYear();
+                const yesterdayMonth = String(yesterday.getMonth() + 1).padStart(2, '0');
+                const yesterdayDay = String(yesterday.getDate()).padStart(2, '0');
+                const yesterdayDateString = `${yesterdayYear}-${yesterdayMonth}-${yesterdayDay}`;
+                if (lastLoginDate === yesterdayDateString) {
+                    // User logged in yesterday, increment streak
+                    loginStreak = loginStreak + 1;
+                    // Update maxLoginStreak if needed
+                    maxLoginStreak = Math.max(maxLoginStreak || 0, loginStreak);
+                }
+                else {
+                    // User didn't log in yesterday, reset streak to 1
+                    loginStreak = 1;
+                }
+            }
+        }
+        // Update user with new login data
+        await userRef.update({
+            updatedAt: Date.now(),
+            lastLoginAt: todayDateString, // "2026-01-08"
+            "stats.loginStreak": loginStreak,
+            "stats.maxLoginStreak": maxLoginStreak,
+            "stats.lastLoginDate": todayDateString,
+        });
+        // Return updated user data
+        const updatedSnap = await userRef.get();
+        const userData = updatedSnap.data() || {};
+        return res.status(200).json(userData);
     }
     catch (e) {
         console.error("Error in /auth/me:", e);
@@ -421,9 +476,20 @@ app.post("/achievements", requireAuth, async (req, res) => {
 app.get("/users/:uid/inventory", requireAuth, async (req, res) => {
     try {
         const { uid } = req.params;
+        // Get user document for gold and other data
         const userSnap = await db.collection("users").doc(uid).get();
         const user = userSnap.data() || {};
-        return res.status(200).json(user.inventory || {});
+        // Get inventory subcollection
+        const inventorySnapshot = await db.collection("users").doc(uid).collection("inventory").get();
+        const items = inventorySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Normalize the inventory structure
+        const normalizedInventory = {
+            gold: user.stats?.gold || user.inventory?.gold || 0,
+            items: items,
+            materials: user.inventory?.materials || {},
+            lastUpdatedAt: user.inventory?.lastUpdatedAt || Date.now()
+        };
+        return res.status(200).json(normalizedInventory);
     }
     catch (e) {
         console.error("Error in GET /users/:uid/inventory:", e);
@@ -1197,6 +1263,8 @@ app.post("/users", requireAuth, async (req, res) => {
             mustChangePassword: true, //Gebruiker moet wachtwoord wijzigen bij eerste login
             createdAt: Date.now(),
             updatedAt: Date.now(),
+            stats: { hp: 100, gold: 0, level: 1, xp: 0 },
+            inventory: { gold: 0, items: [], materials: {} },
             settings: { theme: 'light', language: 'nl', notificationsEnabled: true }
         };
         await admin.firestore().collection("users").doc(userRecord.uid).set(userData);

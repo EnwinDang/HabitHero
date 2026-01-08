@@ -22,6 +22,7 @@ import TeacherStudents from "../pages/teacher/Students";
 import TeacherStudentDetail from "../pages/teacher/StudentDetail";
 import TeacherProfile from "../pages/teacher/Profile";
 import {
+  StudentHomePage,
   DailyTasksPage,
   ProfilePage,
   StatsPage,
@@ -82,7 +83,9 @@ export const AppRoutes = () => {
           </ProtectedRoute>
         }
       >
-        <Route index element={<DailyTasksPage />} />
+        <Route index element={<StudentHomePage />} />
+        <Route path="home" element={<StudentHomePage />} />
+        <Route path="daily-tasks" element={<DailyTasksPage />} />
         <Route path="courses-tasks">
           <Route index element={<DailyTasksPage />} />
           <Route path=":courseId" element={<DailyTasksPage />} />

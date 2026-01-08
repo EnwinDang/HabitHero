@@ -9,7 +9,7 @@ export interface User {
   role: UserRole;
   status: UserStatus;
   createdAt?: number;
-  lastLoginAt?: number;
+  lastLoginAt?: string; // stored as YYYY-MM-DD string
   stats: UserStats;
   settings?: UserSettings;
   worldMapProgress?: WorldMapProgress;
@@ -24,6 +24,12 @@ export interface UserStats {
   maxStreak?: number;
   gems?: number;
   focusSessionsCompleted?: number;
+  lastFocusDate?: string; // YYYY-MM-DD; last day with completed focus session
+  pomodoroStreak?: number;
+  maxPomodoroStreak?: number;
+  loginStreak?: number;
+  maxLoginStreak?: number;
+  lastLoginDate?: string; // stored as YYYY-MM-DD string
 }
 
 export interface UserSettings {
