@@ -157,8 +157,7 @@ export default function CalendarPage() {
         dueAt: selectedDate.getTime(),
         isActive: true,
         createdAt: Date.now(),
-        // Calendar tasks don't have difficulty, XP, or gold
-        difficulty: "easy",
+        // Student-created tasks don't have difficulty, XP, or gold
         xp: 0,
         gold: 0,
         isRepeatable: false,
