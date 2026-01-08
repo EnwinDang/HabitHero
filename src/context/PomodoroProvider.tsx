@@ -260,10 +260,11 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
         const next = prev - 1;
 
         // Count focus time while ticking and grant +5 XP each full minute of focus
-        if (phase === "focus" && next >= 0) {
+        if (phase === "focus" && prev > 0) {
           setTotalFocusSeconds((t) => {
             const nt = t + 1;
-            if (nt % 60 === 0) {
+            // Only award XP when we just completed a full minute (transition from 59→60, 119→120, etc.)
+            if (nt % 60 === 0 && t % 60 !== 0) {
               // Visual pop-up
               setXpGained(5);
               // Persist XP increment and check for level-up
