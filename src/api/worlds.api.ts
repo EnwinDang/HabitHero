@@ -2,8 +2,9 @@ import { apiFetch } from "./client";
 import type { World } from "../models/world.model";
 
 export const WorldsAPI = {
-  list(): Promise<World[]> {
-    return apiFetch<World[]>("/worlds");
+  list(uid?: string): Promise<World[]> {
+    const url = uid ? `/worlds?uid=${uid}` : "/worlds";
+    return apiFetch<World[]>(url);
   },
   create(world: Partial<World>): Promise<World> {
     return apiFetch<World>("/worlds", { method: "POST", body: JSON.stringify(world) });

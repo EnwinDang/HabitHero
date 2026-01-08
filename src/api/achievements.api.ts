@@ -1,9 +1,43 @@
 import { apiFetch } from "./client";
 import type { Achievement } from "../models/achievement.model";
 
+export interface UserAchievementProgress {
+  achievementId: string;
+  progress: number;
+  isUnlocked: boolean;
+  unlockedAt?: number;
+  claimed?: boolean;
+  claimedAt?: number;
+}
+
 export const AchievementsAPI = {
+  // Get achievements catalog
   list(): Promise<{ data: Achievement[] }> {
     return apiFetch<{ data: Achievement[] }>("/achievements");
+  },
+
+  // Get user's achievement progress
+  getUserProgress(uid: string): Promise<UserAchievementProgress[]> {
+    return apiFetch<UserAchievementProgress[]>(`/users/${uid}/achievements`);
+  },
+
+  // Update user's achievement progress
+  updateUserProgress(
+    uid: string,
+    achievementId: string,
+    progress: {
+      progress?: number;
+      isUnlocked?: boolean;
+      unlockedAt?: number;
+    }
+  ): Promise<UserAchievementProgress> {
+    return apiFetch<UserAchievementProgress>(
+      `/users/${uid}/achievements/${achievementId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(progress),
+      }
+    );
   },
 
   create(a: Achievement): Promise<Achievement> {

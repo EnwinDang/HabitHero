@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { Swords, Play, RotateCcw, ArrowLeft, Crown, AlertTriangle } from "lucide-react";
@@ -8,13 +8,25 @@ import type { BattleEnemy, BattlePlayer, BattleState, BattleLog } from "@/models
 import { CombatAPI } from "@/api/combat.api";
 import { MonstersAPI } from "@/api/monsters.api";
 import { WorldsAPI } from "@/api/worlds.api";
+import { UsersAPI } from "@/api/users.api";
 import { apiFetch } from "@/api/client";
+import { getWorldBackground, getWorldEndingQuote } from "@/data/worlds";
+import heroImage from "@/assets/heroes/hero_female.png";
+import monsterFireImage from "@/assets/monsters/monster_fire.png";
+import monsterWaterImage from "@/assets/monsters/monster_water.png";
+import monsterWindImage from "@/assets/monsters/monster_wind.png";
+import monsterEarthImage from "@/assets/monsters/monster_earth.png";
+import { Trophy, Sparkles } from "lucide-react";
 
 export default function AutoBattlePage() {
     const { darkMode, accentColor } = useTheme();
     const { user } = useRealtimeUser();
     const theme = getThemeClasses(darkMode, accentColor);
     const navigate = useNavigate();
+    const location = useLocation();
+    
+    // Get monster data from navigation state (if coming from WorldMapPage)
+    const { worldId: stateWorldId, monsterId: stateMonsterId, monsterName: stateMonsterName, element: stateElement } = location.state || {};
 
     const [worldId, setWorldId] = useState<string | null>(null);
     const [stage, setStage] = useState<number>(1);
@@ -27,6 +39,15 @@ export default function AutoBattlePage() {
     const [showBossAnimation, setShowBossAnimation] = useState(false);
     const [battleRewards, setBattleRewards] = useState<{ xp: number; gold: number } | null>(null);
     const [hpLost, setHpLost] = useState<number>(0);
+    const [showWorldCompletion, setShowWorldCompletion] = useState(false);
+    const [completedWorldName, setCompletedWorldName] = useState<string>("");
+    
+    // Animation states for Tekken-style combat
+    const [playerBump, setPlayerBump] = useState(false);
+    const [enemyBump, setEnemyBump] = useState(false);
+    const [playerHit, setPlayerHit] = useState(false);
+    const [enemyHit, setEnemyHit] = useState(false);
+    const [damageNumbers, setDamageNumbers] = useState<Array<{ id: number; damage: number; x: number; y: number; isPlayer: boolean }>>([]);
 
     // Battle state
     const [battleState, setBattleState] = useState<BattleState>({
@@ -50,18 +71,43 @@ export default function AutoBattlePage() {
                 setLoading(true);
                 setError(null);
 
-                // 1. Get available worlds
-                const worlds = await WorldsAPI.list();
-                if (worlds.length === 0) {
-                    setError("No worlds available");
+                // 1. Check if monster data is provided from navigation state
+                if (!stateWorldId || !stateMonsterId) {
+                    setError("No monster selected. Please select a monster from the world map.");
                     setLoading(false);
                     return;
                 }
 
-                const firstWorld = worlds[0];
-                setWorldId(firstWorld.worldId);
-                // Default to stage 1, but can be changed
-                const initialStage = 1;
+                const battleWorldId = stateWorldId;
+                const targetMonsterId = stateMonsterId;
+                let initialStage: number = 1;
+                
+                console.log(`🎯 Using specific monster from navigation: ${stateMonsterName} (${stateMonsterId}) in world ${battleWorldId}`);
+                
+                // Try to determine stage from monster position in world
+                // Get the world to find monster's position
+                try {
+                    const world = await WorldsAPI.get(battleWorldId);
+                    const stages = (world as any).stages || [];
+                    
+                    // Find which stage contains this monster
+                    for (let stageIndex = 0; stageIndex < stages.length; stageIndex++) {
+                        const stage = stages[stageIndex];
+                        if (stage && stage.values && Array.isArray(stage.values)) {
+                            if (stage.values.includes(stateMonsterId)) {
+                                // Stage numbers are 1-indexed (stage 1, 2, 3, etc.)
+                                initialStage = stageIndex + 1;
+                                console.log(`📍 Found monster at stage ${initialStage} in world ${battleWorldId}`);
+                                break;
+                            }
+                        }
+                    }
+                } catch (worldErr) {
+                    console.warn("Could not determine stage from world, using default stage 1:", worldErr);
+                    initialStage = 1;
+                }
+
+                setWorldId(battleWorldId);
                 setStage(initialStage);
 
                 // 2. Get player stats from API
@@ -87,22 +133,11 @@ export default function AutoBattlePage() {
                 setPlayer(newPlayer);
                 setBattleState(prev => ({ ...prev, playerHP: newPlayer.hp }));
 
-                // Determine monster tier based on stage number
-                // Levels 1-4: normal, Level 5: miniBoss, Levels 6-9: elite, Level 10: boss
-                const determineTierFromStage = (stage: number): 'normal' | 'elite' | 'miniBoss' | 'boss' => {
-                    if (stage === 10) return 'boss';
-                    if (stage === 5) return 'miniBoss';
-                    if (stage >= 6 && stage <= 9) return 'elite';
-                    return 'normal'; // stages 1-4
-                };
-
-                const requiredTier = determineTierFromStage(initialStage);
-                console.log(`Stage ${initialStage} requires tier: ${requiredTier}`);
-
                 // 3. Start combat session
                 const combat = await CombatAPI.start({
-                    worldId: firstWorld.worldId,
+                    worldId: battleWorldId,
                     stage: initialStage,
+                    monsterId: targetMonsterId,
                 });
                 setCombatId(combat.combatId);
 
@@ -112,62 +147,49 @@ export default function AutoBattlePage() {
                     stage: number;
                     attack: number;
                     hp: number;
-                }>(`/combat/monster-stats/${firstWorld.worldId}/${initialStage}`);
+                }>(`/combat/monster-stats/${battleWorldId}/${initialStage}`);
 
-                // 5. Get monsters from the world, filtered by required tier
-                let monsters = await MonstersAPI.list({ worldId: firstWorld.worldId });
-                
-                // If no monsters found for this world, try getting all active monsters
-                if (monsters.length === 0) {
-                    console.log(`No monsters found for world ${firstWorld.worldId}, trying all monsters...`);
-                    monsters = await MonstersAPI.list();
-                }
-                
-                // Filter to only active monsters with the required tier
-                const activeMonsters = monsters.filter(m => 
-                    m.isActive !== false && m.tier === requiredTier
-                );
-                
-                // If no monsters with exact tier, try to get any active monsters as fallback
-                if (activeMonsters.length === 0) {
-                    console.warn(`No ${requiredTier} monsters found, trying any active monsters...`);
-                    const anyActiveMonsters = monsters.filter(m => m.isActive !== false);
-                    if (anyActiveMonsters.length === 0) {
-                        setError("No monsters available in the database. Please add monsters first.");
-                        setLoading(false);
-                        return;
+                // 5. Fetch the specific monster that was clicked
+                let selectedMonster;
+                try {
+                    selectedMonster = await MonstersAPI.get(targetMonsterId);
+                    console.log(`✅ Found specific monster: ${selectedMonster.name} (${selectedMonster.monsterId})`);
+                    
+                    // Update tier based on actual monster tier
+                    if (selectedMonster.tier) {
+                        setMonsterTier(selectedMonster.tier as 'normal' | 'elite' | 'miniBoss' | 'boss');
                     }
-                    // Use first available monster but keep the required tier for display
-                    activeMonsters.push(anyActiveMonsters[0]);
+                } catch (monsterErr) {
+                    console.error(`Failed to fetch monster ${targetMonsterId}:`, monsterErr);
+                    setError(`Monster not found: ${stateMonsterName || targetMonsterId}`);
+                    setLoading(false);
+                    return;
                 }
 
-                // Select a random monster from available monsters with correct tier
-                const selectedMonster = activeMonsters[Math.floor(Math.random() * activeMonsters.length)];
-                
-                console.log(`Selected monster: ${selectedMonster.name} (${selectedMonster.monsterId}), tier: ${selectedMonster.tier}, required tier: ${requiredTier}`);
-
-                // Store monster tier (use required tier for consistency)
-                setMonsterTier(requiredTier);
+                // Use monster's tier for animation
+                const monsterTierForAnimation = selectedMonster.tier || 'normal';
+                setMonsterTier(monsterTierForAnimation as 'normal' | 'elite' | 'miniBoss' | 'boss');
 
                 const newEnemy: BattleEnemy = {
                     id: selectedMonster.monsterId,
                     name: selectedMonster.name, // Use actual monster name from database
                     level: initialStage,
-                    element: (selectedMonster.elementType as any) || 'fire',
+                    element: (selectedMonster.elementType as any) || stateElement || 'fire',
                     hp: monsterStats.hp,
                     maxHP: monsterStats.hp,
                     attack: monsterStats.attack,
                     defense: selectedMonster.baseStats?.defense || 5,
                     speed: selectedMonster.baseStats?.speed || 10,
-                    emoji: "👾",
-                    realmId: firstWorld.worldId,
+                    emoji: "👾", // Default emoji, will be replaced by image
+                    realmId: battleWorldId,
                     levelId: initialStage,
+                    tier: monsterTierForAnimation as 'normal' | 'elite' | 'miniBoss' | 'boss',
                 };
                 setEnemy(newEnemy);
                 setBattleState(prev => ({ ...prev, enemyHP: newEnemy.maxHP }));
 
-                // Show boss animation if it's a boss or miniBoss (based on stage, not monster tier)
-                if (requiredTier === 'boss' || requiredTier === 'miniBoss') {
+                // Show boss animation if it's a boss or miniBoss (based on monster tier)
+                if (monsterTierForAnimation === 'boss' || monsterTierForAnimation === 'miniBoss') {
                     setShowBossAnimation(true);
                 }
 
@@ -239,6 +261,21 @@ export default function AutoBattlePage() {
                 const damage = calculateDamage(player, enemy);
                 currentEnemyHP -= damage;
 
+                // Trigger animations
+                setPlayerBump(true);
+                setTimeout(() => setPlayerBump(false), 200);
+                setTimeout(() => {
+                    setEnemyHit(true);
+                    setDamageNumbers(prev => [...prev, { 
+                        id: Date.now(), 
+                        damage, 
+                        x: 65, // Right side (enemy position)
+                        y: 50, 
+                        isPlayer: false 
+                    }]);
+                    setTimeout(() => setEnemyHit(false), 300);
+                }, 200);
+
                 setBattleState(prev => ({ ...prev, enemyHP: Math.max(0, currentEnemyHP), turn }));
                 addLog(`${player.name} attacks ${enemy.name} for ${damage} damage!`, 'attack');
 
@@ -252,17 +289,47 @@ export default function AutoBattlePage() {
                     const enemyDamage = calculateDamage(enemy, player);
                     currentPlayerHP -= enemyDamage;
 
+                    // Trigger animations
+                    setEnemyBump(true);
+                    setTimeout(() => setEnemyBump(false), 200);
+                    setTimeout(() => {
+                        setPlayerHit(true);
+                        setDamageNumbers(prev => [...prev, { 
+                            id: Date.now() + 1, 
+                            damage: enemyDamage, 
+                            x: 30, // Left side (player position)
+                            y: 0, 
+                            isPlayer: true 
+                        }]);
+                        setTimeout(() => setPlayerHit(false), 300);
+                    }, 200);
+
                     setBattleState(prev => ({ ...prev, playerHP: Math.max(0, currentPlayerHP) }));
                     addLog(`${enemy.name} attacks ${player.name} for ${enemyDamage} damage!`, 'damage');
 
                     if (currentPlayerHP <= 0) {
                         endBattle('enemy');
                     }
-                }, 500);
+                }, 800);
             } else {
                 // Enemy attacks first
                 const enemyDamage = calculateDamage(enemy, player);
                 currentPlayerHP -= enemyDamage;
+
+                // Trigger animations
+                setEnemyBump(true);
+                setTimeout(() => setEnemyBump(false), 200);
+                setTimeout(() => {
+                    setPlayerHit(true);
+                    setDamageNumbers(prev => [...prev, { 
+                        id: Date.now(), 
+                        damage: enemyDamage, 
+                        x: 30, 
+                        y: 0, 
+                        isPlayer: true 
+                    }]);
+                    setTimeout(() => setPlayerHit(false), 300);
+                }, 200);
 
                 setBattleState(prev => ({ ...prev, playerHP: Math.max(0, currentPlayerHP), turn }));
                 addLog(`${enemy.name} attacks ${player.name} for ${enemyDamage} damage!`, 'damage');
@@ -277,28 +344,47 @@ export default function AutoBattlePage() {
                     const damage = calculateDamage(player, enemy);
                     currentEnemyHP -= damage;
 
+                    // Trigger animations
+                    setPlayerBump(true);
+                    setTimeout(() => setPlayerBump(false), 200);
+                    setTimeout(() => {
+                        setEnemyHit(true);
+                        setDamageNumbers(prev => [...prev, { 
+                            id: Date.now() + 1, 
+                            damage, 
+                            x: 70, 
+                            y: 0, 
+                            isPlayer: false 
+                        }]);
+                        setTimeout(() => setEnemyHit(false), 300);
+                    }, 200);
+
                     setBattleState(prev => ({ ...prev, enemyHP: Math.max(0, currentEnemyHP) }));
                     addLog(`${player.name} attacks ${enemy.name} for ${damage} damage!`, 'attack');
 
                     if (currentEnemyHP <= 0) {
                         endBattle('player');
                     }
-                }, 500);
+                }, 800);
             }
         }, 1500); // Battle speed: 1.5 seconds per turn
     };
 
     // End battle
     const endBattle = async (winner: 'player' | 'enemy') => {
+        console.log('🏁 EndBattle called with winner:', winner);
         if (battleInterval.current) {
             clearInterval(battleInterval.current);
         }
 
-        setBattleState(prev => ({
-            ...prev,
-            isActive: false,
-            winner,
-        }));
+        setBattleState(prev => {
+            console.log('📊 Setting battle state winner to:', winner);
+            return {
+                ...prev,
+                isActive: false,
+                winner,
+            };
+        });
 
         if (winner === 'player') {
             addLog(`Victory! ${enemy?.name} has been defeated!`, 'victory');
@@ -317,6 +403,21 @@ export default function AutoBattlePage() {
                         setBattleRewards({ xp, gold });
                         
                         addLog(`🎉 You earned ${xp} XP and ${gold} Gold!`, 'victory');
+                        
+                        // If user wins against a boss, show world completion animation
+                        if (worldId && monsterTier === 'boss') {
+                            try {
+                                const world = await WorldsAPI.get(worldId);
+                                setCompletedWorldName((world as any).name || worldId);
+                                setShowWorldCompletion(true);
+                                console.log(`🎉 Boss defeated! Showing world completion animation for ${worldId}`);
+                            } catch (checkErr) {
+                                console.error("Could not fetch world name:", checkErr);
+                                // Still show animation with worldId as fallback
+                                setCompletedWorldName(worldId);
+                                setShowWorldCompletion(true);
+                            }
+                        }
                     }
                 } catch (err) {
                     console.error("Failed to resolve combat:", err);
@@ -418,9 +519,147 @@ export default function AutoBattlePage() {
 
     const playerHPPercent = (battleState.playerHP / player.maxHP) * 100;
     const enemyHPPercent = (battleState.enemyHP / enemy.maxHP) * 100;
+    
+    // Get background image for the world
+    const bgImage = worldId ? getWorldBackground(worldId) : undefined;
+    
+    // Get monster image based on element
+    const getMonsterImage = (element: string) => {
+        const elem = element?.toLowerCase();
+        switch(elem) {
+            case 'fire':
+                return monsterFireImage;
+            case 'water':
+            case 'ice':
+                return monsterWaterImage;
+            case 'wind':
+            case 'lightning':
+                return monsterWindImage;
+            case 'earth':
+                return monsterEarthImage;
+            default:
+                return monsterFireImage; // Fallback to fire
+        }
+    };
+    
+    const monsterImage = enemy ? getMonsterImage(enemy.element) : null;
 
     return (
         <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
+            {/* World Completion Animation */}
+            <AnimatePresence>
+                {showWorldCompletion && worldId && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+                        onClick={() => {
+                            setShowWorldCompletion(false);
+                            navigate('/student/world-map');
+                        }}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.8, opacity: 0, y: 50 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.8, opacity: 0, y: 50 }}
+                            transition={{ type: "spring", duration: 0.8 }}
+                            className="relative max-w-2xl w-full mx-4 p-12 text-center border-4 border-white"
+                            style={{
+                                background: '#1a1a1a',
+                                fontFamily: 'monospace',
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Sparkle effects */}
+                            {[...Array(20)].map((_, i) => (
+                                <motion.div
+                                    key={i}
+                                    className="absolute w-2 h-2 bg-yellow-400 rounded-full"
+                                    style={{
+                                        left: `${Math.random() * 100}%`,
+                                        top: `${Math.random() * 100}%`,
+                                    }}
+                                    animate={{
+                                        scale: [0, 1, 0],
+                                        opacity: [0, 1, 0],
+                                    }}
+                                    transition={{
+                                        duration: 2,
+                                        repeat: Infinity,
+                                        delay: Math.random() * 2,
+                                    }}
+                                />
+                            ))}
+
+                            {/* Trophy icon */}
+                            <motion.div
+                                initial={{ scale: 0, rotate: -180 }}
+                                animate={{ scale: 1, rotate: 0 }}
+                                transition={{ delay: 0.3, type: "spring", stiffness: 200 }}
+                                className="mb-6"
+                            >
+                                <Trophy size={80} className="mx-auto text-yellow-400" />
+                            </motion.div>
+
+                            {/* World name */}
+                            <motion.h2
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.5 }}
+                                className="text-4xl md:text-5xl font-bold text-white mb-4"
+                                style={{ textShadow: '3px 3px 0px #000' }}
+                            >
+                                {completedWorldName}
+                            </motion.h2>
+
+                            {/* Completion text */}
+                            <motion.p
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.7 }}
+                                className="text-2xl md:text-3xl text-purple-200 mb-8"
+                                style={{ textShadow: '2px 2px 0px #000' }}
+                            >
+                                World Conquered!
+                            </motion.p>
+
+                            {/* Inspirational quote */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.9 }}
+                                className="relative"
+                            >
+                                <Sparkles className="absolute -left-8 top-1/2 transform -translate-y-1/2 text-yellow-400" size={24} />
+                                <p className="text-xl md:text-2xl italic text-white/90 font-light px-8" style={{ textShadow: '2px 2px 0px #000' }}>
+                                    "{getWorldEndingQuote(worldId)}"
+                                </p>
+                                <Sparkles className="absolute -right-8 top-1/2 transform -translate-y-1/2 text-yellow-400" size={24} />
+                            </motion.div>
+
+                            {/* Close button */}
+                            <motion.button
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 1.1 }}
+                                onClick={() => {
+                                    setShowWorldCompletion(false);
+                                    navigate('/student/world-map');
+                                }}
+                                className="mt-8 px-8 py-3 font-bold text-white border-2 border-white"
+                                style={{
+                                    background: accentColor,
+                                    fontFamily: 'monospace',
+                                }}
+                            >
+                                CONTINUE
+                            </motion.button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Boss Animation Overlay */}
             <AnimatePresence>
                 {showBossAnimation && enemy && (
@@ -471,12 +710,20 @@ export default function AutoBattlePage() {
                                 className="mb-8"
                             >
                                 <div
-                                    className="text-5xl mb-4"
+                                    className="w-32 h-32 mx-auto mb-4 flex items-center justify-center"
                                     style={{
                                         filter: 'drop-shadow(0 0 10px rgba(255, 215, 0, 0.8))',
                                     }}
                                 >
-                                    {enemy.emoji}
+                                    {monsterImage ? (
+                                        <img 
+                                            src={monsterImage} 
+                                            alt={enemy.name}
+                                            className="w-full h-full object-contain"
+                                        />
+                                    ) : (
+                                        <span className="text-5xl">{enemy.emoji}</span>
+                                    )}
                                 </div>
                                 <h2
                                     className="text-4xl font-bold"
@@ -541,240 +788,299 @@ export default function AutoBattlePage() {
                     </p>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Battle Arena - Left/Center */}
-                    <div className="lg:col-span-2">
+                <div className="space-y-6">
+                    {/* Battle Arena - Tekken Style */}
+                    <div>
                         <div
-                            className="rounded-3xl p-8 min-h-[500px] flex flex-col"
+                            className="relative overflow-hidden"
                             style={{
-                                background: `linear-gradient(135deg, ${accentColor}40 0%, ${accentColor}20 100%)`,
-                                borderWidth: "2px",
-                                borderStyle: "solid",
-                                borderColor: `${accentColor}60`,
+                                background: bgImage 
+                                    ? `url(${bgImage})`
+                                    : darkMode ? '#1a1a1a' : '#2a2a2a',
+                                backgroundSize: bgImage ? 'cover' : 'auto',
+                                backgroundPosition: bgImage ? 'center' : 'center',
+                                minHeight: '500px',
+                                imageRendering: 'pixelated',
                             }}
                         >
-                            {/* VS Display */}
-                            <div className="flex-1 flex items-center justify-around">
-                                {/* Player */}
-                                <div className="text-center">
-                                    <div
-                                        className="w-32 h-32 rounded-2xl flex items-center justify-center mb-4 mx-auto"
-                                        style={{
-                                            backgroundColor: darkMode ? "rgba(100, 116, 139, 0.5)" : "rgba(148, 163, 184, 0.3)",
-                                            borderWidth: "2px",
-                                            borderStyle: "solid",
-                                            borderColor: `${accentColor}80`,
-                                        }}
-                                    >
-                                        <span className="text-6xl">{player.emoji}</span>
+                            {/* Ground strip */}
+                            <div 
+                                className="absolute bottom-0 left-0 right-0 h-1"
+                                style={{
+                                    background: darkMode ? '#333' : '#444',
+                                }}
+                            />
+                            
+                            {/* HP Bars at Top - Centered */}
+                            <div className="absolute top-4 left-0 right-0 flex justify-center gap-32 z-10">
+                                {/* Player HP */}
+                                <div className="w-64">
+                                    <div className="flex justify-between text-sm mb-1 text-white" style={{ textShadow: '2px 2px 0px #000' }}>
+                                        <span className="font-bold">{player.name}</span>
+                                        <span>
+                                            {Math.max(0, Math.floor(battleState.playerHP))} / {player.maxHP}
+                                        </span>
                                     </div>
-                                    <h3 className={`text-2xl font-bold ${theme.text} mb-1`}>
-                                        {player.name}
-                                    </h3>
-                                    <p className={`${theme.textSubtle} text-sm mb-4`}>
-                                        Level {player.level} Hero
-                                    </p>
-
-                                    {/* Player HP Bar */}
-                                    <div className="w-48">
-                                        <div className="flex justify-between text-sm mb-1">
-                                            <span className={theme.text}>HP</span>
-                                            <span className={theme.text}>
-                                                {Math.max(0, Math.floor(battleState.playerHP))} / {player.maxHP}
-                                            </span>
-                                        </div>
-                                        <div className={`w-full ${theme.inputBg} rounded-full h-3`}>
-                                            <div
-                                                className="bg-green-500 rounded-full h-3 transition-all duration-500"
-                                                style={{ width: `${playerHPPercent}%` }}
-                                            />
-                                        </div>
-                                        <div className="flex gap-4 mt-3 text-xs">
-                                            <span className={theme.textSubtle}>⚔️ {player.attack}</span>
-                                            <span className={theme.textSubtle}>🛡️ {player.defense}</span>
-                                            <span className={theme.textSubtle}>⚡ {player.speed}</span>
-                                        </div>
+                                    <div className="w-full bg-black border-2 border-white" style={{ height: '20px' }}>
+                                        <div
+                                            className="bg-green-500 h-full transition-all duration-500"
+                                            style={{ width: `${playerHPPercent}%` }}
+                                        />
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-xs text-white" style={{ textShadow: '1px 1px 0px #000' }}>
+                                            Lv.{player.level}
+                                        </span>
                                     </div>
                                 </div>
-
-                                {/* VS Badge */}
-                                <div
-                                    className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold"
-                                    style={{
-                                        backgroundColor: 'white',
-                                        color: accentColor,
-                                        boxShadow: `0 0 30px ${accentColor}50`,
-                                    }}
-                                >
-                                    VS
-                                </div>
-
-                                {/* Enemy */}
-                                <div className="text-center">
-                                    <div
-                                        className="w-32 h-32 rounded-2xl flex items-center justify-center mb-4 mx-auto"
-                                        style={{
-                                            background: enemy.element === 'fire'
-                                                ? 'linear-gradient(135deg, #ff5722 0%, #ff9800 100%)'
-                                                : enemy.element === 'ice'
-                                                    ? 'linear-gradient(135deg, #00bcd4 0%, #03a9f4 100%)'
-                                                    : enemy.element === 'earth'
-                                                        ? 'linear-gradient(135deg, #795548 0%, #8d6e63 100%)'
-                                                        : 'linear-gradient(135deg, #9c27b0 0%, #673ab7 100%)',
-                                            borderWidth: "2px",
-                                            borderStyle: "solid",
-                                            borderColor: 'rgba(255,255,255,0.5)',
-                                        }}
-                                    >
-                                        <span className="text-6xl">{enemy.emoji}</span>
+                                
+                                {/* Enemy HP */}
+                                <div className="w-64 text-right">
+                                    <div className="flex justify-between text-sm mb-1 text-white" style={{ textShadow: '2px 2px 0px #000' }}>
+                                        <span>
+                                            {Math.max(0, Math.floor(battleState.enemyHP))} / {enemy.maxHP}
+                                        </span>
+                                        <span className="font-bold">{enemy.name}</span>
                                     </div>
-                                    <h3 className={`text-2xl font-bold ${theme.text} mb-1`}>
-                                        {enemy.name}
-                                    </h3>
-                                    <div className="flex items-center justify-center gap-2 mb-4">
-                                        <p className={`${theme.textSubtle} text-sm`}>
-                                            Level {enemy.level}
-                                        </p>
+                                    <div className="w-full bg-black border-2 border-white" style={{ height: '20px' }}>
+                                        <div
+                                            className="bg-red-500 h-full transition-all duration-500 ml-auto"
+                                            style={{ width: `${enemyHPPercent}%` }}
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-end gap-2 mt-1">
                                         <span
-                                            className="px-2 py-1 rounded text-xs font-semibold text-white capitalize"
+                                            className="px-2 py-0.5 text-xs font-semibold text-white capitalize border border-white"
                                             style={{
                                                 backgroundColor: enemy.element === 'fire' ? '#ff5722'
                                                     : enemy.element === 'ice' ? '#00bcd4'
                                                         : enemy.element === 'earth' ? '#795548'
                                                             : '#9c27b0',
+                                                textShadow: '1px 1px 0px #000',
                                             }}
                                         >
                                             {enemy.element}
                                         </span>
-                                    </div>
-
-                                    {/* Enemy HP Bar */}
-                                    <div className="w-48">
-                                        <div className="flex justify-between text-sm mb-1">
-                                            <span className={theme.text}>HP</span>
-                                            <span className={theme.text}>
-                                                {Math.max(0, Math.floor(battleState.enemyHP))} / {enemy.maxHP}
-                                            </span>
-                                        </div>
-                                        <div className={`w-full ${theme.inputBg} rounded-full h-3`}>
-                                            <div
-                                                className="bg-red-500 rounded-full h-3 transition-all duration-500"
-                                                style={{ width: `${enemyHPPercent}%` }}
-                                            />
-                                        </div>
-                                        <div className="flex gap-4 mt-3 text-xs">
-                                            <span className={theme.textSubtle}>⚔️ {enemy.attack}</span>
-                                            <span className={theme.textSubtle}>🛡️ {enemy.defense}</span>
-                                            <span className={theme.textSubtle}>⚡ {enemy.speed}</span>
-                                        </div>
+                                        <span className="text-xs text-white" style={{ textShadow: '1px 1px 0px #000' }}>
+                                            Lv.{enemy.level}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
+                            
+                            {/* Floating Damage Numbers */}
+                            <AnimatePresence>
+                                {damageNumbers.map((dmg) => (
+                                    <motion.div
+                                        key={dmg.id}
+                                        initial={{ opacity: 1, y: dmg.y, x: `${dmg.x}%` }}
+                                        animate={{ opacity: 0, y: dmg.y - 50, x: `${dmg.x}%` }}
+                                        exit={{ opacity: 0 }}
+                                        transition={{ duration: 1 }}
+                                        className="absolute pointer-events-none"
+                                        style={{
+                                            fontSize: '24px',
+                                            fontWeight: 'bold',
+                                            color: dmg.isPlayer ? '#ff4444' : '#44ff44',
+                                            textShadow: '2px 2px 0px #000',
+                                            fontFamily: 'monospace',
+                                        }}
+                                    >
+                                        -{dmg.damage}
+                                    </motion.div>
+                                ))}
+                            </AnimatePresence>
+                            
+                            {/* Characters - Tekken Style */}
+                            <div className="absolute bottom-1 left-0 right-0 flex justify-center items-end gap-32" style={{ height: '300px' }}>
+                                {/* Player - Left Side, Facing Right */}
+                                <motion.div
+                                    animate={{
+                                        x: playerBump ? 3 : playerHit ? [0, -2, 2, -2, 2, 0] : 0,
+                                        filter: playerHit ? 'brightness(2) saturate(0)' : 'brightness(1) saturate(1)',
+                                    }}
+                                    transition={{ 
+                                        duration: playerHit ? 0.3 : 0.2, 
+                                        ease: 'easeOut',
+                                        times: playerHit ? [0, 0.2, 0.4, 0.6, 0.8, 1] : undefined,
+                                    }}
+                                    className="relative"
+                                    style={{
+                                        transform: 'scaleX(1)', // Facing right
+                                        imageRendering: 'pixelated',
+                                    }}
+                                >
+                                    <img 
+                                        src={heroImage} 
+                                        alt={player.name}
+                                        className="w-64 h-64 object-contain"
+                                        style={{
+                                            imageRendering: 'pixelated',
+                                            filter: 'drop-shadow(4px 4px 0px rgba(0,0,0,0.5))',
+                                        }}
+                                    />
+                                </motion.div>
 
-                            {/* Battle Results Display */}
+                                {/* Enemy - Right Side, Facing Left */}
+                                <motion.div
+                                    animate={{
+                                        x: enemyBump ? -3 : enemyHit ? [0, 2, -2, 2, -2, 0] : 0,
+                                        filter: enemyHit ? 'brightness(2) saturate(0)' : 'brightness(1) saturate(1)',
+                                    }}
+                                    transition={{ 
+                                        duration: enemyHit ? 0.3 : 0.2, 
+                                        ease: 'easeOut',
+                                        times: enemyHit ? [0, 0.2, 0.4, 0.6, 0.8, 1] : undefined,
+                                    }}
+                                    className="relative"
+                                    style={{
+                                        transform: 'scaleX(-1)', // Facing left (flip horizontally)
+                                        imageRendering: 'pixelated',
+                                    }}
+                                >
+                                    {monsterImage ? (
+                                        <img 
+                                            src={monsterImage} 
+                                            alt={enemy.name}
+                                            className="w-64 h-64 object-contain"
+                                            style={{
+                                                imageRendering: 'pixelated',
+                                                filter: 'drop-shadow(4px 4px 0px rgba(0,0,0,0.5))',
+                                            }}
+                                        />
+                                    ) : (
+                                        <div className="w-64 h-64 flex items-center justify-center text-6xl">
+                                            {enemy.emoji}
+                                        </div>
+                                    )}
+                                </motion.div>
+                            </div>
+
+                            {/* Battle Results Display - Pixel Style */}
                             {battleState.winner && (
                                 <motion.div
                                     initial={{ scale: 0.8, opacity: 0 }}
                                     animate={{ scale: 1, opacity: 1 }}
-                                    className="mb-6"
+                                    className="absolute inset-0 flex items-center justify-center z-20"
+                                    style={{
+                                        background: 'rgba(0, 0, 0, 0.8)',
+                                    }}
                                 >
-                                    {battleState.winner === 'player' && battleRewards && (
+                                    {battleState.winner === 'player' && (
                                         <div
-                                            className="rounded-2xl p-6 text-center"
+                                            className="p-8 text-center border-4 border-white"
                                             style={{
-                                                background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(34, 197, 94, 0.1) 100%)',
-                                                borderWidth: "2px",
-                                                borderStyle: "solid",
-                                                borderColor: '#22c55e',
+                                                background: '#1a1a1a',
+                                                fontFamily: 'monospace',
                                             }}
                                         >
-                                            <h3 className="text-2xl font-bold text-green-600 mb-4">🎉 Victory!</h3>
-                                            <div className="flex items-center justify-center gap-6">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-3xl">⭐</span>
-                                                    <div>
-                                                        <p className="text-sm text-gray-600 dark:text-gray-400">XP Earned</p>
-                                                        <p className="text-2xl font-bold text-green-600">+{battleRewards.xp}</p>
+                                            <h3 className="text-4xl font-bold text-green-500 mb-6" style={{ textShadow: '3px 3px 0px #000' }}>VICTORY!</h3>
+                                            {battleRewards ? (
+                                                <div className="flex items-center justify-center gap-8">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-4xl">⭐</span>
+                                                        <div>
+                                                            <p className="text-sm text-white mb-1">XP</p>
+                                                            <p className="text-3xl font-bold text-green-500" style={{ textShadow: '2px 2px 0px #000' }}>+{battleRewards.xp}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-4xl">🪙</span>
+                                                        <div>
+                                                            <p className="text-sm text-white mb-1">GOLD</p>
+                                                            <p className="text-3xl font-bold text-yellow-500" style={{ textShadow: '2px 2px 0px #000' }}>+{battleRewards.gold}</p>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-3xl">🪙</span>
-                                                    <div>
-                                                        <p className="text-sm text-gray-600 dark:text-gray-400">Gold Earned</p>
-                                                        <p className="text-2xl font-bold text-yellow-600">+{battleRewards.gold}</p>
-                                                    </div>
-                                                </div>
+                                            ) : (
+                                                <p className="text-white mb-6">Loading rewards...</p>
+                                            )}
+                                            <div className="mt-6 flex gap-4 justify-center">
+                                                <button
+                                                    onClick={resetBattle}
+                                                    className="px-6 py-3 font-bold text-white border-2 border-white"
+                                                    style={{
+                                                        background: '#333',
+                                                        fontFamily: 'monospace',
+                                                    }}
+                                                >
+                                                    RETRY
+                                                </button>
+                                                <button
+                                                    onClick={() => navigate('/student/world-map')}
+                                                    className="px-6 py-3 font-bold text-white border-2 border-white"
+                                                    style={{
+                                                        background: accentColor,
+                                                        fontFamily: 'monospace',
+                                                    }}
+                                                >
+                                                    EXIT
+                                                </button>
                                             </div>
                                         </div>
                                     )}
-                                    {battleState.winner === 'enemy' && hpLost > 0 && (
+                                    {battleState.winner === 'enemy' && (
                                         <div
-                                            className="rounded-2xl p-6 text-center"
+                                            className="p-8 text-center border-4 border-white"
                                             style={{
-                                                background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(239, 68, 68, 0.1) 100%)',
-                                                borderWidth: "2px",
-                                                borderStyle: "solid",
-                                                borderColor: '#ef4444',
+                                                background: '#1a1a1a',
+                                                fontFamily: 'monospace',
                                             }}
                                         >
-                                            <h3 className="text-2xl font-bold text-red-600 mb-4">💔 Defeat!</h3>
-                                            <div className="flex items-center justify-center gap-2">
-                                                <span className="text-3xl">❤️</span>
-                                                <div>
-                                                    <p className="text-sm text-gray-600 dark:text-gray-400">HP Lost</p>
-                                                    <p className="text-2xl font-bold text-red-600">-{hpLost}</p>
+                                            <h3 className="text-4xl font-bold text-red-500 mb-6" style={{ textShadow: '3px 3px 0px #000' }}>DEFEAT!</h3>
+                                            {hpLost > 0 && (
+                                                <div className="flex items-center justify-center gap-3 mb-6">
+                                                    <span className="text-4xl">❤️</span>
+                                                    <div>
+                                                        <p className="text-sm text-white mb-1">HP LOST</p>
+                                                        <p className="text-3xl font-bold text-red-500" style={{ textShadow: '2px 2px 0px #000' }}>-{hpLost}</p>
+                                                    </div>
                                                 </div>
+                                            )}
+                                            <div className="mt-6 flex gap-4 justify-center">
+                                                <button
+                                                    onClick={resetBattle}
+                                                    className="px-6 py-3 font-bold text-white border-2 border-white"
+                                                    style={{
+                                                        background: '#333',
+                                                        fontFamily: 'monospace',
+                                                    }}
+                                                >
+                                                    RETRY
+                                                </button>
+                                                <button
+                                                    onClick={() => navigate('/student/world-map')}
+                                                    className="px-6 py-3 font-bold text-white border-2 border-white"
+                                                    style={{
+                                                        background: accentColor,
+                                                        fontFamily: 'monospace',
+                                                    }}
+                                                >
+                                                    EXIT
+                                                </button>
                                             </div>
                                         </div>
                                     )}
                                 </motion.div>
                             )}
-
-                            {/* Battle Controls */}
-                            <div className="mt-8 flex gap-4 justify-center">
-                                {battleState.winner && (
-                                    <>
-                                        <button
-                                            onClick={resetBattle}
-                                            className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all"
-                                            style={{
-                                                borderWidth: "2px",
-                                                borderStyle: "solid",
-                                                borderColor: `${accentColor}80`,
-                                                color: accentColor,
-                                            }}
-                                        >
-                                            <RotateCcw size={20} />
-                                            Retry Battle
-                                        </button>
-                                        <button
-                                            onClick={() => navigate('/student/world-map')}
-                                            className="px-6 py-3 rounded-xl font-semibold text-white transition-all"
-                                            style={{ backgroundColor: accentColor }}
-                                        >
-                                            Back to World Map
-                                        </button>
-                                    </>
-                                )}
-                            </div>
                         </div>
                     </div>
 
-                    {/* Battle Log - Right */}
+                    {/* Battle Log - Below Fight */}
                     <div>
                         <div
-                            className={`${theme.card} rounded-2xl p-6 h-[500px] flex flex-col`}
+                            className={`${theme.card} rounded-2xl p-6 flex flex-col`}
                             style={{
                                 ...theme.borderStyle,
                                 borderWidth: "1px",
                                 borderStyle: "solid",
                             }}
                         >
-                            <h3 className={`text-xl font-bold ${theme.text} mb-4`}>Battle Log</h3>
+                            <h3 className="text-xl font-bold text-white mb-4" style={{ textShadow: '2px 2px 0px #000', fontFamily: 'monospace' }}>BATTLE LOG</h3>
 
-                            <div className="flex-1 overflow-y-auto space-y-2">
+                            <div className="max-h-[300px] overflow-y-auto space-y-2">
                                 {battleState.logs.length === 0 ? (
-                                    <p className={`${theme.textSubtle} text-sm text-center mt-8`}>
+                                    <p className={`${theme.textSubtle} text-sm text-center py-8`}>
                                         Battle log will appear here...
                                     </p>
                                 ) : (
@@ -799,32 +1105,39 @@ export default function AutoBattlePage() {
                                 )}
                             </div>
 
-                            {/* Current Enemy Info */}
+                            {/* Current Enemy Info - Pixel Style */}
                             {enemy && (
-                                <div className={`mt-4 pt-4 border-t`} style={{ borderColor: `${accentColor}30` }}>
-                                    <h4 className={`${theme.textSubtle} text-sm mb-2`}>Current Enemy</h4>
+                                <div className="mt-4 pt-4 border-t-2 border-white">
+                                    <h4 className="text-sm mb-2 text-white" style={{ textShadow: '1px 1px 0px #000', fontFamily: 'monospace' }}>ENEMY</h4>
                                     <div className="flex items-center gap-3">
-                                        <span className="text-3xl">{enemy.emoji}</span>
+                                        {monsterImage ? (
+                                            <img 
+                                                src={monsterImage} 
+                                                alt={enemy.name}
+                                                className="w-12 h-12 object-contain"
+                                                style={{ imageRendering: 'pixelated' }}
+                                            />
+                                        ) : (
+                                            <span className="text-3xl">{enemy.emoji}</span>
+                                        )}
                                         <div>
-                                            <p className={`font-bold ${theme.text}`}>{enemy.name}</p>
+                                            <p className="font-bold text-white" style={{ textShadow: '1px 1px 0px #000' }}>{enemy.name}</p>
                                             <div className="flex items-center gap-2 mt-1">
-                                                <span className={`${theme.textSubtle} text-xs`}>Level {enemy.level}</span>
+                                                <span className="text-xs text-white" style={{ textShadow: '1px 1px 0px #000' }}>Lv.{enemy.level}</span>
                                                 <span
-                                                    className="px-2 py-0.5 rounded text-xs font-semibold text-white capitalize"
+                                                    className="px-2 py-0.5 text-xs font-semibold text-white capitalize border border-white"
                                                     style={{
                                                         backgroundColor: enemy.element === 'fire' ? '#ff5722'
                                                             : enemy.element === 'ice' ? '#00bcd4'
                                                                 : enemy.element === 'earth' ? '#795548'
                                                                     : '#9c27b0',
+                                                        textShadow: '1px 1px 0px #000',
                                                     }}
                                                 >
                                                     {enemy.element}
                                                 </span>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div className="mt-3 text-xs space-y-1">
-                                        <p className={theme.textSubtle}>Damage: {enemy.attack}</p>
                                     </div>
                                 </div>
                             )}

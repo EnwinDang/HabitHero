@@ -40,14 +40,18 @@ export default function StatsPage() {
   }
 
 
-  // Real data from database only
-  const totalXP = user.stats?.xp || 0;
+  // Real data from database only - use stats.level from database, not calculated
+  const level = user.stats?.level || 1;  // Use level from database (updated by backend)
+  const totalXP = user.stats?.totalXP || user.stats?.xp || 0;  // Use totalXP if available, fallback to xp
+  const currentXP = user.stats?.xp || 0;  // Current XP for current level
+  const nextLevelXP = user.stats?.nextLevelXP || 100;  // XP needed for next level
   const gold = user.stats?.gold || 0;
   const streak = user.stats?.streak || 0;
 
-  // Calculate XP progress using exponential curve
-  const level = getLevelFromXP(totalXP);  // Auto-calculate level from XP
-  const levelProgress = getCurrentLevelProgress(totalXP, level);
+  // Calculate XP progress - use database values if available, otherwise calculate
+  const levelProgress = nextLevelXP > 0 
+    ? { current: currentXP, required: nextLevelXP, percentage: Math.round((currentXP / nextLevelXP) * 100) }
+    : getCurrentLevelProgress(totalXP, level);
   const xp = levelProgress.current;
   const maxXP = levelProgress.required;
   const xpProgress = levelProgress.percentage;

@@ -117,6 +117,27 @@ export const UsersAPI = {
     );
   },
 
+  claimAchievement(
+    uid: string,
+    achievementId: string
+  ): Promise<{
+    success: boolean;
+    rewards: { xp: number; gold: number };
+    leveledUp: boolean;
+    newLevel: number;
+    levelUpRewards?: any;
+  }> {
+    return apiFetch<{
+      success: boolean;
+      rewards: { xp: number; gold: number };
+      leveledUp: boolean;
+      newLevel: number;
+      levelUpRewards?: any;
+    }>(`/users/${uid}/achievements/${achievementId}/claim`, {
+      method: "POST",
+    });
+  },
+
   // Pets owned
   getPets(uid: string): Promise<Pet[]> {
     return apiFetch<Pet[]>(`/users/${uid}/pets`);

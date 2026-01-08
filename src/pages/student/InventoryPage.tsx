@@ -200,10 +200,10 @@ export default function InventoryPage() {
             const resultItem = result.result || result;
             const itemName = resultItem.name || resultItem.itemId || 'new item';
             const upgraded = result.upgraded ? ' (Upgraded!)' : '';
-            
+
             setMergeMessage({ type: 'success', text: `Success! Merged items and got ${itemName}${upgraded}!` });
             setTimeout(() => setMergeMessage(null), 3000);
-            
+
             // Reload inventory
             await loadInventory();
         } catch (error: any) {
