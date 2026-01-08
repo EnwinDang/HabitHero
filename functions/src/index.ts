@@ -149,16 +149,75 @@ app.get("/auth/me", requireAuth, async (req, res) => {
 /**
  * GET /tasks
  */
-app.get("/tasks", requireAuth, async (req, res) => {
+app.get("/tasks", async (req, res) => {
   try {
-    const uid = (req as any).user.uid;
-    const tasksRef = db.collection("users").doc(uid).collection("tasks");
-    const snap = await tasksRef.get();
+    const { courseId, moduleId, activeOnly } = req.query;
+    let tasks = [];
 
-    const tasks = snap.docs.map((doc) => ({
-      taskId: doc.id,
-      ...doc.data(),
-    }));
+    if (courseId) {
+      // First, try new collection
+      let query = db.collection("tasks").where('courseId', '==', courseId);
+      if (activeOnly === 'true') {
+        query = query.where('isActive', '==', true);
+      }
+      if (moduleId) {
+        query = query.where('moduleId', '==', moduleId);
+      }
+      const snap = await query.get();
+      tasks = snap.docs.map((doc) => ({
+        taskId: doc.id,
+        ...doc.data(),
+      }));
+
+      // If no tasks, try old locations
+      if (tasks.length === 0) {
+        // Try courses/courseId/tasks
+        let oldQuery: any = db.collection("courses").doc(courseId as string).collection("tasks");
+        if (activeOnly === 'true') {
+          oldQuery = oldQuery.where('isActive', '==', true);
+        }
+        const oldSnap = await oldQuery.get();
+        const oldTasks = oldSnap.docs.map((doc) => ({
+          taskId: doc.id,
+          ...doc.data(),
+        }));
+        tasks = [...tasks, ...oldTasks];
+
+        // Also try modules
+        const modulesSnap = await db.collection("courses").doc(courseId as string).collection("modules").get();
+        for (const moduleDoc of modulesSnap.docs) {
+          const moduleTasksSnap = await moduleDoc.ref.collection("tasks").get();
+          const moduleTasks = moduleTasksSnap.docs.map((doc) => ({
+            taskId: doc.id,
+            ...doc.data(),
+          }));
+          tasks = [...tasks, ...moduleTasks];
+        }
+      }
+    } else {
+      // For user tasks
+      const uid = (req as any).user?.uid;
+      if (!uid) return res.status(401).json({ error: "Auth required for user tasks" });
+      let query = db.collection("tasks").where('userId', '==', uid);
+      if (activeOnly === 'true') {
+        query = query.where('isActive', '==', true);
+      }
+      const snap = await query.get();
+      tasks = snap.docs.map((doc) => ({
+        taskId: doc.id,
+        ...doc.data(),
+      }));
+
+      // Also try old user tasks
+      if (tasks.length === 0) {
+        const oldSnap = await db.collection("users").doc(uid).collection("tasks").get();
+        const oldTasks = oldSnap.docs.map((doc) => ({
+          taskId: doc.id,
+          ...doc.data(),
+        }));
+        tasks = [...tasks, ...oldTasks];
+      }
+    }
 
     return res.status(200).json(tasks);
   } catch (e: any) {
@@ -173,10 +232,9 @@ app.get("/tasks", requireAuth, async (req, res) => {
 app.post("/tasks", requireAuth, async (req, res) => {
   try {
     const uid = (req as any).user.uid;
-    const { title, description, difficulty, xp, gold, dueAt, isRepeatable } = req.body;
+    const { title, description, difficulty, xp, gold, dueAt, isRepeatable, courseId, moduleId, achievementTag } = req.body;
 
-    const tasksRef = db.collection("users").doc(uid).collection("tasks");
-    const newTaskRef = tasksRef.doc();
+    const newTaskRef = db.collection("tasks").doc();
 
     const task = {
       title,
@@ -189,6 +247,10 @@ app.post("/tasks", requireAuth, async (req, res) => {
       isActive: true,
       createdAt: Date.now(),
       completedAt: null,
+      courseId: courseId || null,
+      moduleId: moduleId || null,
+      achievementTag: achievementTag || null,
+      userId: courseId ? null : uid, // For user tasks
     };
 
     await newTaskRef.set(task);
@@ -206,17 +268,11 @@ app.post("/tasks", requireAuth, async (req, res) => {
 /**
  * GET /tasks/{taskId}
  */
-app.get("/tasks/:taskId", requireAuth, async (req, res) => {
+app.get("/tasks/:taskId", async (req, res) => {
   try {
-    const uid = (req as any).user.uid;
     const { taskId } = req.params;
 
-    const taskSnap = await db
-      .collection("users")
-      .doc(uid)
-      .collection("tasks")
-      .doc(taskId)
-      .get();
+    const taskSnap = await db.collection("tasks").doc(taskId).get();
 
     if (!taskSnap.exists) {
       return res.status(404).json({ error: "Task not found" });
@@ -237,14 +293,9 @@ app.get("/tasks/:taskId", requireAuth, async (req, res) => {
  */
 app.patch("/tasks/:taskId", requireAuth, async (req, res) => {
   try {
-    const uid = (req as any).user.uid;
     const { taskId } = req.params;
 
-    const taskRef = db
-      .collection("users")
-      .doc(uid)
-      .collection("tasks")
-      .doc(taskId);
+    const taskRef = db.collection("tasks").doc(taskId);
 
     await taskRef.update({
       ...req.body,
