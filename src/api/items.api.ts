@@ -24,7 +24,6 @@ export const ItemsAPI = {
   },
 
   create(item: Item, collection: string): Promise<Item> {
-    // Aangepast naar body-based collection voor je nieuwe backend route
     return apiFetch<Item>(`/items`, { 
       method: "POST", 
       body: JSON.stringify({ ...item, collection }) 

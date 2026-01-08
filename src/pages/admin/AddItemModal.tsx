@@ -1,215 +1,215 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save } from 'lucide-react';
+import { X, Save, Loader2 } from 'lucide-react';
 import { ItemsAPI } from '../../api/items.api';
-import { AchievementsAPI } from '../../api/achievements.api';
 import { LootboxesAPI } from '../../api/lootboxes.api';
+import { AchievementsAPI } from '../../api/achievements.api';
 
 interface AddItemModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  activeTab: 'items' | 'pets' | 'lootboxes' | 'achievements';
-  editData?: { item: any; collection: string } | null;
+  activeTab: 'items' | 'lootboxes' | 'achievements';
+  editData?: { item: any, collection: string } | null;
 }
 
-const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onSuccess, activeTab, editData }) => {
-  const [formData, setFormData] = useState({
-    name: '',
-    title: '',
-    description: '',
-    rarity: 'common',
-    collection: 'items_weapons',
-    goldReward: 100,
-    category: 'difficulty',
-    priceGold: 0,
-    petChance: 0.1,
-    enable: true
-  });
+const AddItemModal = ({ isOpen, onClose, onSuccess, activeTab, editData }: AddItemModalProps) => {
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState<any>({});
 
+  // Reset of vul data bij openen
   useEffect(() => {
-    if (editData && editData.item) {
-      const { item } = editData;
-      setFormData({
-        name: item.name || '',
-        title: item.title || '',
-        description: item.description || (item.condition?.description) || '',
-        rarity: item.rarity || 'common',
-        collection: editData.collection || 'items_weapons',
-        goldReward: item.reward?.gold || 100,
-        category: item.category || 'difficulty',
-        priceGold: item.priceGold || 0,
-        petChance: item.petChance || 0,
-        enable: item.enable !== undefined ? item.enable : true
-      });
-    } else {
-      setFormData({
-        name: '',
-        title: '',
-        description: '',
-        rarity: 'common',
-        collection: activeTab === 'items' ? 'items_weapons' : (activeTab === 'pets' ? 'items_pets' : 'lootboxes'),
-        goldReward: 100,
-        category: 'difficulty',
-        priceGold: 0,
-        petChance: 0.1,
-        enable: true
-      });
+    if (isOpen) {
+      if (editData) {
+        setFormData(editData.item);
+      } else {
+        // Standaard waarden voor nieuwe entries
+        const defaults: any = { rarity: 'common', element: 'arcane', enable: true };
+        if (activeTab === 'items') defaults.stats = {};
+        if (activeTab === 'lootboxes') defaults.dropChances = { common: 0.7, uncommon: 0.2, rare: 0.1 };
+        if (activeTab === 'achievements') {
+          defaults.reward = { xp: 100, gold: 100 };
+          defaults.condition = { type: 'counter', value: 10, key: '' };
+        }
+        setFormData(defaults);
+      }
     }
-  }, [editData, isOpen, activeTab]);
-
-  if (!isOpen) return null;
+  }, [isOpen, editData, activeTab]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     try {
-      const id = editData?.item?.lootboxId || editData?.item?.itemId || editData?.item?.achievementId || editData?.item?.id;
-
-      if (activeTab === 'achievements') {
-        const data = {
-          title: formData.title,
-          description: formData.description,
-          category: formData.category,
-          reward: { gold: formData.goldReward, xp: formData.goldReward * 1.5 }
-        };
-        if (editData && id) {
-          await AchievementsAPI.replace(id, data as any);
+      if (activeTab === 'items') {
+        const collection = editData?.collection || 'items_weapons';
+        if (editData) {
+          await ItemsAPI.patch(formData.itemId || formData.id, formData, collection);
         } else {
-          await AchievementsAPI.create(data as any);
+          await ItemsAPI.create(formData, collection);
         }
       } else if (activeTab === 'lootboxes') {
-        const data = {
-          name: formData.name,
-          priceGold: formData.priceGold,
-          petChance: formData.petChance,
-          enable: formData.enable
-        };
-        if (editData && id) {
-          await LootboxesAPI.replace(id, data as any);
+        if (editData) {
+          await LootboxesAPI.patch(formData.lootboxId, formData);
         } else {
-          await LootboxesAPI.create(data as any);
+          await LootboxesAPI.create(formData);
         }
-      } else {
-        const data = {
-          name: formData.name,
-          rarity: formData.rarity
-        };
-        if (editData && id) {
-          await ItemsAPI.replace(id, data as any, formData.collection);
+      } else if (activeTab === 'achievements') {
+        if (editData) {
+          await AchievementsAPI.patch(formData.achievementId, formData);
         } else {
-          await ItemsAPI.create(data as any, formData.collection);
+          await AchievementsAPI.create(formData);
         }
       }
       onSuccess();
       onClose();
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error("Opslaan mislukt:", err);
+      alert("Er is een fout opgetreden bij het opslaan.");
+    } finally {
+      setLoading(false);
     }
   };
 
+  const updateNested = (parent: string, key: string, value: any) => {
+    setFormData((prev: any) => ({
+      ...prev,
+      [parent]: { ...prev[parent], [key]: value }
+    }));
+  };
+
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden border border-violet-100">
-        <div className="p-8">
-          <div className="flex justify-between items-center mb-6">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        
+        {/* Header */}
+        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-violet-50/30">
+          <div>
             <h2 className="text-2xl font-black text-slate-900 uppercase italic">
-              {editData ? 'Edit' : 'Add'} {activeTab}
+              {editData ? 'Edit Entry' : `New ${activeTab.slice(0, -1)}`}
             </h2>
-            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-all">
-              <X size={24} />
-            </button>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">{editData?.collection || activeTab}</p>
+          </div>
+          <button onClick={onClose} className="p-3 hover:bg-white rounded-2xl text-slate-400 transition-all shadow-sm">
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-8 overflow-y-auto space-y-6 custom-scrollbar">
+          
+          {/* Basis Velden */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Display Name</label>
+              <input 
+                required
+                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-violet-500 outline-none transition-all"
+                value={formData.name || formData.title || ''}
+                onChange={(e) => setFormData({...formData, [activeTab === 'achievements' ? 'title' : 'name']: e.target.value})}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Rarity / Category</label>
+              <select 
+                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold outline-none"
+                value={formData.rarity || formData.category || ''}
+                onChange={(e) => setFormData({...formData, [activeTab === 'achievements' ? 'category' : 'rarity']: e.target.value})}
+              >
+                {activeTab === 'achievements' ? (
+                  ['difficulty', 'combat', 'module', 'streak', 'world'].map(c => <option key={c} value={c}>{c}</option>)
+                ) : (
+                  ['common', 'uncommon', 'rare', 'epic', 'legendary'].map(r => <option key={r} value={r}>{r}</option>)
+                )}
+              </select>
+            </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto px-1">
-            {activeTab === 'achievements' ? (
-              <>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Title</label>
-                  <input required className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
-                    value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} />
-                </div>
-                {/* Beschrijving veld alleen zichtbaar voor Achievements */}
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Description</label>
-                  <textarea className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
-                    value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Gold Reward</label>
-                    <input type="number" className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
-                      value={formData.goldReward} onChange={(e) => setFormData({...formData, goldReward: parseInt(e.target.value)})} />
+          {/* Items: Stats of Buffs */}
+          {activeTab === 'items' && (
+            <div className="space-y-4">
+              <label className="text-[10px] font-black text-violet-400 uppercase block border-b border-violet-100 pb-1">
+                {editData?.collection === 'items_pets' ? 'Pet Buffs' : 'Weapon Stats'}
+              </label>
+              <div className="grid grid-cols-3 gap-3">
+                {['attack', 'defense', 'hp', 'magicAttack', 'magicResist', 'critChance'].map((stat) => (
+                  <div key={stat} className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    <p className="text-[8px] font-black text-slate-400 uppercase mb-1">{stat}</p>
+                    <input 
+                      type="number" step="0.01"
+                      className="w-full bg-transparent text-sm font-black text-violet-600 outline-none"
+                      value={(formData.buffs || formData.stats)?.[stat] || 0}
+                      onChange={(e) => updateNested(formData.buffs ? 'buffs' : 'stats', stat, parseFloat(e.target.value))}
+                    />
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Category</label>
-                    <input className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
-                      value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} />
-                  </div>
-                </div>
-              </>
-            ) : activeTab === 'lootboxes' ? (
-              <>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Lootbox Name</label>
-                  <input required className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
-                    value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Price (Gold)</label>
-                    <input type="number" className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
-                      value={formData.priceGold} onChange={(e) => setFormData({...formData, priceGold: parseInt(e.target.value)})} />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Pet Chance</label>
-                    <input type="number" step="0.01" className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
-                      value={formData.petChance} onChange={(e) => setFormData({...formData, petChance: parseFloat(e.target.value)})} />
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Status</label>
-                  <button type="button" onClick={() => setFormData({...formData, enable: !formData.enable})}
-                    className={`h-[50px] rounded-2xl font-bold transition-all border ${formData.enable ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-slate-50 border-slate-100 text-slate-400'}`}>
-                    {formData.enable ? 'ACTIVE' : 'DISABLED'}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Name</label>
-                  <input required className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none focus:border-violet-400" 
-                    value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Rarity</label>
-                    <select className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none" 
-                      value={formData.rarity} onChange={(e) => setFormData({...formData, rarity: e.target.value})}>
-                      <option value="common">Common</option>
-                      <option value="rare">Rare</option>
-                      <option value="epic">Epic</option>
-                      <option value="legendary">Legendary</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1">Collection</label>
-                    <select disabled={!!editData} className="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-100 font-bold outline-none disabled:opacity-50" 
-                      value={formData.collection} onChange={(e) => setFormData({...formData, collection: e.target.value})}>
-                      <option value="items_weapons">Weapons</option>
-                      <option value="items_armor">Armor</option>
-                      <option value="items_arcane">Arcane</option>
-                      <option value="items_pets">Pets</option>
-                    </select>
-                  </div>
-                </div>
-              </>
-            )}
+                ))}
+              </div>
+            </div>
+          )}
 
-            <button type="submit" className="w-full mt-4 bg-violet-600 hover:bg-violet-700 text-white font-black py-4 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 uppercase tracking-widest">
-              <Save size={20} /> {editData ? 'Update' : 'Deploy'} Database
+          {/* Lootboxes: Drop Chances */}
+          {activeTab === 'lootboxes' && (
+            <div className="space-y-4">
+              <label className="text-[10px] font-black text-amber-400 uppercase block border-b border-amber-100 pb-1">Drop Chances (0.0 - 1.0)</label>
+              <div className="grid grid-cols-2 gap-3">
+                {['common', 'uncommon', 'rare', 'epic', 'legendary'].map((rarity) => (
+                  <div key={rarity} className="flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    <span className="text-[9px] font-black text-slate-500 uppercase">{rarity}</span>
+                    <input 
+                      type="number" step="0.01"
+                      className="w-20 text-right bg-transparent text-sm font-black text-amber-600 outline-none"
+                      value={formData.dropChances?.[rarity] || 0}
+                      onChange={(e) => updateNested('dropChances', rarity, parseFloat(e.target.value))}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Achievements: Rewards & Conditions */}
+          {activeTab === 'achievements' && (
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-blue-400 uppercase block border-b border-blue-100 pb-1">Condition</label>
+                <textarea 
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold min-h-[80px]"
+                  placeholder="Beschrijving van de voorwaarde..."
+                  value={formData.description || ''}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-blue-50/50 p-4 rounded-3xl border border-blue-100">
+                  <p className="text-[9px] font-black text-blue-400 uppercase mb-3 text-center">Rewards</p>
+                  <div className="space-y-3">
+                    <input type="number" placeholder="XP" className="w-full bg-white rounded-xl px-3 py-2 text-xs font-bold" 
+                      value={formData.reward?.xp || 0} onChange={(e) => updateNested('reward', 'xp', parseInt(e.target.value))} />
+                    <input type="number" placeholder="Gold" className="w-full bg-white rounded-xl px-3 py-2 text-xs font-bold" 
+                      value={formData.reward?.gold || 0} onChange={(e) => updateNested('reward', 'gold', parseInt(e.target.value))} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Footer Acties */}
+          <div className="flex gap-3 pt-6 border-t border-slate-100">
+            <button 
+              type="button" onClick={onClose}
+              className="flex-1 px-6 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest text-slate-400 hover:bg-slate-50 transition-all"
+            >
+              Cancel
             </button>
-          </form>
-        </div>
+            <button 
+              type="submit" disabled={loading}
+              className="flex-[2] bg-violet-600 hover:bg-violet-700 text-white px-6 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-violet-200 transition-all flex items-center justify-center gap-2"
+            >
+              {loading ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+              {editData ? 'Update Asset' : 'Create Asset'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
