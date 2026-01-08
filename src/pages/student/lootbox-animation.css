@@ -1,0 +1,182 @@
+/* Lootbox Opening Animation */
+
+@keyframes lootbox-shake {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    10% { transform: translateX(-10px) rotate(-2deg); }
+    20% { transform: translateX(10px) rotate(2deg); }
+    30% { transform: translateX(-10px) rotate(-2deg); }
+    40% { transform: translateX(10px) rotate(2deg); }
+    50% { transform: translateX(-10px) rotate(-2deg); }
+    60% { transform: translateX(10px) rotate(2deg); }
+    70% { transform: translateX(-5px) rotate(-1deg); }
+    80% { transform: translateX(5px) rotate(1deg); }
+    90% { transform: translateX(-5px) rotate(-1deg); }
+}
+
+@keyframes lootbox-glow {
+    0%, 100% { 
+        filter: brightness(1) drop-shadow(0 0 0px currentColor);
+    }
+    50% { 
+        filter: brightness(1.5) drop-shadow(0 0 30px currentColor);
+    }
+}
+
+@keyframes chest-lid-open {
+    0% { 
+        transform: translateY(0) rotateX(0deg) scale(1);
+        opacity: 1;
+    }
+    40% {
+        transform: translateY(-5px) rotateX(0deg) scale(1);
+    }
+    60% {
+        transform: translateY(-15px) rotateX(-45deg) scale(1.1);
+    }
+    80% {
+        transform: translateY(-25px) rotateX(-90deg) scale(1.2);
+        opacity: 0.7;
+    }
+    100% { 
+        transform: translateY(-30px) rotateX(-110deg) scale(1.3);
+        opacity: 0;
+    }
+}
+
+@keyframes chest-body-bounce {
+    0% { 
+        transform: scale(1);
+    }
+    30% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    70% {
+        transform: scale(0.95);
+    }
+    100% { 
+        transform: scale(1);
+    }
+}
+
+@keyframes lootbox-float {
+    0%, 100% { 
+        transform: translateY(0px) scale(1);
+    }
+    50% { 
+        transform: translateY(-20px) scale(1.1);
+    }
+}
+
+@keyframes lootbox-burst {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.3);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+@keyframes sparkle {
+    0% {
+        transform: scale(0) rotate(0deg);
+        opacity: 0;
+    }
+    50% {
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1) rotate(180deg);
+        opacity: 0;
+    }
+}
+
+.lootbox-opening {
+    animation: lootbox-shake 0.8s ease-in-out, lootbox-glow 1.5s ease-in-out;
+}
+
+.lootbox-opening-icon {
+    position: relative;
+    perspective: 1000px;
+}
+
+.chest-lid {
+    animation: chest-lid-open 1.2s ease-out forwards;
+    animation-delay: 0.5s;
+    transform-origin: bottom center;
+}
+
+.chest-body {
+    animation: chest-body-bounce 1.2s ease-out;
+    animation-delay: 0.5s;
+}
+
+.lootbox-burst-effect {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    animation: lootbox-burst 0.6s ease-out forwards;
+    background: radial-gradient(circle, rgba(255, 215, 0, 0.4) 0%, transparent 70%);
+    border-radius: 50%;
+}
+
+.sparkle-particle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: gold;
+    border-radius: 50%;
+    animation: sparkle 1s ease-out forwards;
+}
+
+/* Item Reveal Animation */
+@keyframes item-reveal {
+    0% {
+        transform: translateY(30px) scale(0.8);
+        opacity: 0;
+    }
+    60% {
+        transform: translateY(-5px) scale(1.05);
+    }
+    100% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+}
+
+.item-reveal {
+    animation: item-reveal 0.5s ease-out forwards;
+    opacity: 1 !important; /* Force visibility */
+}
+
+.item-reveal-delay-1 { animation-delay: 0.1s; }
+.item-reveal-delay-2 { animation-delay: 0.2s; }
+.item-reveal-delay-3 { animation-delay: 0.3s; }
+.item-reveal-delay-4 { animation-delay: 0.4s; }
+.item-reveal-delay-5 { animation-delay: 0.5s; }
+
+/* Stat Boost Glow Effect */
+@keyframes stat-boost-pulse {
+    0%, 100% {
+        box-shadow: 0 0 20px rgba(255, 215, 0, 0.3), inset 0 0 20px rgba(255, 215, 0, 0.1);
+    }
+    50% {
+        box-shadow: 0 0 30px rgba(255, 215, 0, 0.5), inset 0 0 30px rgba(255, 215, 0, 0.2);
+    }
+}
+
+.stat-boost-glow {
+    animation: stat-boost-pulse 2s ease-in-out infinite;
+}
