@@ -10,6 +10,9 @@ admin.initializeApp();
 const app = express();
 const db = admin.firestore();
 
+// Enable ignoring undefined properties in Firestore writes
+db.settings({ ignoreUndefinedProperties: true });
+
 // CORS
 app.use(
   cors({
@@ -2915,12 +2918,29 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
       return res.status(400).json({ error: `Not enough gold. Need ${totalCost}, have ${currentGold}` });
     }
 
-    // 3. Determine minimum items based on box type
-    let minItems = 1; // default
+    // 3. Determine minimum items from lootbox config (or derive from id as fallback)
+    let minItems = lootbox.count || 1; // Use count from DB first
+    
+    // Fallback: if count not set, derive from id
+    if (!lootbox.count) {
+      if (lootboxId.includes("legendary")) {
+        minItems = 3;
+      } else if (lootboxId.includes("epic")) {
+        minItems = 3;
+      } else if (lootboxId.includes("advanced")) {
+        minItems = 2;
+      }
+    }
+    
+    // Determine guaranteed rarity floor based on box type
+    let guaranteedRarityFloor = "common"; // basic boxes: common items
+    
     if (lootboxId.includes("legendary")) {
-      minItems = 3;
-    } else if (lootboxId.includes("advanced") || lootboxId.includes("epic")) {
-      minItems = 2;
+      guaranteedRarityFloor = "epic";
+    } else if (lootboxId.includes("epic")) {
+      guaranteedRarityFloor = "epic";
+    } else if (lootboxId.includes("advanced")) {
+      guaranteedRarityFloor = "rare";
     }
 
     // 4. Roll loot for each box
@@ -2932,106 +2952,147 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
     const bonusEnabled = bonusSystem?.enabled || false;
     const bonusChance = bonusSystem?.bonusChance || 0;
     const possibleBonuses = bonusSystem?.possibleBonuses || {};
+
+    // Get arcane tweaks config
+    const arcaneTweaksSnap = await db.collection("lootboxesArcaneTweaks").doc("arcaneBonus").get();
+    const arcaneTweaks = arcaneTweaksSnap.exists ? arcaneTweaksSnap.data() : null;
+    const arcaneEnabled = arcaneTweaks?.enabled || false;
+    const extraArcaneChance = arcaneTweaks?.extraArcaneItemChance || 0;
     
     for (let i = 0; i < count; i++) {
       // Roll minimum guaranteed items
       for (let itemSlot = 0; itemSlot < minItems; itemSlot++) {
-        // Determine rarity based on dropChances
-        const rarityRoll = Math.random();
-        let cumulativeChance = 0;
+        // FIRST ITEM: Enforce guaranteed minimum rarity
         let selectedRarity = "common";
         
-        const dropChances = lootbox.dropChances || {};
-        const rarities = ["legendary", "epic", "rare", "uncommon", "common"]; // Check rarest first
-        
-        for (const rarity of rarities) {
-          cumulativeChance += dropChances[rarity] || 0;
-          if (rarityRoll <= cumulativeChance) {
-            selectedRarity = rarity;
-            break;
+        if (itemSlot === 0) {
+          // First item is GUARANTEED at floor rarity
+          selectedRarity = guaranteedRarityFloor;
+          console.log(`Item ${itemSlot + 1}: GUARANTEED ${selectedRarity}`);
+        } else {
+          // Other items: Roll normally based on dropChances
+          const rarityRoll = Math.random();
+          let cumulativeChance = 0;
+          
+          const dropChances = lootbox.dropChances || {};
+          console.log(`Item ${itemSlot + 1}: Rolling with dropChances:`, dropChances, `Roll value: ${rarityRoll}`);
+          
+          const rarities = ["common", "uncommon", "rare", "epic", "legendary"]; // Start from common to build cumulative
+          
+          for (const rarity of rarities) {
+            const chance = dropChances[rarity] || 0;
+            cumulativeChance += chance;
+            
+            if (rarityRoll < cumulativeChance) {
+              selectedRarity = rarity;
+              console.log(`  -> Selected: ${rarity} (cumulative: ${cumulativeChance})`);
+              break;
+            }
+          }
+          
+          // Fallback to common if nothing selected
+          if (rarityRoll >= cumulativeChance && selectedRarity === "common") {
+            console.log(`  -> Defaulted to common (roll ${rarityRoll} >= cumulative ${cumulativeChance})`);
           }
         }
 
-        // Get item pool for this rarity (with fallback)
-        const itemPools = lootbox.itemPools || {};
-        let poolCollections = itemPools[selectedRarity] || [];
-        let itemAdded = false;
-        
-        // Try selected rarity first, then fallback to lower rarities if empty
-        const fallbackRarities = [selectedRarity, "rare", "uncommon", "common"];
-        
-        for (const fallbackRarity of fallbackRarities) {
-          if (itemAdded) break;
-          
-          poolCollections = itemPools[fallbackRarity] || [];
-          
-          if (poolCollections.length > 0) {
-            // Pick random collection from pool
-            const randomCollection = poolCollections[Math.floor(Math.random() * poolCollections.length)];
-            
-            // Get all items from that collection
-            const itemsSnap = await db.collection(randomCollection).get();
-            const availableItems = itemsSnap.docs
-              .map(doc => ({ itemId: doc.id, ...doc.data() }))
-              .filter((item: any) => item.isActive !== false);
+        // Dynamically query all item collections and filter by rarity
+        const itemCollections = ["items_weapons", "items_armor", "items_arcane", "items_pets"];
+        const allItemsOfRarity: any[] = [];
+        let sourceCollection = "";
 
-            if (availableItems.length > 0) {
-              // Pick random item
-              const randomItem = availableItems[Math.floor(Math.random() * availableItems.length)];
-              
-              // Roll for bonus stats
-              let bonusStats = null;
-              if (bonusEnabled && Math.random() <= bonusChance) {
-                bonusStats = {};
-                // Roll random bonus type(s)
-                const bonusTypes = Object.keys(possibleBonuses);
-                if (bonusTypes.length > 0) {
-                  // Pick 1-2 random bonus types
-                  const numBonuses = Math.random() > 0.7 ? 2 : 1;
-                  const selectedBonusTypes = [];
-                  
-                  for (let b = 0; b < numBonuses && bonusTypes.length > 0; b++) {
-                    const randomIndex = Math.floor(Math.random() * bonusTypes.length);
-                    const bonusType = bonusTypes.splice(randomIndex, 1)[0];
-                    selectedBonusTypes.push(bonusType);
-                    
-                    const bonusRange = possibleBonuses[bonusType];
-                    const min = bonusRange?.min || 0;
-                    const max = bonusRange?.max || 0;
-                    const bonusValue = min + Math.random() * (max - min);
-                    
-                    // Round based on type
-                    if (bonusType === "critChance" || bonusType === "critDamage") {
-                      bonusStats[bonusType] = Math.round(bonusValue * 1000) / 1000; // 3 decimals
-                    } else {
-                      bonusStats[bonusType] = Math.round(bonusValue); // Whole numbers
-                    }
-                  }
+        for (const collectionName of itemCollections) {
+          try {
+            const itemsSnap = await db.collection(collectionName).get();
+            const items = itemsSnap.docs
+              .map(doc => ({ itemId: doc.id, ...doc.data() }))
+              .filter((item: any) => item.isActive !== false && item.rarity === selectedRarity);
+            
+            if (items.length > 0) {
+              allItemsOfRarity.push(...items.map(item => ({ ...item, collection: collectionName })));
+            }
+          } catch (e) {
+            // Collection may not exist, skip
+          }
+        }
+
+        // If no items found at selected rarity, try fallback rarities
+        if (allItemsOfRarity.length === 0) {
+          const fallbackRarities = [selectedRarity, "rare", "uncommon", "common"];
+          for (const fallbackRarity of fallbackRarities) {
+            if (allItemsOfRarity.length > 0) break;
+            
+            for (const collectionName of itemCollections) {
+              try {
+                const itemsSnap = await db.collection(collectionName).get();
+                const items = itemsSnap.docs
+                  .map(doc => ({ itemId: doc.id, ...doc.data() }))
+                  .filter((item: any) => item.isActive !== false && item.rarity === fallbackRarity);
+                
+                if (items.length > 0) {
+                  allItemsOfRarity.push(...items.map(item => ({ ...item, collection: collectionName })));
                 }
+              } catch (e) {
+                // Collection may not exist, skip
               }
-              
-              results.push({
-                type: "item",
-                rarity: fallbackRarity, // Use actual rarity found
-                collection: randomCollection,
-                bonus: bonusStats,
-                ...randomItem,
-              });
-              itemAdded = true;
             }
           }
         }
-        
-        // GUARANTEE: If still no item, give a fallback common item
-        if (!itemAdded) {
-          results.push({
+
+        // Pick random item if any found
+        if (allItemsOfRarity.length > 0) {
+          const randomItem = allItemsOfRarity[Math.floor(Math.random() * allItemsOfRarity.length)];
+          sourceCollection = randomItem.collection;
+          
+          // Roll for bonus stats
+          let bonusStats = null;
+          if (bonusEnabled && Math.random() <= bonusChance) {
+            bonusStats = {};
+            // Roll random bonus type(s)
+            const bonusTypes = Object.keys(possibleBonuses);
+            if (bonusTypes.length > 0) {
+              // Pick 1-2 random bonus types
+              const numBonuses = Math.random() > 0.7 ? 2 : 1;
+              const selectedBonusTypes = [];
+              
+              for (let b = 0; b < numBonuses && bonusTypes.length > 0; b++) {
+                const randomIndex = Math.floor(Math.random() * bonusTypes.length);
+                const bonusType = bonusTypes.splice(randomIndex, 1)[0];
+                selectedBonusTypes.push(bonusType);
+                
+                const bonusRange = possibleBonuses[bonusType];
+                const min = bonusRange?.min || 0;
+                const max = bonusRange?.max || 0;
+                const bonusValue = min + Math.random() * (max - min);
+                
+                // Round based on type with minimum values
+                if (bonusType === "critChance" || bonusType === "critDamage") {
+                  // For crit percentages, ensure minimum of 1% and round to 1 decimal
+                  const rounded = Math.max(1, Math.round(bonusValue * 10) / 10);
+                  bonusStats[bonusType] = rounded;
+                } else if (bonusType.includes("Chance") || bonusType.includes("chance")) {
+                  // Other chance stats: minimum 1%, round to 1 decimal
+                  const rounded = Math.max(1, Math.round(bonusValue * 10) / 10);
+                  bonusStats[bonusType] = rounded;
+                } else {
+                  // Whole numbers for attack, defense, health, etc. - minimum 1
+                  bonusStats[bonusType] = Math.max(1, Math.round(bonusValue));
+                }
+              }
+              console.log(`  -> Rolled bonus stats:`, bonusStats);
+            }
+          }
+          
+          const itemResult = {
+            ...randomItem,
             type: "item",
-            rarity: "common",
-            itemId: "fallback_gold",
-            name: "Gold Coins",
-            description: "Better luck next time!",
-            value: 50,
-          });
+            rarity: randomItem.rarity,
+            collection: sourceCollection,
+            bonus: bonusStats,
+          };
+          
+          console.log(`  -> Adding item to results:`, itemResult.name, `with bonus:`, itemResult.bonus);
+          results.push(itemResult);
         }
       }
 
@@ -3081,20 +3142,34 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
       updatedAt: Date.now(),
     });
 
+    // Log final results before sending to frontend
+    console.log("Final results being sent to frontend:");
+    results.forEach((item: any, idx: number) => {
+      console.log(`  ${idx + 1}. ${item.name} - bonus:`, item.bonus);
+    });
+
     // 6. Add items to user inventory
     const inventory = user.inventory || {};
     const inventoryItems = inventory.inventory?.items || [];
     const lootboxes = inventory.inventory?.lootboxes || [];
 
-    // Add all dropped items to inventory
+    // Add all dropped items to inventory (filter undefined properties)
     results.forEach((item: any) => {
-      inventoryItems.push({
+      const inventoryItem: any = {
         itemId: item.itemId,
         type: item.type,
         rarity: item.rarity,
-        collection: item.collection,
         addedAt: Date.now(),
-      });
+      };
+      // Only add collection if it's defined
+      if (item.collection !== undefined) {
+        inventoryItem.collection = item.collection;
+      }
+      // Include bonus stats in inventory
+      if (item.bonus !== undefined && item.bonus !== null) {
+        inventoryItem.bonus = item.bonus;
+      }
+      inventoryItems.push(inventoryItem);
     });
 
     // Remove used lootbox(es) from inventory
