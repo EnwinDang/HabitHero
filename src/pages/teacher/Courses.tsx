@@ -122,10 +122,10 @@ export default function Courses() {
           <thead className="hh-thead">
             <tr>
               <th className="px-5 py-3">Course name</th>
-              <th className="px-5 py-3">Course code</th>
-              <th className="px-5 py-3">Start date</th>
-              <th className="px-5 py-3">Modules</th>
-              <th className="px-5 py-3">Actions</th>
+              <th className="px-5 py-3" style={{ textAlign: 'center' }}>Course code</th>
+              <th className="px-5 py-3" style={{ textAlign: 'center' }}>Start date</th>
+              <th className="px-5 py-3" style={{ textAlign: 'center' }}>Modules</th>
+              <th className="px-5 py-3" style={{ textAlign: 'center' }}>Actions</th>
             </tr>
           </thead>
           <tbody className="hh-tbody">
@@ -150,9 +150,9 @@ export default function Courses() {
                     </span>
                   )}
                 </td>
-                <td className="px-5 py-4">{c.courseCode || '—'}</td>
-                <td className="px-5 py-4">{c.startDate ? new Date(c.startDate).toLocaleDateString() : '—'}</td>
-                <td className="px-5 py-4">{(c.modules || []).length}</td>
+                <td className="px-5 py-4" style={{ textAlign: 'center' }}>{c.courseCode || '—'}</td>
+                <td className="px-5 py-4" style={{ textAlign: 'center' }}>{c.startDate ? new Date(c.startDate).toLocaleDateString() : '—'}</td>
+                <td className="px-5 py-4" style={{ textAlign: 'center' }}>{(c.modules || []).length}</td>
                 <td className="px-5 py-4">
                   <div
                     className="flex"

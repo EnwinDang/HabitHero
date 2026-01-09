@@ -70,6 +70,7 @@ export default function BattlePage() {
                 // 2. Fetch Monster Details
                 if (combat.monsterId) {
                     const monsterData = await MonstersAPI.get(combat.monsterId);
+                    const userLevel = user?.stats?.level || 1;
 
                     // Map generic Monster to BattleEnemy
                     const newEnemy: BattleEnemy = {

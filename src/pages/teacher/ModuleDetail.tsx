@@ -32,6 +32,7 @@ function mapTaskToAPI(uiTask: any, moduleId: string, courseId?: string) {
     easy: { xp: 100, gold: 50 },
     medium: { xp: 125, gold: 63 },      // 25% increase from easy
     hard: { xp: 156, gold: 78 },        // 25% increase from medium
+    extreme: { xp: 200, gold: 100 },    // Extreme difficulty
   };
   
   const rewards = difficultyMultipliers[difficulty] || difficultyMultipliers.medium;
@@ -61,9 +62,11 @@ function DifficultyBadge({ value }: DifficultyBadgeProps) {
     Easy: { className: 'hh-pill hh-pill--easy', dotColor: 'var(--hh-green)' },
     Medium: { className: 'hh-pill hh-pill--medium', dotColor: 'var(--hh-gold)' },
     Hard: { className: 'hh-pill hh-pill--hard', dotColor: 'rgb(239, 68, 68)' },
+    Extreme: { className: 'hh-pill hh-pill--hard', dotColor: 'rgb(147, 51, 234)' },
     easy: { className: 'hh-pill hh-pill--easy', dotColor: 'var(--hh-green)' },
     medium: { className: 'hh-pill hh-pill--medium', dotColor: 'var(--hh-gold)' },
     hard: { className: 'hh-pill hh-pill--hard', dotColor: 'rgb(239, 68, 68)' },
+    extreme: { className: 'hh-pill hh-pill--hard', dotColor: 'rgb(147, 51, 234)' },
   } as const;
 
   const config = difficultyMap[value as keyof typeof difficultyMap] || difficultyMap.Easy;
@@ -449,7 +452,7 @@ export default function ModuleDetail() {
                   </td>
                   <td className="px-5 py-4" style={{ textAlign: 'center' }}>
                     {e.date ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 14 }}>
                         <Calendar style={{ width: 14, height: 14, color: 'var(--hh-muted)' }} />
                         {new Date(e.date).toLocaleDateString('en-US', {
                           month: 'short',
@@ -595,6 +598,7 @@ export default function ModuleDetail() {
                   <option>Easy</option>
                   <option>Medium</option>
                   <option>Hard</option>
+                  <option>Extreme</option>
                 </select>
               </div>
               <div>

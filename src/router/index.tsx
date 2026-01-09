@@ -36,6 +36,7 @@ import {
   BattlePage,
   WorldMapPage,
   CoursesPage,
+  SubmissionsPage,
 } from "../pages/student";
 
 export const AppRoutes = () => {
@@ -55,8 +56,12 @@ export const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-      {/* Legacy battle path redirect */}
-      <Route path="/dashboard/battle" element={<Navigate to="/student/battle" replace />} />
+      {/* Battle route outside layouts */}
+      <Route path="/dashboard/battle" element={
+        <ProtectedRoute>
+          <BattlePage />
+        </ProtectedRoute>
+      } />
 
       {/* Admin Routes (Nested in AdminLayout) */}
       <Route
@@ -88,6 +93,7 @@ export const AppRoutes = () => {
       >
         <Route index element={<StudentHomePage />} />
         <Route path="home" element={<StudentHomePage />} />
+        <Route path="dashboard" element={<StudentHomePage />} />
         <Route path="daily-tasks" element={<DailyTasksPage />} />
         <Route path="courses-tasks">
           <Route index element={<DailyTasksPage />} />
@@ -104,6 +110,7 @@ export const AppRoutes = () => {
         <Route path="battle" element={<BattlePage />} />
         <Route path="world-map" element={<WorldMapPage />} />
         <Route path="courses" element={<CoursesPage />} />
+        <Route path="submissions" element={<SubmissionsPage />} />
       </Route>
 
       {/* Teacher Routes (Nested in TeacherLayout) */}

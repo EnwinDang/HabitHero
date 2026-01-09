@@ -5,6 +5,7 @@ export type SubmissionStatus = "pending" | "approved" | "rejected";
 export interface Submission {
   submissionId: string;
   studentId: string;
+  studentName?: string;
   imageUrl: string | null;
   status: SubmissionStatus;
   teacherComment: string | null;
@@ -42,6 +43,14 @@ export const SubmissionsAPI = {
     if (status) params.append("status", status);
     const suffix = params.toString() ? `?${params.toString()}` : "";
     const res = await api.get<Submission[]>(`/teacher/submissions${suffix}`);
+    return res.data;
+  },
+
+  async listForStudent(status?: SubmissionStatus): Promise<Submission[]> {
+    const params = new URLSearchParams();
+    if (status) params.append("status", status);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const res = await api.get<Submission[]>(`/student/submissions${suffix}`);
     return res.data;
   },
 
