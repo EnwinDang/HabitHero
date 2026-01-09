@@ -36,7 +36,7 @@ export default function AchievementsPage() {
   const prevFocusSessionsRef = useRef<number>(0);
   const prevCompletedTasksRef = useRef<number>(0);
 
-  // Handle claim achievement (Firestore-based, no backend needed)
+  // Handle claim achievement (API-based)
   const handleClaim = async (achievementId: string) => {
     if (!user || !firebaseUser || claimingId) return;
 

@@ -5,8 +5,9 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { TasksAPI } from "@/api/tasks.api";
 import { CoursesAPI } from "@/api/courses.api";
+import { Modal } from "@/components/Modal";
 import { db } from "@/firebase";
-import { collection, query, where, getDocs, doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, setDoc, getDoc, deleteDoc, updateDoc, deleteField } from "firebase/firestore";
 import type { Task } from "@/models/task.model";
 import type { Course } from "@/models/course.model";
 import type { Module } from "@/models/module.model";
@@ -23,6 +24,7 @@ import {
     Layers,
     X,
     LogOut,
+    ArrowUpDown,
 } from "lucide-react";
 
 export default function DailyTasksPage() {
@@ -47,7 +49,9 @@ export default function DailyTasksPage() {
     const [courseCode, setCourseCode] = useState("");
     const [codeError, setCodeError] = useState("");
     const [courseSearchQuery, setCourseSearchQuery] = useState("");
-    const [moduleSortOrder, setModuleSortOrder] = useState<"order" | "a-z" | "z-a">("order");
+    const [moduleSortOrder, setModuleSortOrder] = useState<"order" | "a-z" | "z-a">("a-z");
+    const [confirmLeave, setConfirmLeave] = useState<{ id: string; name: string } | null>(null);
+    const [leavingCourse, setLeavingCourse] = useState(false);
 
     useEffect(() => {
         loadCoursesAndTasks();
@@ -108,11 +112,20 @@ export default function DailyTasksPage() {
         try {
             // Load modules for the course
             const courseModules = await CoursesAPI.listModules(course.courseId);
-            setModules(courseModules.sort((a, b) => a.order - b.order));
-            
-            // Select first module by default
+            setModules(courseModules);
+
+            // Select first module by default based on current sort order
             if (courseModules.length > 0) {
-                await selectModule(courseModules[0], course.courseId);
+                const initialModules = [...courseModules];
+                let firstModule = initialModules[0];
+                if (moduleSortOrder === "a-z") {
+                    firstModule = initialModules.sort((a, b) => a.title.localeCompare(b.title))[0];
+                } else if (moduleSortOrder === "z-a") {
+                    firstModule = initialModules.sort((a, b) => b.title.localeCompare(a.title))[0];
+                } else {
+                    firstModule = initialModules.sort((a, b) => a.order - b.order)[0];
+                }
+                await selectModule(firstModule, course.courseId);
             } else {
                 // No modules, load all course tasks directly from Firestore
                 const tasksRef = collection(db, "tasks");
@@ -251,32 +264,47 @@ export default function DailyTasksPage() {
 
     async function handleLeaveCourse() {
         if (!firebaseUser || !selectedCourse) return;
+        setConfirmLeave({ id: selectedCourse.courseId, name: selectedCourse.name });
+    }
 
-        const confirmLeave = window.confirm(`Are you sure you want to leave the course "${selectedCourse.name}"?`);
-        if (!confirmLeave) return;
+    async function confirmLeaveCourse() {
+        if (!firebaseUser || !confirmLeave) return;
 
         try {
+            setLeavingCourse(true);
+            // Call API unenroll
+            await CoursesAPI.unenroll(confirmLeave.id, firebaseUser.uid);
+
             // Delete student document from Firestore
-            const studentRef = doc(db, `courses/${selectedCourse.courseId}/students/${firebaseUser.uid}`);
+            const studentRef = doc(db, `courses/${confirmLeave.id}/students/${firebaseUser.uid}`);
             await deleteDoc(studentRef);
 
-            console.log("✅ Left course:", selectedCourse.name);
+            // Remove the student flag from the course document's students map
+            const courseRef = doc(db, `courses/${confirmLeave.id}`);
+            await updateDoc(courseRef, {
+                [`students.${firebaseUser.uid}`]: deleteField(),
+            });
+
+            console.log("✅ Left course:", confirmLeave.name);
 
             // Update state
-            setEnrolledCourses(enrolledCourses.filter(c => c.courseId !== selectedCourse.courseId));
+            setEnrolledCourses(enrolledCourses.filter(c => c.courseId !== confirmLeave.id));
             setSelectedCourse(null);
             setModules([]);
             setTasks([]);
             setShowCourseDropdown(false);
+            setConfirmLeave(null);
 
             // Select first remaining enrolled course if any
-            const remainingCourses = enrolledCourses.filter(c => c.courseId !== selectedCourse.courseId);
+            const remainingCourses = enrolledCourses.filter(c => c.courseId !== confirmLeave.id);
             if (remainingCourses.length > 0) {
                 await selectCourse(remainingCourses[0]);
             }
         } catch (error) {
             console.error("Error leaving course:", error);
             alert("Error leaving course. Please try again.");
+        } finally {
+            setLeavingCourse(false);
         }
     }
 
@@ -359,7 +387,7 @@ export default function DailyTasksPage() {
                 {/* Header */}
                 <div className="mb-6 flex items-center justify-between">
                     <div>
-                        <h2 className={`text-3xl font-bold ${theme.text}`}>Daily Tasks</h2>
+                        <h2 className={`text-3xl font-bold ${theme.text}`}>Courses Tasks</h2>
                         <p className={theme.textMuted}>Complete exercises to earn XP and Gold</p>
                     </div>
                     <div className="flex gap-2">
@@ -576,37 +604,16 @@ export default function DailyTasksPage() {
                         </h3>
                         <div className="flex gap-2 mb-3">
                             <button
-                                onClick={() => setModuleSortOrder("order")}
-                                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                                    moduleSortOrder === "order" ? "text-white" : theme.textMuted
-                                }`}
+                                onClick={() => setModuleSortOrder(prev => prev === "a-z" ? "z-a" : "a-z")}
+                                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all text-white flex items-center gap-1`}
                                 style={{
-                                    backgroundColor: moduleSortOrder === "order" ? accentColor : darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)'
+                                    backgroundColor: accentColor
                                 }}
+                                aria-label="Toggle alphabetical sort"
+                                title={moduleSortOrder === "a-z" ? "Sorted A-Z (click to switch to Z-A)" : "Sorted Z-A (click to switch to A-Z)"}
                             >
-                                Order
-                            </button>
-                            <button
-                                onClick={() => setModuleSortOrder("a-z")}
-                                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                                    moduleSortOrder === "a-z" ? "text-white" : theme.textMuted
-                                }`}
-                                style={{
-                                    backgroundColor: moduleSortOrder === "a-z" ? accentColor : darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)'
-                                }}
-                            >
-                                A-Z
-                            </button>
-                            <button
-                                onClick={() => setModuleSortOrder("z-a")}
-                                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                                    moduleSortOrder === "z-a" ? "text-white" : theme.textMuted
-                                }`}
-                                style={{
-                                    backgroundColor: moduleSortOrder === "z-a" ? accentColor : darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)'
-                                }}
-                            >
-                                Z-A
+                                <ArrowUpDown size={14} />
+                                {moduleSortOrder === "z-a" ? "Z-A" : "A-Z"}
                             </button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -626,18 +633,6 @@ export default function DailyTasksPage() {
                                     }}
                                 >
                                     <div className="flex items-start gap-3">
-                                        <div
-                                            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                                            style={{
-                                                backgroundColor: selectedModule?.moduleId === module.moduleId 
-                                                    ? `${accentColor}20` 
-                                                    : darkMode ? 'rgba(55, 65, 81, 0.3)' : 'rgba(243, 244, 246, 1)'
-                                            }}
-                                        >
-                                            <span className="font-bold" style={{ color: accentColor }}>
-                                                {module.order}
-                                            </span>
-                                        </div>
                                         <div className="flex-1 min-w-0">
                                             <h4 className={`font-bold ${theme.text} mb-1 truncate`}>
                                                 {module.title}
@@ -754,6 +749,46 @@ export default function DailyTasksPage() {
                     </>
                 )}
             </main>
+
+            {/* Confirm Leave Modal */}
+            {confirmLeave && (
+                <Modal
+                    label="Confirm"
+                    title="Leave course?"
+                    onClose={() => setConfirmLeave(null)}
+                    showClose={false}
+                >
+                    <div className="space-y-6">
+                        <p className={theme.text}>
+                            Are you sure you want to leave <span className="font-semibold">{confirmLeave.name}</span>?
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                type="button"
+                                className={`px-4 py-2 rounded-xl ${theme.card}`}
+                                style={{ ...theme.borderStyle, borderWidth: "1px", borderStyle: "solid" }}
+                                onClick={() => setConfirmLeave(null)}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                disabled={leavingCourse}
+                                className="px-4 py-2 rounded-xl font-semibold"
+                                style={{
+                                    backgroundColor: darkMode ? "rgba(239, 68, 68, 0.2)" : "rgba(239, 68, 68, 0.1)",
+                                    color: "#ef4444",
+                                    opacity: leavingCourse ? 0.6 : 1,
+                                    cursor: leavingCourse ? "not-allowed" : "pointer",
+                                }}
+                                onClick={confirmLeaveCourse}
+                            >
+                                {leavingCourse ? "Leaving..." : "Leave"}
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
 
             {/* Course Code Input Modal */}
             {showCodeInput && (

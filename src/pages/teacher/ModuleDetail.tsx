@@ -4,12 +4,13 @@ import { motion } from 'framer-motion';
 import { Plus, MoreVertical, Pencil, Trash2, Calendar, Link as LinkIcon, ArrowLeft } from 'lucide-react';
 import { useCourses } from '../../store/courseStore';
 import { loadTasks, createTask, updateTask, deleteTask } from '../../services/task.service';
+import { CoursesAPI } from '../../api/courses.api';
 import { Modal } from '../../components/Modal';
 import { DropdownMenu } from '../../components/DropdownMenu';
 import { DropdownMenuItem } from '../../components/DropdownMenuItem';
 
 // Helper functions to map between API format and UI format
-function mapTaskFromAPI(apiTask: any) {
+function mapTaskFromAPI(apiTask: any, totalStudents: number = 0) {
   return {
     id: apiTask.taskId,
     title: apiTask.title,
@@ -18,7 +19,7 @@ function mapTaskFromAPI(apiTask: any) {
     date: apiTask.dueAt ? new Date(apiTask.dueAt).toISOString().split('T')[0] : '',
     status: apiTask.isActive ? 'Active' : 'Inactive',
     completed: 0, // This would need to come from completion data
-    total: 28, // This would need to come from enrollment data
+    total: totalStudents, // Number of students enrolled in the course
     canvasUrl: '', // Not in API model
   };
 }
@@ -99,6 +100,24 @@ export default function ModuleDetail() {
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
+  const [totalStudents, setTotalStudents] = useState<number>(0);
+
+  // Load number of students in the course
+  useEffect(() => {
+    async function loadStudentsCount() {
+      if (!currentCourse?.id) return;
+      
+      try {
+        const students = await CoursesAPI.listStudents(currentCourse.id);
+        setTotalStudents(students.length);
+      } catch (err) {
+        console.error('Error loading students count:', err);
+        // Keep totalStudents at 0 if API fails
+      }
+    }
+    
+    loadStudentsCount();
+  }, [currentCourse?.id]);
 
   // Load exercises (tasks) from API
   useEffect(() => {
@@ -123,7 +142,7 @@ export default function ModuleDetail() {
         }
         
         const tasks = await loadTasks(courseId, moduleId);
-        const mapped = tasks.map(mapTaskFromAPI);
+        const mapped = tasks.map(task => mapTaskFromAPI(task, totalStudents));
         setExercises(mapped);
       } catch (err) {
         console.error('Error loading exercises:', err);
@@ -134,7 +153,7 @@ export default function ModuleDetail() {
     }
     
     loadExercises();
-  }, [moduleId, currentCourse?.id, courses.length]);
+  }, [moduleId, currentCourse?.id, courses.length, totalStudents]);
 
   const editing = useMemo(
     () => exercises.find((e) => e.id === editingId) || null,
@@ -235,7 +254,7 @@ export default function ModuleDetail() {
       // Reload exercises to ensure we have the latest data from the server
       // This ensures tasks are correctly filtered by moduleId
       const tasks = await loadTasks(courseId, moduleId);
-      const mapped = tasks.map(mapTaskFromAPI);
+      const mapped = tasks.map(task => mapTaskFromAPI(task, totalStudents));
       setExercises(mapped);
 
       handleCloseModal();
@@ -270,7 +289,7 @@ export default function ModuleDetail() {
       
       // Reload exercises to ensure we have the latest data from the server
       const tasks = await loadTasks(courseId, moduleId);
-      const mapped = tasks.map(mapTaskFromAPI);
+      const mapped = tasks.map(task => mapTaskFromAPI(task, totalStudents));
       setExercises(mapped);
     } catch (err) {
       console.error('Error toggling exercise status:', err);
@@ -290,7 +309,7 @@ export default function ModuleDetail() {
       
       // Reload exercises to ensure we have the latest data from the server
       const tasks = await loadTasks(courseId, moduleId);
-      const mapped = tasks.map(mapTaskFromAPI);
+      const mapped = tasks.map(task => mapTaskFromAPI(task, totalStudents));
       setExercises(mapped);
     } catch (err) {
       console.error('Error deleting exercise:', err);
@@ -441,7 +460,7 @@ export default function ModuleDetail() {
                   </td>
                   <td className="px-5 py-4">
                     <span style={{ fontSize: 14, fontWeight: 650 }}>
-                      {e.completed || 0} / {e.total || 28}
+                      {e.total === 0 ? 'No students' : `${e.completed || 0} / ${e.total} students`}
                     </span>
                   </td>
                   <td className="px-5 py-4">

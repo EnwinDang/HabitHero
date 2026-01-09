@@ -12,6 +12,7 @@ import {
 import { auth, db } from "@/firebase";
 import { doc, onSnapshot, getDoc } from "firebase/firestore";
 import { logout as authLogout } from "@/services/auth/auth.service";
+import { AuthAPI } from "@/api/auth.api";
 import type { User } from "@/models/user.model";
 
 interface AuthContextType {
@@ -23,6 +24,17 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Helper function to call /auth/me endpoint to update login streak
+async function updateUserFromBackend() {
+  try {
+    console.log("📞 Calling /auth/me to update login streak...");
+    const result = await AuthAPI.me();
+    console.log("✅ Login streak updated:", result.stats?.loginStreak);
+  } catch (error) {
+    console.error("❌ Error calling /auth/me:", error);
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
@@ -38,6 +50,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setFirebaseUser(fbUser);
 
       if (fbUser) {
+        // Call backend to update login streak immediately
+        updateUserFromBackend();
+
         // Logged in: Set up Firestore listener
         const userRef = doc(db, "users", fbUser.uid);
         unsubscribeFirestore = onSnapshot(

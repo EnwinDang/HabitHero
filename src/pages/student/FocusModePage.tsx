@@ -2,6 +2,7 @@ import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { usePomodoro } from "@/context/pomodoro";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { Settings, Flame } from "lucide-react";
+import XPToast from "@/components/XPToast";
 
 export default function FocusModePage() {
   const { user, loading } = useRealtimeUser();
@@ -15,11 +16,14 @@ export default function FocusModePage() {
     setBreakDuration,
     status,
     timeLeftSeconds,
+    phase,
     start,
     pause,
     reset,
     sessionsCompleted,
     totalFocusSeconds,
+    xpGained,
+    levelUpReward,
   } = usePomodoro();
 
   const formatTime = (seconds: number) => {
@@ -38,7 +42,7 @@ export default function FocusModePage() {
   const handlePause = () => pause();
   const handleReset = () => reset();
 
-  const totalSeconds = focusDuration * 60;
+  const totalSeconds = (phase === "focus" ? focusDuration : breakDuration) * 60;
   const safeTimeLeft = Math.min(Math.max(timeLeftSeconds, 0), totalSeconds);
   const progress = ((totalSeconds - safeTimeLeft) / totalSeconds) * 100;
 
@@ -54,7 +58,18 @@ export default function FocusModePage() {
 
   return (
     <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
-      {/* XP notification hidden on Focus Mode page */}
+      {/* XP and Level-Up animations */}
+      {levelUpReward && (
+        <XPToast
+          totalXP={user?.stats?.xp ?? 0}
+          xpGained={0}
+          accentColor={accentColor}
+          levelUpReward={levelUpReward}
+        />
+      )}
+      {xpGained != null && !levelUpReward && user && (
+        <XPToast totalXP={user.stats?.xp ?? 0} xpGained={xpGained} accentColor={accentColor} />
+      )}
 
       <main className="p-8 overflow-y-auto w-full">
         {/* Header */}
@@ -70,8 +85,8 @@ export default function FocusModePage() {
           {/* Timer Card - Takes 2 columns */}
           <div className={`lg:col-span-2 ${theme.card} rounded-2xl p-8`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
             <div className="text-center mb-8">
-              <h3 className={`text-2xl font-bold ${theme.text}`}>Focus Time</h3>
-              <p style={theme.accentText}>Time to concentrate</p>
+              <h3 className={`text-2xl font-bold ${theme.text}`}>{phase === "focus" ? "Focus Time" : "Break Time"}</h3>
+              <p style={theme.accentText}>{phase === "focus" ? "Time to concentrate" : "Time to rest"}</p>
             </div>
 
             {/* Timer Circle */}
@@ -156,7 +171,11 @@ export default function FocusModePage() {
                 </h3>
               </div>
               <p className={`text-3xl font-bold ${theme.text}`}>
-                {user?.stats?.streak || 0} days
+                {(() => {
+                  const streakCount = user?.stats?.streak ?? 0;
+                  const label = streakCount === 1 ? "day" : "days";
+                  return `${streakCount} ${label}`;
+                })()}
               </p>
               <p className={`${theme.textMuted} text-sm`}>Keep it up!</p>
             </div>
