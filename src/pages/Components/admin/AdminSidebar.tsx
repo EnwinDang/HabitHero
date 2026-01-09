@@ -13,7 +13,8 @@ import {
   LogOut, 
   ChevronDown, 
   ChevronRight,
-  AlertCircle
+  AlertCircle,
+  Package
 } from 'lucide-react';
 
 const AdminSidebar = () => {
@@ -45,7 +46,7 @@ const AdminSidebar = () => {
         { name: 'Monsters', path: '/admin/monsters', icon: <Ghost size={20} /> },
       ]
     },
-    { name: 'Items', path: '/admin/items', icon: <Sword size={20} /> },
+    { name: 'Asset Manager', path: '/admin/items', icon: <Package size={20} /> },
   ];
 
   return (

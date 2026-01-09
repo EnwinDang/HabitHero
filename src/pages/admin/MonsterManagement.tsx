@@ -72,7 +72,7 @@ const MonsterManagement: React.FC = () => {
       <div className="flex justify-between items-center mb-10">
         <div>
           <h1 className="text-3xl font-black text-slate-900 flex items-center gap-3 italic uppercase">
-            <Ghost className="text-violet-500" size={32} /> Bestiary
+            <Ghost className="text-violet-500" size={32} /> Monsters 
           </h1>
           <p className="text-slate-500 font-medium mt-1">Configure entity stats and combat tiers</p>
         </div>
