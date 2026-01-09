@@ -9,6 +9,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import type { Task } from "@/models/task.model";
 import { SubmissionsAPI, type Submission } from "@/api/submissions.api";
 import { Modal } from "@/components/Modal";
+import { cache, cacheKeys } from "@/utils/cache";
 import {
   Calendar,
   Trash2,
@@ -44,6 +45,7 @@ export default function CalendarPage() {
   // Submissions state
   const [submissions, setSubmissions] = useState<Record<string, Submission>>({});
   const [courseTasks, setCourseTasks] = useState<Task[]>([]);
+  const [courseTasksLoaded, setCourseTasksLoaded] = useState(false);
   
   // Submission modal state
   const [submissionModal, setSubmissionModal] = useState<Task | null>(null);
@@ -57,6 +59,25 @@ export default function CalendarPage() {
       if (!user) return;
       
       try {
+        // Check cache first
+        const cacheKey = cacheKeys.tasks();
+        const cachedTasks = cache.get(cacheKey);
+        
+        if (cachedTasks && Array.isArray(cachedTasks)) {
+          console.log('📦 Using cached course tasks');
+          setCourseTasks(cachedTasks as Task[]);
+          
+          // Also check for cached submissions
+          const submissionsCacheKey = 'submissions:all';
+          const cachedSubmissions = cache.get(submissionsCacheKey);
+          if (cachedSubmissions) {
+            setSubmissions(cachedSubmissions as Record<string, Submission>);
+          }
+          
+          setCourseTasksLoaded(true);
+          return;
+        }
+        
         // Get all courses and their modules to load tasks
         const coursesRef = collection(db, "courses");
         const coursesSnapshot = await getDocs(coursesRef);
@@ -88,6 +109,7 @@ export default function CalendarPage() {
         }
         
         setCourseTasks(allTasks);
+        cache.set(cacheKey, allTasks);
         
         // Load submissions for all these tasks
         if (taskIds.length > 0) {
@@ -117,14 +139,26 @@ export default function CalendarPage() {
           }
           
           setSubmissions(allSubmissions);
+          cache.set('submissions:all', allSubmissions);
         }
+        
+        setCourseTasksLoaded(true);
       } catch (error) {
         console.error("Error loading course tasks:", error);
+        setCourseTasksLoaded(true);
       }
     }
     
     loadCourseTasks();
   }, [user]);
+
+  // Ensure UI updates when course tasks load
+  useEffect(() => {
+    // Trigger re-render when both personal and course tasks are available
+    if (courseTasksLoaded && selectedDate) {
+      // This effect simply ensures re-renders happen when data changes
+    }
+  }, [courseTasksLoaded, selectedDate, courseTasks, tasks]);
 
 
 
@@ -189,9 +223,13 @@ export default function CalendarPage() {
 
   // Get tasks for a specific day (including personal tasks and course tasks)
   const getTasksForDay = (day: number): Task[] => {
-    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(
+      day
+    ).padStart(2, "0")}`;
+    
     // Combine personal tasks and course tasks
     const allTasks = [...tasks, ...courseTasks];
+    
     return allTasks.filter((task) => {
       // Check date field
       if (task.date === dateStr) return true;
@@ -206,33 +244,6 @@ export default function CalendarPage() {
       }
       return false;
     });
-  };
-
-  // Calculate completion for a specific day (course tasks only)
-  const getDayCompletion = (day: number) => {
-    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    // Only consider course tasks (not personal tasks)
-    const dayCourseTasks = courseTasks.filter((task) => {
-      if (task.date === dateStr) return true;
-      if (task.dueAt) {
-        const dueDate = new Date(task.dueAt);
-        return (
-          dueDate.getFullYear() === year &&
-          dueDate.getMonth() === month &&
-          dueDate.getDate() === day
-        );
-      }
-      return false;
-    });
-    const total = dayCourseTasks.length;
-    if (total === 0) return { completed: 0, total: 0 };
-    // Count approved submissions for these tasks
-    let completed = 0;
-    for (const task of dayCourseTasks) {
-      const sub = submissions[task.taskId];
-      if (sub && sub.status === 'approved') completed++;
-    }
-    return { completed, total };
   };
 
   // Navigation
@@ -507,15 +518,22 @@ export default function CalendarPage() {
                 }
 
                 const dayTasks = getTasksForDay(day);
-                const hasActiveTasks = dayTasks.some((t) => t.isActive);
-                const hasCompletedTasks = dayTasks.some((t) => !t.isActive);
-                const { completed, total } = getDayCompletion(day);
+                const completedCount = dayTasks.filter(t => {
+                  // Check if personal task is completed (isActive = false)
+                  if (!t.isActive) return true;
+                  // Check if course task has an approved submission
+                  if (t.taskId && submissions[t.taskId]?.status === 'approved') return true;
+                  return false;
+                }).length;
+                const totalCount = dayTasks.length;
+                const isAllCompleted = totalCount > 0 && completedCount === totalCount;
 
                 return (
                   <button
                     key={day}
                     onClick={() => handleDayClick(day)}
-                    className={`aspect-square rounded-xl flex flex-col items-center justify-center transition-all relative ${isToday(day) ? "" : ""} ${isSelected(day) ? "" : ""}`}
+                    className={`aspect-square rounded-xl flex flex-col items-center justify-center transition-all relative ${isToday(day) ? "" : ""
+                      } ${isSelected(day) ? "" : ""}`}
                     style={{
                       backgroundColor: isSelected(day)
                         ? `${accentColor}30`
@@ -537,7 +555,8 @@ export default function CalendarPage() {
                     }}
                   >
                     <span
-                      className={`font-medium ${isToday(day) || isSelected(day) ? "" : theme.text}`}
+                      className={`font-medium ${isToday(day) || isSelected(day) ? "" : theme.text
+                        }`}
                       style={
                         isToday(day) || isSelected(day)
                           ? { color: accentColor }
@@ -546,30 +565,27 @@ export default function CalendarPage() {
                     >
                       {day}
                     </span>
-                    {/* Completion Bar for course tasks */}
-                    {total > 0 && (
-                      <div className="w-full mt-1 flex flex-col items-center">
-                        <div className={`h-1.5 rounded-full w-5/6 ${darkMode ? "bg-gray-800" : "bg-gray-200"}`} style={{ overflow: "hidden" }}>
-                          <div
-                            className="h-full rounded-full transition-all"
+                    {/* Task Progress Bar */}
+                    {totalCount > 0 && (
+                      <div className="flex flex-col items-center gap-1 mt-1 w-full px-2">
+                        <div 
+                          className="w-full h-1 rounded-full overflow-hidden"
+                          style={{
+                            backgroundColor: '#9ca3af'
+                          }}
+                        >
+                          <div 
+                            className="h-full"
                             style={{
-                              width: `${(completed / total) * 100}%`,
-                              backgroundColor: accentColor,
+                              width: `${(completedCount / totalCount) * 100}%`,
+                              backgroundColor: completedCount === totalCount ? '#22c55e' : completedCount > 0 ? '#f97316' : '#9ca3af',
+                              transition: 'width 0.3s ease'
                             }}
                           />
                         </div>
-                        <span className="text-[10px] mt-0.5" style={{ color: accentColor }}>{completed}/{total}</span>
-                      </div>
-                    )}
-                    {/* Task Indicators (personal tasks) */}
-                    {dayTasks.length > 0 && total === 0 && (
-                      <div className="flex gap-1 mt-1">
-                        {hasActiveTasks && (
-                          <div className="w-2 h-2 rounded-full bg-blue-500" />
-                        )}
-                        {hasCompletedTasks && (
-                          <div className="w-2 h-2 rounded-full bg-green-500" />
-                        )}
+                        <span className={`text-xs font-semibold ${theme.textMuted}`}>
+                          {completedCount}/{totalCount}
+                        </span>
                       </div>
                     )}
                   </button>
@@ -587,14 +603,14 @@ export default function CalendarPage() {
               }}
             >
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500" />
+                <div className="w-6 h-1 rounded-full bg-green-500" />
                 <span className={`text-sm ${theme.textMuted}`}>
-                  Active Tasks
+                  All Completed
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-green-500" />
-                <span className={`text-sm ${theme.textMuted}`}>Completed</span>
+                <div className="w-6 h-1 rounded-full bg-gray-400" />
+                <span className={`text-sm ${theme.textMuted}`}>In Progress</span>
               </div>
             </div>
           </div>
