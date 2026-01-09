@@ -3,7 +3,19 @@ import { WorldsAPI } from "../../api/worlds.api";
 import { MonstersAPI } from "../../api/monsters.api";
 import { World } from "../../models/world.model";
 import { Monster } from "../../models/monster.model";
-import { Globe, X, Save, Loader2, AlertTriangle, Trash2, Flame, Droplets, Leaf, Zap, Search, Edit3, Copy } from 'lucide-react';
+import { Globe, X, Save, Loader2, AlertTriangle, Trash2, Search, Edit3, Copy } from 'lucide-react';
+
+// Wereld afbeeldingen
+import worldFire from "../../assets/worlds/world_fire.png";
+import worldWater from "../../assets/worlds/world_water.png";
+import worldEarth from "../../assets/worlds/world_earth.png";
+import worldWind from "../../assets/worlds/world_wind.png";
+
+// Monster afbeeldingen op basis van element
+import monsterFire from "../../assets/monsters/monster_fire.png";
+import monsterWater from "../../assets/monsters/monster_water.png";
+import monsterEarth from "../../assets/monsters/monster_earth.png";
+import monsterWind from "../../assets/monsters/monster_wind.png";
 
 const WorldList: React.FC = () => {
   const [worlds, setWorlds] = useState<World[]>([]);
@@ -26,7 +38,6 @@ const WorldList: React.FC = () => {
       setAvailableMonsters(monstersData);
     } catch (error: any) {
       const errorMsg = error?.message || "Failed to load worlds";
-      console.error(error);
       setError(errorMsg);
     } finally {
       setLoading(false);
@@ -35,6 +46,26 @@ const WorldList: React.FC = () => {
 
   useEffect(() => { loadData(); }, []);
 
+  const getWorldImage = (element: string | null | undefined) => {
+    switch (element?.toLowerCase()) {
+      case 'fire': return worldFire;
+      case 'water': return worldWater;
+      case 'earth': return worldEarth;
+      case 'wind': return worldWind;
+      default: return worldEarth;
+    }
+  };
+
+  const getMonsterImage = (element: string | null | undefined) => {
+    switch (element?.toLowerCase()) {
+      case 'fire': return monsterFire;
+      case 'water': return monsterWater;
+      case 'earth': return monsterEarth;
+      case 'wind': return monsterWind;
+      default: return monsterEarth;
+    }
+  };
+
   const handleSave = async () => {
     if (!selectedWorld) return;
     try {
@@ -42,7 +73,6 @@ const WorldList: React.FC = () => {
       await loadData();
       setSelectedWorld(null);
     } catch (error) {
-      console.error(error);
       alert("Update mislukt");
     }
   };
@@ -62,15 +92,6 @@ const WorldList: React.FC = () => {
     setActiveStageIndex(targetKey);
   };
 
-  const getElementIcon = (element: string | null | undefined) => {
-    switch (element?.toLowerCase()) {
-      case 'fire': return <Flame className="text-orange-500" size={20} />;
-      case 'water': return <Droplets className="text-sky-400" size={20} />;
-      case 'earth': return <Leaf className="text-emerald-500" size={20} />;
-      default: return <Zap className="text-violet-500" size={20} />;
-    }
-  };
-
   const filteredWorlds = worlds.filter(w => 
     w.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     w.worldId?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -82,7 +103,6 @@ const WorldList: React.FC = () => {
         <h1 className="text-3xl font-black flex items-center gap-3 italic uppercase tracking-tight text-slate-900">
           <Globe className="text-violet-500" size={32} /> Monster Spawns
         </h1>
-        {/* Lettertype aangepast naar de vorige medium stijl */}
         <p className="text-slate-500 font-medium text-sm mt-1">
           Beheer monster spawns per stage | Controleer element matching
         </p>
@@ -101,34 +121,38 @@ const WorldList: React.FC = () => {
 
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="animate-spin text-violet-500" size={40} /></div>
-      ) : error ? (
-        <div className="bg-rose-50 border-2 border-rose-100 rounded-[2rem] p-10 text-center">
-          <p className="text-rose-700 font-black uppercase tracking-widest text-xs mb-4">Fout bij laden: {error}</p>
-          <button onClick={loadData} className="px-8 py-3 bg-rose-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-rose-600 transition-all shadow-lg shadow-rose-100">
-            Opnieuw proberen
-          </button>
-        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {filteredWorlds.map((world) => (
-            <div key={world.worldId} className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-violet-100 relative transition-all hover:border-violet-300">
-              <div className="flex justify-between items-start mb-8">
-                <div className="p-4 bg-slate-50 rounded-[1.25rem]">{getElementIcon(world.element)}</div>
+            <div key={world.worldId} className="bg-white rounded-[2.5rem] shadow-sm border border-violet-100 relative transition-all hover:border-violet-300 overflow-hidden group flex flex-col">
+              <div className="h-44 w-full relative overflow-hidden bg-slate-100">
+                <img 
+                  src={getWorldImage(world.element)} 
+                  alt={world.name}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent" />
                 <button 
                   onClick={() => { setSelectedWorld(world); setActiveStageIndex("1"); }}
-                  className="text-slate-300 hover:text-violet-600 transition-colors p-1"
+                  className="absolute top-5 right-5 p-3 bg-white/90 backdrop-blur-sm text-slate-400 hover:text-violet-600 rounded-2xl shadow-sm transition-all"
                 >
                   <Edit3 size={18} />
                 </button>
               </div>
-              <h3 className="text-2xl font-black uppercase italic tracking-tighter mb-2 text-slate-900">{world.name}</h3>
-              <p className="text-slate-500 text-xs font-medium mb-12 line-clamp-2 leading-relaxed">{world.description}</p>
-              <div className="pt-8 border-t border-violet-50 flex justify-between items-center">
-                <div>
-                  <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Stages</span>
-                  <span className="text-xl font-black italic text-slate-900">
-                    {world.stages ? Object.keys(world.stages).filter(k => k !== "0").length : 0} Levels
-                  </span>
+
+              <div className="p-10 pt-2 flex-1 flex flex-col">
+                <h3 className="text-2xl font-black uppercase italic tracking-tighter mb-2 text-slate-900">{world.name}</h3>
+                <p className="text-slate-500 text-xs font-medium mb-12 line-clamp-2 leading-relaxed">{world.description}</p>
+                <div className="mt-auto pt-8 border-t border-violet-50 flex justify-between items-center">
+                  <div>
+                    <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Stages</span>
+                    <span className="text-xl font-black italic text-slate-900">
+                      {world.stages ? Object.keys(world.stages).filter(k => k !== "0").length : 0} Levels
+                    </span>
+                  </div>
+                  <div className="px-4 py-2 bg-slate-50 rounded-xl text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    {world.element}
+                  </div>
                 </div>
               </div>
             </div>
@@ -171,6 +195,11 @@ const WorldList: React.FC = () => {
                 return (
                   <div key={mIdx} className="space-y-2">
                     <div className="flex gap-4 items-center">
+                      {/* Monster Thumbnail */}
+                      <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 overflow-hidden flex-shrink-0">
+                        <img src={getMonsterImage(monsterObj?.elementType)} alt="" className="w-full h-full object-contain p-1" />
+                      </div>
+                      
                       <div className="relative flex-1 group">
                         <select 
                           className={`w-full bg-violet-50/50 border-2 border-transparent rounded-[1.25rem] p-4 pr-12 font-bold text-slate-700 text-sm outline-none transition-all cursor-pointer appearance-none hover:bg-violet-100/50 focus:border-violet-200 focus:bg-white ${
@@ -192,7 +221,7 @@ const WorldList: React.FC = () => {
                         >
                           <option value="">Select Monster...</option>
                           {availableMonsters.map(m => (
-                            <option key={m.monsterId} value={m.monsterId}>{m.name} ({m.elementType})</option>
+                            <option key={m.monsterId} value={m.monsterId}>{m.name}</option>
                           ))}
                         </select>
                       </div>
