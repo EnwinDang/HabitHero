@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { LootboxesAPI } from "@/api/lootboxes.api";
+import type { Lootbox } from "@/models/lootbox.model";
 import {
     Gift,
     Box,
@@ -62,6 +63,10 @@ export default function LootboxesPage() {
     const { darkMode, accentColor } = useTheme();
     const theme = getThemeClasses(darkMode, accentColor);
 
+    // Lootboxes from API
+    const [lootboxes, setLootboxes] = useState<Lootbox[]>([]);
+    const [lootboxesLoading, setLootboxesLoading] = useState(true);
+    
     // Opening state
     const [openingBox, setOpeningBox] = useState<string | null>(null);
     const [revealedItems, setRevealedItems] = useState<GeneratedItem[]>([]);
@@ -145,7 +150,23 @@ export default function LootboxesPage() {
         return mapped.sort((a, b) => tierOrder[a.type] - tierOrder[b.type]);
     }, [backendLootboxes]);
 
-    if (userLoading) {
+    // Load lootboxes from API
+    useEffect(() => {
+        const loadLootboxes = async () => {
+            try {
+                setLootboxesLoading(true);
+                const data = await LootboxesAPI.list();
+                setLootboxes(data);
+            } catch (err) {
+                console.error("Failed to load lootboxes:", err);
+            } finally {
+                setLootboxesLoading(false);
+            }
+        };
+        loadLootboxes();
+    }, []);
+
+    if (userLoading || lootboxesLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
                 <div className="text-xl animate-pulse" style={theme.accentText}>
@@ -174,11 +195,9 @@ export default function LootboxesPage() {
         
         const lootbox = pendingLootbox;
         setShowOpenChoice(false);
-        setOpeningBox(lootbox.id);
 
         try {
             // Show chest opening modal
-            setShowOpenChoice(false);
             setOpeningLootbox(lootbox);
             setShowChestOpening(true);
             setOpeningBox(lootbox.id);
@@ -222,7 +241,7 @@ export default function LootboxesPage() {
             // User data will auto-refresh via useRealtimeUser hook
         } catch (error: any) {
             console.error("Failed to open lootbox:", error);
-            alert(error.message || "Er is iets misgegaan bij het openen.");
+            alert(error.message || "Failed to open lootbox. Please try again.");
             setOpeningBox(null);
             setPendingLootbox(null);
         }
@@ -542,16 +561,15 @@ function LootboxCard({
     theme: ReturnType<typeof getThemeClasses>;
 }) {
     const getIcon = () => {
-        switch (lootbox.type) {
-            case "common":
-                return <Box size={48} />;
-            case "rare":
-                return <Gift size={48} />;
-            case "epic":
-                return <Gem size={48} />;
-            default:
-                return <Box size={48} />;
+        const id = lootbox.id.toLowerCase();
+        if (id.includes("common")) {
+            return <Box size={48} />;
+        } else if (id.includes("rare") || id.includes("advanced")) {
+            return <Gift size={48} />;
+        } else if (id.includes("epic") || id.includes("legendary")) {
+            return <Gem size={48} />;
         }
+        return <Box size={48} />;
     };
 
     return (

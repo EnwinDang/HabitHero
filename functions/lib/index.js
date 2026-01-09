@@ -61,37 +61,68 @@ app.use(express_1.default.json());
  */
 async function calculateLevelFromXP(totalXP) {
     try {
+        console.log(`🔍 [calculateLevelFromXP] Calculating level for totalXP: ${totalXP}`);
         const levelsSnap = await db.collection("levels").doc("definitions").get();
         if (!levelsSnap.exists) {
-            console.error("Level definitions not found in Firestore");
-            return { level: 1, currentXP: 0, nextLevelXP: 100 };
+            console.error("❌ [calculateLevelFromXP] Level definitions not found in Firestore");
+            throw new Error("Level definitions not found in Firestore. Please ensure levels/definitions document exists.");
         }
         const levelsData = levelsSnap.data() || {};
-        const levels = levelsData.levels || [];
+        // Support both 'levels' array and 'value' array structures
+        let levels = levelsData.levels || levelsData.value || [];
+        // Filter out null entries (entry 0 is often null in Firestore arrays)
+        levels = levels.filter((level) => level !== null && level !== undefined);
+        console.log(`📚 [calculateLevelFromXP] Found ${levels.length} level definitions (after filtering nulls)`);
+        console.log(`📋 [calculateLevelFromXP] Levels data structure:`, {
+            hasLevelsData: !!levelsData,
+            hasLevelsArray: Array.isArray(levelsData.levels),
+            hasValueArray: Array.isArray(levelsData.value),
+            originalLength: (levelsData.levels || levelsData.value || []).length,
+            filteredLength: levels.length,
+            firstLevel: levels[0] || null,
+            levelsDataKeys: Object.keys(levelsData)
+        });
+        // If no level definitions, throw error
+        if (levels.length === 0) {
+            console.error("❌ [calculateLevelFromXP] No level definitions found in array");
+            throw new Error("Level definitions array is empty. Please ensure levels/definitions has a 'levels' or 'value' array with level data.");
+        }
         let currentLevel = 1;
         let currentXP = totalXP;
         let nextLevelXP = 100;
         let rewards = undefined;
         // Find current level
+        // Note: levels array may be 1-based (entry 0 is null), so level number = array index
         for (let i = 0; i < levels.length; i++) {
             const levelDef = levels[i];
+            // Check if levelDef has required fields
+            if (!levelDef || typeof levelDef.xpRequiredTotal === 'undefined') {
+                console.warn(`⚠️ [calculateLevelFromXP] Invalid level definition at index ${i}:`, levelDef);
+                continue;
+            }
+            // Use level field if exists, otherwise use array index + 1 (1-based)
+            const levelNumber = levelDef.level !== undefined ? levelDef.level : (i + 1);
             if (totalXP >= levelDef.xpRequiredTotal) {
-                currentLevel = levelDef.level;
+                currentLevel = levelNumber;
                 currentXP = totalXP - levelDef.xpRequiredTotal;
                 // Get next level XP if exists
                 if (i + 1 < levels.length) {
-                    nextLevelXP = levels[i + 1].xpRequiredTotal - levelDef.xpRequiredTotal;
-                    rewards = levels[i + 1].rewards;
+                    const nextLevelDef = levels[i + 1];
+                    if (nextLevelDef && typeof nextLevelDef.xpRequiredTotal !== 'undefined') {
+                        nextLevelXP = nextLevelDef.xpRequiredTotal - levelDef.xpRequiredTotal;
+                        rewards = nextLevelDef.rewards;
+                    }
                 }
             }
             else {
                 break;
             }
         }
+        console.log(`✅ [calculateLevelFromXP] Result: level=${currentLevel}, currentXP=${currentXP}, nextLevelXP=${nextLevelXP}`);
         return { level: currentLevel, currentXP, nextLevelXP, rewards };
     }
     catch (error) {
-        console.error("Error calculating level from XP:", error);
+        console.error("❌ [calculateLevelFromXP] Error calculating level from XP:", error);
         return { level: 1, currentXP: 0, nextLevelXP: 100 };
     }
 }
@@ -353,7 +384,9 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
         const user = userSnap.data() || {};
         const task = taskSnap.data() || {};
         const oldLevel = user.stats?.level || 1;
-        const newTotalXP = (user.stats?.totalXP || 0) + (task.xp || 0);
+        // Use totalXP if available, otherwise fallback to xp (for backwards compatibility)
+        const currentTotalXP = user.stats?.totalXP ?? user.stats?.xp ?? 0;
+        const newTotalXP = currentTotalXP + (task.xp || 0);
         let newGold = (user.stats?.gold || 0) + (task.gold || 0);
         // Calculate new level from total XP
         const levelData = await calculateLevelFromXP(newTotalXP);
@@ -377,7 +410,7 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
             isActive: false,
             completedAt: Date.now(),
         });
-        return res.status(200).json({
+        const response = {
             success: true,
             reward: {
                 xp: task.xp,
@@ -387,8 +420,12 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
             newLevel: levelData.level,
             currentXP: levelData.currentXP,
             nextLevelXP: levelData.nextLevelXP,
-            levelUpRewards,
-        });
+        };
+        // Only add levelUpRewards if it exists
+        if (levelUpRewards) {
+            response.levelUpRewards = levelUpRewards;
+        }
+        return res.status(200).json(response);
     }
     catch (e) {
         console.error("Error in POST /tasks/:taskId/complete:", e);
@@ -396,6 +433,86 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
     }
 });
 // ============ ACHIEVEMENTS ============
+/**
+ * POST /users/{uid}/achievements/{achievementId}/claim
+ * Claim an achievement and receive rewards
+ */
+app.post("/users/:uid/achievements/:achievementId/claim", requireAuth, async (req, res) => {
+    try {
+        const { uid, achievementId } = req.params;
+        const requestingUid = req.user.uid;
+        // Ensure user can only claim their own achievements
+        if (uid !== requestingUid) {
+            return res.status(403).json({ error: "Forbidden: Cannot claim achievements for other users" });
+        }
+        const userRef = db.collection("users").doc(uid);
+        const achievementRef = db.collection("users").doc(uid).collection("achievements").doc(achievementId);
+        // Get user and achievement data
+        const [userSnap, achievementSnap] = await Promise.all([
+            userRef.get(),
+            achievementRef.get()
+        ]);
+        if (!userSnap.exists) {
+            return res.status(404).json({ error: "User not found" });
+        }
+        if (!achievementSnap.exists) {
+            return res.status(404).json({ error: "Achievement not found" });
+        }
+        const user = userSnap.data() || {};
+        const achievement = achievementSnap.data() || {};
+        // Check if achievement is unlocked
+        if (!achievement.isUnlocked) {
+            return res.status(400).json({ error: "Achievement is not unlocked yet" });
+        }
+        // Check if already claimed
+        if (achievement.claimed) {
+            return res.status(400).json({ error: "Achievement already claimed" });
+        }
+        // Calculate rewards
+        const xpReward = achievement.reward?.xp || 0;
+        const goldReward = achievement.reward?.gold || 0;
+        // Update user stats (use totalXP for level calculation)
+        const currentTotalXP = user.stats?.totalXP ?? user.stats?.xp ?? 0;
+        const newTotalXP = currentTotalXP + xpReward;
+        let newGold = (user.stats?.gold || 0) + goldReward;
+        // Calculate new level from total XP
+        const levelData = await calculateLevelFromXP(newTotalXP);
+        const oldLevel = user.stats?.level || 1;
+        const leveledUp = levelData.level > oldLevel;
+        // Add level-up rewards if leveled up
+        if (leveledUp && levelData.rewards) {
+            newGold += levelData.rewards.gold || 0;
+        }
+        // Update user stats
+        await userRef.update({
+            "stats.level": levelData.level,
+            "stats.xp": levelData.currentXP,
+            "stats.nextLevelXP": levelData.nextLevelXP,
+            "stats.totalXP": newTotalXP,
+            "stats.gold": newGold,
+            updatedAt: Date.now(),
+        });
+        // Mark achievement as claimed
+        await achievementRef.update({
+            claimed: true,
+            claimedAt: Date.now(),
+        });
+        return res.status(200).json({
+            success: true,
+            rewards: {
+                xp: xpReward,
+                gold: goldReward,
+            },
+            leveledUp,
+            newLevel: levelData.level,
+            levelUpRewards: leveledUp && levelData.rewards ? levelData.rewards : undefined,
+        });
+    }
+    catch (e) {
+        console.error("Error in POST /users/:uid/achievements/:achievementId/claim:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
 /**
  * GET /users/{uid}/achievements
  */
@@ -408,10 +525,60 @@ app.get("/users/:uid/achievements", requireAuth, async (req, res) => {
             achievementId: doc.id,
             ...doc.data(),
         }));
-        return res.status(200).json(achievements);
+        return res.status(200).json(achievements || []);
     }
     catch (e) {
         console.error("Error in GET /users/:uid/achievements:", e);
+        // Return empty array instead of error to prevent frontend crashes
+        return res.status(200).json([]);
+    }
+});
+/**
+ * PATCH /users/{uid}/achievements/{achievementId}
+ * Update achievement progress for a user
+ */
+app.patch("/users/:uid/achievements/:achievementId", requireAuth, async (req, res) => {
+    try {
+        const { uid, achievementId } = req.params;
+        const requestingUid = req.user.uid;
+        // Ensure user can only update their own achievements
+        if (uid !== requestingUid) {
+            return res.status(403).json({ error: "Forbidden: Cannot update achievements for other users" });
+        }
+        const { progress, isUnlocked, unlockedAt } = req.body;
+        if (progress === undefined && isUnlocked === undefined) {
+            return res.status(400).json({ error: "At least one of 'progress' or 'isUnlocked' must be provided" });
+        }
+        const achievementRef = db.collection("users").doc(uid).collection("achievements").doc(achievementId);
+        // Check if document exists, if not create it
+        const existingDoc = await achievementRef.get();
+        const existingData = existingDoc.exists ? existingDoc.data() : {};
+        const updateData = {
+            achievementId,
+            ...existingData, // Preserve existing data
+        };
+        if (progress !== undefined)
+            updateData.progress = progress;
+        if (isUnlocked !== undefined) {
+            updateData.isUnlocked = isUnlocked;
+            if (isUnlocked && unlockedAt !== undefined) {
+                updateData.unlockedAt = unlockedAt;
+            }
+            else if (isUnlocked && !unlockedAt && !existingData.unlockedAt) {
+                updateData.unlockedAt = Date.now();
+            }
+        }
+        updateData.updatedAt = Date.now();
+        await achievementRef.set(updateData, { merge: true });
+        const updatedDoc = await achievementRef.get();
+        const updatedData = {
+            achievementId: updatedDoc.id,
+            ...updatedDoc.data(),
+        };
+        return res.status(200).json(updatedData);
+    }
+    catch (e) {
+        console.error("Error in PATCH /users/:uid/achievements/:achievementId:", e);
         return res.status(500).json({ error: e?.message });
     }
 });
@@ -425,11 +592,12 @@ app.get("/achievements", async (req, res) => {
             achievementId: doc.id,
             ...doc.data(),
         }));
-        return res.status(200).json({ data: achievements });
+        return res.status(200).json({ data: achievements || [] });
     }
     catch (e) {
         console.error("Error in GET /achievements:", e);
-        return res.status(500).json({ error: e?.message });
+        // Return empty array instead of error to prevent frontend crashes
+        return res.status(200).json({ data: [] });
     }
 });
 /**
@@ -1195,6 +1363,54 @@ app.get("/levels/:level", async (req, res) => {
     }
     catch (e) {
         console.error("Error in GET /levels/:level:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * POST /levels/definitions/init
+ * Initialize level definitions in Firestore (creates if not exists)
+ * Uses the same exponential curve as the fallback (baseXP=100, growthFactor=1.18)
+ */
+app.post("/levels/definitions/init", async (req, res) => {
+    try {
+        const BASE_XP = 100;
+        const GROWTH_FACTOR = 1.18;
+        const MAX_LEVEL = 100;
+        const levels = [];
+        let cumulativeXP = 0;
+        for (let level = 1; level <= MAX_LEVEL; level++) {
+            // Calculate XP needed for this level
+            const xpForThisLevel = Math.floor(BASE_XP * Math.pow(GROWTH_FACTOR, level - 1));
+            cumulativeXP += xpForThisLevel;
+            // Add rewards every 5 levels
+            const rewards = level % 5 === 0 ? {
+                gold: level * 10,
+            } : undefined;
+            levels.push({
+                level: level,
+                xpRequiredTotal: cumulativeXP - xpForThisLevel, // XP needed BEFORE starting this level
+                xpForLevel: xpForThisLevel, // XP needed to complete this level
+                rewards: rewards
+            });
+        }
+        const definitions = {
+            levels: levels,
+            baseXP: BASE_XP,
+            growthFactor: GROWTH_FACTOR,
+            maxLevel: MAX_LEVEL,
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+        };
+        // Create or update the document
+        await db.collection("levels").doc("definitions").set(definitions, { merge: false });
+        return res.status(200).json({
+            success: true,
+            message: `Created ${levels.length} level definitions`,
+            levelsCreated: levels.length
+        });
+    }
+    catch (e) {
+        console.error("Error in POST /levels/definitions/init:", e);
         return res.status(500).json({ error: e?.message });
     }
 });
@@ -1968,13 +2184,14 @@ app.get("/combat/stage-type/:stage", async (req, res) => {
 app.post("/combat/start", requireAuth, async (req, res) => {
     try {
         const uid = req.user.uid;
-        const { worldId, stage, seed } = req.body;
+        const { worldId, stage, seed, monsterId } = req.body;
         const combatRef = db.collection("combats").doc();
         const combat = {
             combatId: combatRef.id,
             uid,
             worldId,
             stage,
+            monsterId: monsterId || null,
             seed: seed || Math.random().toString(36).substring(2),
             status: "in-progress",
             startedAt: Date.now(),
@@ -1985,6 +2202,32 @@ app.post("/combat/start", requireAuth, async (req, res) => {
     }
     catch (e) {
         console.error("Error in POST /combat/start:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
+ * PATCH /combat/:combatId
+ */
+app.patch("/combat/:combatId", requireAuth, async (req, res) => {
+    try {
+        const { combatId } = req.params;
+        const combatRef = db.collection("combats").doc(combatId);
+        const combatSnap = await combatRef.get();
+        if (!combatSnap.exists) {
+            return res.status(404).json({ error: "Combat not found" });
+        }
+        await combatRef.update({
+            ...req.body,
+            updatedAt: Date.now(),
+        });
+        const updated = await combatRef.get();
+        return res.status(200).json({
+            combatId: updated.id,
+            ...updated.data(),
+        });
+    }
+    catch (e) {
+        console.error("Error in PATCH /combat/:combatId:", e);
         return res.status(500).json({ error: e?.message });
     }
 });
@@ -2063,7 +2306,9 @@ app.post("/combat/results", requireAuth, async (req, res) => {
             const userSnap = await userRef.get();
             const user = userSnap.data() || {};
             const oldLevel = user.stats?.level || 1;
-            const newTotalXP = (user.stats?.totalXP || 0) + (rewards?.xpGained || 0);
+            // Use totalXP if available, otherwise fallback to xp (for backwards compatibility)
+            const currentTotalXP = user.stats?.totalXP ?? user.stats?.xp ?? 0;
+            const newTotalXP = currentTotalXP + (rewards?.xpGained || 0);
             let newGold = (user.stats?.gold || 0) + (rewards?.goldGained || 0);
             // Calculate new level from total XP
             const levelData = await calculateLevelFromXP(newTotalXP);
@@ -2090,7 +2335,7 @@ app.post("/combat/results", requireAuth, async (req, res) => {
                 totalGoldAfter: newGold,
                 leveledUp,
                 newLevel: levelData.level,
-                levelUpRewards,
+                ...(levelUpRewards && { levelUpRewards }), // Only add if not undefined
             };
         }
         // Create combat result document
@@ -2153,24 +2398,27 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
         const victory = Math.random() > 0.3;
         const xpGained = victory ? 50 : 10;
         const goldGained = victory ? 25 : 5;
-        await combatRef.update({
-            status: victory ? "victory" : "defeat",
-            completedAt: Date.now(),
-            reward: {
-                xp: xpGained,
-                gold: goldGained,
-            },
-        });
         if (victory) {
             const userRef = db.collection("users").doc(uid);
             const userSnap = await userRef.get();
             const user = userSnap.data() || {};
             const oldLevel = user.stats?.level || 1;
-            const newTotalXP = (user.stats?.totalXP || 0) + xpGained;
+            // Use totalXP if available, otherwise fallback to xp (for backwards compatibility)
+            const currentTotalXP = user.stats?.totalXP ?? user.stats?.xp ?? 0;
+            const newTotalXP = currentTotalXP + xpGained;
             let newGold = (user.stats?.gold || 0) + goldGained;
             // Calculate new level from total XP
             const levelData = await calculateLevelFromXP(newTotalXP);
             const leveledUp = levelData.level > oldLevel;
+            console.log(`📊 [Combat Resolve] Level calculation:`, {
+                uid,
+                oldLevel,
+                newTotalXP,
+                calculatedLevel: levelData.level,
+                leveledUp,
+                currentXP: levelData.currentXP,
+                nextLevelXP: levelData.nextLevelXP,
+            });
             // Add level-up rewards if leveled up
             if (leveledUp && levelData.rewards) {
                 newGold += levelData.rewards.gold || 0;
@@ -2180,6 +2428,7 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
                     });
                 }
             }
+            // Update user stats with level data
             await userRef.update({
                 "stats.level": levelData.level,
                 "stats.xp": levelData.currentXP,
@@ -2187,6 +2436,119 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
                 "stats.totalXP": newTotalXP,
                 "stats.gold": newGold,
                 updatedAt: Date.now(),
+            });
+            console.log(`✅ [Combat Resolve] Updated user stats in Firebase:`, {
+                level: levelData.level,
+                xp: levelData.currentXP,
+                totalXP: newTotalXP,
+                gold: newGold,
+            });
+            // Update worldMapProgress to unlock next monster
+            const combatData = combatSnap.data();
+            const worldId = combatData?.worldId;
+            const monsterId = combatData?.monsterId;
+            if (worldId && monsterId) {
+                try {
+                    // Get world to find monster position
+                    const worldSnap = await db.collection("worlds").doc(worldId).get();
+                    if (worldSnap.exists) {
+                        const world = worldSnap.data();
+                        const stages = world?.stages || [];
+                        // Find monster index in world (first appearance in stages)
+                        let monsterIndex = -1;
+                        for (let stageIndex = 0; stageIndex < stages.length; stageIndex++) {
+                            const stage = stages[stageIndex];
+                            if (stage && stage.values && Array.isArray(stage.values)) {
+                                const indexInStage = stage.values.indexOf(monsterId);
+                                if (indexInStage !== -1) {
+                                    // Count unique monsters before this one
+                                    const seenMonsters = new Set();
+                                    for (let i = 0; i <= stageIndex; i++) {
+                                        const s = stages[i];
+                                        if (s && s.values && Array.isArray(s.values)) {
+                                            for (let j = 0; j < s.values.length; j++) {
+                                                const mid = s.values[j];
+                                                if (mid && !seenMonsters.has(mid)) {
+                                                    if (mid === monsterId) {
+                                                        monsterIndex = seenMonsters.size;
+                                                        break;
+                                                    }
+                                                    seenMonsters.add(mid);
+                                                }
+                                            }
+                                        }
+                                        if (monsterIndex !== -1)
+                                            break;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        if (monsterIndex !== -1) {
+                            // Update worldMapProgress
+                            const currentProgress = user.worldMapProgress || {};
+                            const worldProgress = currentProgress[worldId] || { completedLevels: [] };
+                            const completedLevels = worldProgress.completedLevels || [];
+                            console.log(`🔓 [Combat Resolve] Monster unlock check:`, {
+                                worldId,
+                                monsterId,
+                                monsterIndex,
+                                currentCompletedLevels: completedLevels,
+                            });
+                            // Add this monster index if not already completed
+                            if (!completedLevels.includes(monsterIndex)) {
+                                const updatedCompletedLevels = [...completedLevels, monsterIndex];
+                                console.log(`✅ [Combat Resolve] Unlocking monster:`, {
+                                    worldId,
+                                    monsterIndex,
+                                    oldCompletedLevels: completedLevels,
+                                    newCompletedLevels: updatedCompletedLevels,
+                                    nextMonsterWillUnlock: monsterIndex + 1,
+                                });
+                                await userRef.update({
+                                    [`worldMapProgress.${worldId}.completedLevels`]: updatedCompletedLevels,
+                                    updatedAt: Date.now(),
+                                });
+                            }
+                            else {
+                                console.log(`ℹ️ [Combat Resolve] Monster ${monsterIndex} already completed`);
+                            }
+                        }
+                        else {
+                            console.warn(`⚠️ [Combat Resolve] Could not find monster index for ${monsterId} in world ${worldId}`);
+                        }
+                    }
+                }
+                catch (progressErr) {
+                    console.warn("Could not update worldMapProgress:", progressErr);
+                }
+            }
+            // Update combat with reward info including level up
+            // Build reward object conditionally to avoid undefined values
+            const rewardUpdate = {
+                xp: xpGained,
+                gold: goldGained,
+                leveledUp,
+                newLevel: levelData.level,
+            };
+            // Only add levelUpRewards if it exists (not undefined)
+            if (leveledUp && levelData.rewards) {
+                rewardUpdate.levelUpRewards = levelData.rewards;
+            }
+            await combatRef.update({
+                status: "victory",
+                completedAt: Date.now(),
+                reward: rewardUpdate,
+            });
+        }
+        else {
+            await combatRef.update({
+                status: "defeat",
+                completedAt: Date.now(),
+                reward: {
+                    xp: xpGained,
+                    gold: goldGained,
+                },
             });
         }
         const updated = await combatRef.get();
@@ -2203,19 +2565,64 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
 // ============ WORLDS ============
 /**
  * GET /worlds
+ * Optional query param: ?uid={userId} - Returns worlds with unlock status based on user level
  */
 app.get("/worlds", async (req, res) => {
     try {
+        const { uid } = req.query;
         const worldsSnap = await db.collection("worlds").get();
         const worlds = worldsSnap.docs.map((doc) => ({
             worldId: doc.id,
             ...doc.data(),
         }));
+        // If uid is provided, add unlock status based on user level
+        if (uid && typeof uid === 'string') {
+            try {
+                const userSnap = await db.collection("users").doc(uid).get();
+                if (userSnap.exists) {
+                    const user = userSnap.data() || {};
+                    const userLevel = user.stats?.level || 1;
+                    const worldsWithUnlockStatus = worlds.map((world) => {
+                        try {
+                            const requiredLevel = world.requiredLevel || 1;
+                            const isUnlocked = userLevel >= requiredLevel;
+                            return {
+                                ...world,
+                                isUnlocked,
+                                requiredLevel,
+                                userLevel,
+                            };
+                        }
+                        catch (worldErr) {
+                            console.warn(`Error processing world ${world.worldId}:`, worldErr);
+                            // Return world without unlock status if processing fails
+                            return {
+                                ...world,
+                                isUnlocked: true,
+                                requiredLevel: 1,
+                                userLevel,
+                            };
+                        }
+                    });
+                    return res.status(200).json(worldsWithUnlockStatus);
+                }
+                else {
+                    // User doesn't exist, return worlds without unlock status
+                    console.warn(`User ${uid} not found, returning worlds without unlock status`);
+                    return res.status(200).json(worlds);
+                }
+            }
+            catch (userErr) {
+                console.error("Error fetching user for unlock status:", userErr);
+                // Return worlds without unlock status if user fetch fails
+                return res.status(200).json(worlds);
+            }
+        }
         return res.status(200).json(worlds);
     }
     catch (e) {
         console.error("Error in GET /worlds:", e);
-        return res.status(500).json({ error: e?.message });
+        return res.status(500).json({ error: e?.message || "Internal server error" });
     }
 });
 /**
@@ -2235,6 +2642,7 @@ app.post("/worlds", requireAuth, async (req, res) => {
             worldId: customId,
             description: worldData.description || "",
             element: worldData.element || "neutral",
+            requiredLevel: worldData.requiredLevel || 1, // Default to level 1 if not specified
             stages: worldData.stages || [null],
             createdAt: Date.now()
         };

@@ -1,9 +1,9 @@
-import { db, auth } from "@/firebase";
-import { doc, setDoc, getDoc, increment, updateDoc } from "firebase/firestore";
+import { auth } from "@/firebase";
+import { AchievementsAPI } from "@/api/achievements.api";
 
 /**
  * Achievement Progress Service
- * Updates achievement progress in Firestore when user actions occur
+ * Updates achievement progress via API when user actions occur
  */
 
 // Achievement IDs that can be tracked
@@ -13,7 +13,7 @@ export type AchievementId =
     | "streak_3" | "streak_7" | "streak_30"
     | "level_5" | "level_10" | "level_25";
 
-// Achievement targets
+// Achievement targets (fallback if not available from API)
 const ACHIEVEMENT_TARGETS: Record<AchievementId, number> = {
     first_task: 1,
     task_master_10: 10,
@@ -30,6 +30,13 @@ const ACHIEVEMENT_TARGETS: Record<AchievementId, number> = {
 };
 
 /**
+ * Get target for an achievement (use hardcoded targets)
+ */
+function getAchievementTarget(achievementId: string): number {
+    return ACHIEVEMENT_TARGETS[achievementId as AchievementId] || 1;
+}
+
+/**
  * Update achievement progress for a specific achievement
  */
 export async function updateAchievementProgress(
@@ -42,24 +49,22 @@ export async function updateAchievementProgress(
         return;
     }
 
-    const target = ACHIEVEMENT_TARGETS[achievementId];
-    const isUnlocked = newProgress >= target;
-
-    const achievementRef = doc(db, "users", user.uid, "achievements", achievementId);
-
-    console.log(`  📝 Updating achievement: ${achievementId}`);
-    console.log(`     User: ${user.uid}`);
-    console.log(`     Progress: ${newProgress}/${target}`);
-    console.log(`     Unlocked: ${isUnlocked}`);
-    console.log(`     Path: users/${user.uid}/achievements/${achievementId}`);
-
     try {
-        await setDoc(achievementRef, {
-            achievementId,
+        // Get target from hardcoded list
+        const target = getAchievementTarget(achievementId);
+        const isUnlocked = newProgress >= target;
+
+        console.log(`  📝 Updating achievement: ${achievementId}`);
+        console.log(`     User: ${user.uid}`);
+        console.log(`     Progress: ${newProgress}/${target}`);
+        console.log(`     Unlocked: ${isUnlocked}`);
+
+        // Update via API
+        await AchievementsAPI.updateUserProgress(user.uid, achievementId, {
             progress: newProgress,
             isUnlocked,
             ...(isUnlocked ? { unlockedAt: Date.now() } : {}),
-        }, { merge: true });
+        });
 
         if (isUnlocked) {
             console.log(`🏆 Achievement unlocked: ${achievementId}!`);
@@ -78,12 +83,10 @@ export async function incrementAchievementProgress(achievementId: AchievementId)
     const user = auth.currentUser;
     if (!user) return;
 
-    const achievementRef = doc(db, "users", user.uid, "achievements", achievementId);
-
     try {
-        // Get current progress
-        const achievementDoc = await getDoc(achievementRef);
-        const currentProgress = achievementDoc.exists() ? (achievementDoc.data().progress || 0) : 0;
+        // Get current progress from API
+        const userProgress = await AchievementsAPI.getUserProgress(user.uid);
+        const currentProgress = userProgress.find(p => p.achievementId === achievementId)?.progress || 0;
         const newProgress = currentProgress + 1;
 
         await updateAchievementProgress(achievementId, newProgress);

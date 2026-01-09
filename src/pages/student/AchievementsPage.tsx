@@ -1,13 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useRealtimeAchievements } from "@/hooks/useRealtimeAchievements";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { useAuth } from "@/context/AuthContext";
-import { db } from "@/firebase";
-import { doc, updateDoc, increment } from "firebase/firestore";
-import { getLevelFromXP } from "@/utils/xpCurve";
-import { addXPWithLevelUp } from "@/utils/xpHelpers";
+import { UsersAPI } from "@/api/users.api";
 import {
   onStreakUpdated,
   onLevelUp,
@@ -33,7 +30,13 @@ export default function AchievementsPage() {
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [claimedAchievements, setClaimedAchievements] = useState<Set<string>>(new Set());
 
-  // Handle claim achievement (Firestore-based, no backend needed)
+  // Track previous values to avoid unnecessary syncs
+  const prevLevelRef = useRef<number>(0);
+  const prevStreakRef = useRef<number>(0);
+  const prevFocusSessionsRef = useRef<number>(0);
+  const prevCompletedTasksRef = useRef<number>(0);
+
+  // Handle claim achievement (API-based)
   const handleClaim = async (achievementId: string) => {
     if (!user || !firebaseUser || claimingId) return;
 
@@ -43,40 +46,16 @@ export default function AchievementsPage() {
     try {
       setClaimingId(achievementId);
 
-      // Update user stats directly in Firestore
-      const userRef = doc(db, "users", firebaseUser.uid);
-      const achievementRef = doc(db, "users", firebaseUser.uid, "achievements", achievementId);
-
-      const xpReward = achievement.reward?.xp || 0;
-      const goldReward = achievement.reward?.gold || 0;
-
-      // Add XP with automatic level-up handling
-      let levelUpResult = null;
-      if (xpReward > 0) {
-        levelUpResult = await addXPWithLevelUp(firebaseUser.uid, xpReward);
-      }
-
-      // Add gold separately (not tied to level-up)
-      if (goldReward > 0) {
-        await updateDoc(userRef, {
-          "stats.gold": increment(goldReward),
-        });
-      }
-
-      // Mark achievement as claimed
-      await updateDoc(achievementRef, {
-        claimed: true,
-        claimedAt: Date.now(),
-      });
+      // Claim achievement via API
+      const result = await UsersAPI.claimAchievement(firebaseUser.uid, achievementId);
 
       // Show reward notification
       const rewards = [];
-      if (xpReward > 0) rewards.push(`+${xpReward} XP`);
-      if (goldReward > 0) rewards.push(`+${goldReward} Gold`);
-      if (levelUpResult?.leveledUp) {
-        rewards.push(`🎉 LEVEL UP! ${levelUpResult.oldLevel} → ${levelUpResult.newLevel}`);
-        if (levelUpResult.rewards?.gold) rewards.push(`+${levelUpResult.rewards.gold} Bonus Gold`);
-        if (levelUpResult.rewards?.gems) rewards.push(`+${levelUpResult.rewards.gems} Gems`);
+      if (result.rewards.xp > 0) rewards.push(`+${result.rewards.xp} XP`);
+      if (result.rewards.gold > 0) rewards.push(`+${result.rewards.gold} Gold`);
+      
+      if (result.leveledUp) {
+        rewards.push(`Level Up! Level ${result.newLevel}`);
       }
 
       if (rewards.length > 0) {
@@ -88,42 +67,58 @@ export default function AchievementsPage() {
 
       // Refresh page to show updated stats
       setTimeout(() => window.location.reload(), 1000);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to claim achievement:", error);
-      alert("Failed to claim reward. Please try again.");
+      
+      // Check if error is "already claimed"
+      const errorMessage = error?.message || "";
+      if (errorMessage.includes("already claimed") || errorMessage.includes("Achievement already claimed")) {
+        alert("This achievement has already been claimed!");
+        // Mark as claimed locally to prevent further attempts
+        setClaimedAchievements(prev => new Set([...prev, achievementId]));
+        // Refresh to update UI
+        setTimeout(() => window.location.reload(), 500);
+      } else {
+        alert("Failed to claim reward. Please try again.");
+      }
     } finally {
       setClaimingId(null);
     }
   };
 
-  // Sync achievements with user stats when they load
+  // Sync achievements with user stats when they change
   useEffect(() => {
     if (user && !userLoading) {
-      // Update streak achievements
-      if (user.stats.streak > 0) {
-        onStreakUpdated(user.stats.streak);
+      // Update streak achievements only if streak changed
+      const currentStreak = user.stats.streak || 0;
+      if (currentStreak > 0 && currentStreak !== prevStreakRef.current) {
+        prevStreakRef.current = currentStreak;
+        onStreakUpdated(currentStreak);
       }
 
-      // Update level achievements - use calculated level from XP
-      const calculatedLevel = getLevelFromXP(user.stats.xp);
-      if (calculatedLevel > 0) {
-        onLevelUp(calculatedLevel);
+      // Update level achievements only if level changed
+      const userLevel = user.stats?.level || 1;
+      if (userLevel > 0 && userLevel !== prevLevelRef.current) {
+        prevLevelRef.current = userLevel;
+        onLevelUp(userLevel);
       }
 
-      // Update focus session achievements - use Firestore value
+      // Update focus session achievements only if count changed
       const focusSessions = user.stats.focusSessionsCompleted || 0;
-      if (focusSessions > 0) {
+      if (focusSessions > 0 && focusSessions !== prevFocusSessionsRef.current) {
+        prevFocusSessionsRef.current = focusSessions;
         console.log(`🔄 Syncing focus achievements with ${focusSessions} sessions`);
         onFocusSessionCompleted(focusSessions);
       }
     }
   }, [user, userLoading]);
 
-  // Sync task achievements when tasks load
+  // Sync task achievements when tasks change
   useEffect(() => {
     if (tasks.length > 0) {
       const completedTasks = tasks.filter((t) => !t.isActive).length;
-      if (completedTasks > 0) {
+      if (completedTasks > 0 && completedTasks !== prevCompletedTasksRef.current) {
+        prevCompletedTasksRef.current = completedTasks;
         onTaskCompleted(completedTasks);
       }
     }
@@ -205,7 +200,7 @@ export default function AchievementsPage() {
               <TrendingUp size={18} />
               <span className="font-medium">Your Level</span>
             </div>
-            <p className="text-3xl font-bold">{getLevelFromXP(user.stats.xp)}</p>
+            <p className="text-3xl font-bold">{user.stats?.level || 1}</p>
             <p className="text-green-200 text-sm">Keep going!</p>
           </div>
         </div>

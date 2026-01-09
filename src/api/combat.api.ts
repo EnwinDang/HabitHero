@@ -5,6 +5,7 @@ export type StartCombatRequest = {
   worldId: string;
   stage: number;
   seed?: string;
+  monsterId?: string;
 };
 
 export const CombatAPI = {

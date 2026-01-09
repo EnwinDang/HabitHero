@@ -1,12 +1,34 @@
 import { apiFetch } from "./client";
+import { auth } from "../firebase";
 
-export function getInventory(uid: string) {
+export const InventoryAPI = {
+  async get(): Promise<any> {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error("User not authenticated");
   return apiFetch(`/users/${uid}/inventory`);
-}
+  },
 
-export function equipItem(uid: string, data: any) {
-  return apiFetch(`/users/${uid}/equipped`, {
-    method: "PATCH",
-    body: JSON.stringify(data),
-  });
-}
+  async equip(itemId: string, slot: string): Promise<any> {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error("User not authenticated");
+    return apiFetch(`/users/${uid}/equip`, {
+      method: "POST",
+      body: JSON.stringify({ itemId, slot }),
+    });
+  },
+
+  async unequip(slot: string): Promise<any> {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error("User not authenticated");
+    return apiFetch(`/users/${uid}/unequip`, {
+      method: "POST",
+      body: JSON.stringify({ slot }),
+    });
+  },
+
+  async getEquipped(): Promise<any> {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error("User not authenticated");
+    return apiFetch(`/users/${uid}/equipped`);
+  },
+};

@@ -57,9 +57,9 @@ export async function loadTeacherDashboard(teacherId: string): Promise<TeacherDa
             });
             const taskCount = tasks.length;
             
-            moduleStats[module.moduleId] = {
-              completedBy: 0, // Would need student progress data
-              completionRate: 0, // Would need student progress data
+          moduleStats[module.moduleId] = {
+            completedBy: 0, // Would need student progress data
+            completionRate: 0, // Would need student progress data
               totalTasks: taskCount,
             };
           } catch (err) {
