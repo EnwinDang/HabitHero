@@ -7,6 +7,7 @@ import type { BattleEnemy, BattlePlayer, BattleState, BattleLog } from "@/models
 import { CombatAPI } from "@/api/combat.api";
 import { MonstersAPI } from "@/api/monsters.api";
 import { UsersAPI } from "@/api/users.api";
+import { apiFetch } from "@/api/client";
 
 export default function BattlePage() {
     const { darkMode, accentColor } = useTheme();
@@ -71,6 +72,20 @@ export default function BattlePage() {
                 if (combat.monsterId) {
                     const monsterData = await MonstersAPI.get(combat.monsterId);
                     const userLevel = user?.stats?.level || 1;
+                    
+                    // Count equipped items
+                    const equippedItems = user?.inventory?.equiped || {};
+                    let equippedItemsCount = 0;
+                    if (equippedItems.weapon) equippedItemsCount++;
+                    if (equippedItems.armor && Object.keys(equippedItems.armor).length > 0) equippedItemsCount += Object.keys(equippedItems.armor).length;
+                    if (equippedItems.pets && Object.keys(equippedItems.pets).length > 0) equippedItemsCount += Object.keys(equippedItems.pets).length;
+                    if (equippedItems.accessoiries && Object.keys(equippedItems.accessoiries).length > 0) equippedItemsCount += Object.keys(equippedItems.accessoiries).length;
+                    
+                    // Fetch monster stats with user level and equipped items for scaling
+                    const monsterStats = await apiFetch<{
+                        attack: number;
+                        hp: number;
+                    }>(`/combat/monster-stats/${worldId}/${levelId}/${userLevel}?equippedItemsCount=${equippedItemsCount}`);
 
                     // Map generic Monster to BattleEnemy
                     const newEnemy: BattleEnemy = {
@@ -78,11 +93,11 @@ export default function BattlePage() {
                         name: monsterData.name,
                         level: Number(levelId), // Assume monster level matches stage for now
                         element: (monsterData.elementType as any) || element || 'fire',
-                        hp: (monsterData.baseStats?.hp || 100) + (Number(levelId) * 20),
-                        maxHP: (monsterData.baseStats?.hp || 100) + (Number(levelId) * 20),
-                        attack: (monsterData.baseStats?.attack || 10) + (Number(levelId) * 2), // Corrected prop name
-                        defense: (monsterData.baseStats?.defense || 5) + (Number(levelId) * 1), // Corrected prop name
-                        speed: (monsterData.baseStats?.speed || 10) + (Number(levelId) * 1), // Corrected prop name
+                        hp: monsterStats.hp,
+                        maxHP: monsterStats.hp,
+                        attack: monsterStats.attack, // Use scaled stats from endpoint
+                        defense: (monsterData.baseStats?.defense || 5) + (Number(levelId) * 1),
+                        speed: (monsterData.baseStats?.speed || 10) + (Number(levelId) * 1),
                         emoji: "👾", // Default emoji, could be mapped from type
                         realmId: worldId,
                         levelId: Number(levelId)
@@ -117,10 +132,29 @@ export default function BattlePage() {
         }));
     };
 
-    // Calculate damage
-    const calculateDamage = (attacker: { attack: number }, defender: { defense: number }) => {
+    // Calculate damage with critical, block, and miss mechanics
+    const calculateDamageWithModifiers = (attacker: { attack: number }, defender: { defense: number }) => {
+        const rand = Math.random() * 100;
+        const missChance = 5;
+        const blockChance = 8;
+        const critChance = 10;
+
+        if (rand < missChance) {
+            return { damage: 0, type: 'miss' };
+        }
+        
+        if (rand < missChance + blockChance) {
+            return { damage: 0, type: 'blocked' };
+        }
+
         const baseDamage = attacker.attack - defender.defense;
-        return Math.max(1, baseDamage + Math.floor(Math.random() * 5)); // Add some randomness
+        const normalDamage = Math.max(1, baseDamage + Math.floor(Math.random() * 5));
+        
+        if (rand < missChance + blockChance + critChance) {
+            return { damage: Math.floor(normalDamage * 1.5), type: 'critical' };
+        }
+        
+        return { damage: normalDamage, type: 'normal' };
     };
 
     // Battle simulation
@@ -141,6 +175,7 @@ export default function BattlePage() {
         let currentPlayerHP = player.hp;
         let currentEnemyHP = enemy.hp;
         let turn = 0;
+        const battleLog: Array<{ type: string; attacker: string; defender: string; damage: number; hitType: string }> = [];
 
         battleInterval.current = window.setInterval(() => {
             turn++;
@@ -150,60 +185,141 @@ export default function BattlePage() {
 
             if (playerFirst) {
                 // Player attacks
-                const damage = calculateDamage(player, enemy);
+                const attackResult = calculateDamageWithModifiers(player, enemy);
+                const damage = attackResult.damage;
                 currentEnemyHP -= damage;
 
+                // Log attack with modifier type
+                battleLog.push({
+                    type: 'attack',
+                    attacker: player.name,
+                    defender: enemy.name,
+                    damage,
+                    hitType: attackResult.type
+                });
+
+                // Add appropriate log message based on hit type
+                if (attackResult.type === 'miss') {
+                    addLog(`${player.name} attacks but ${enemy.name} dodges!`, 'attack');
+                } else if (attackResult.type === 'blocked') {
+                    addLog(`${player.name} attacks but ${enemy.name} blocks!`, 'attack');
+                } else if (attackResult.type === 'critical') {
+                    addLog(`⚡ ${player.name} CRITICAL HIT ${enemy.name} for ${damage} damage!`, 'attack');
+                } else {
+                    addLog(`${player.name} attacks ${enemy.name} for ${damage} damage!`, 'attack');
+                }
+
                 setBattleState(prev => ({ ...prev, enemyHP: Math.max(0, currentEnemyHP), turn }));
-                addLog(`${player.name} attacks ${enemy.name} for ${damage} damage!`, 'attack');
 
                 if (currentEnemyHP <= 0) {
-                    endBattle('player');
+                    endBattle('player', battleLog);
                     return;
                 }
 
                 // Enemy attacks back
                 setTimeout(() => {
-                    const enemyDamage = calculateDamage(enemy, player);
+                    const enemyAttackResult = calculateDamageWithModifiers(enemy, player);
+                    const enemyDamage = enemyAttackResult.damage;
                     currentPlayerHP -= enemyDamage;
 
+                    // Log attack with modifier type
+                    battleLog.push({
+                        type: 'attack',
+                        attacker: enemy.name,
+                        defender: player.name,
+                        damage: enemyDamage,
+                        hitType: enemyAttackResult.type
+                    });
+
                     setBattleState(prev => ({ ...prev, playerHP: Math.max(0, currentPlayerHP) }));
-                    addLog(`${enemy.name} attacks ${player.name} for ${enemyDamage} damage!`, 'damage');
+                    
+                    // Add appropriate log message based on hit type
+                    if (enemyAttackResult.type === 'miss') {
+                        addLog(`${enemy.name} attacks but ${player.name} dodges!`, 'damage');
+                    } else if (enemyAttackResult.type === 'blocked') {
+                        addLog(`${enemy.name} attacks but ${player.name} blocks!`, 'damage');
+                    } else if (enemyAttackResult.type === 'critical') {
+                        addLog(`⚡ ${enemy.name} CRITICAL HIT ${player.name} for ${enemyDamage} damage!`, 'damage');
+                    } else {
+                        addLog(`${enemy.name} attacks ${player.name} for ${enemyDamage} damage!`, 'damage');
+                    }
 
                     if (currentPlayerHP <= 0) {
-                        endBattle('enemy');
+                        endBattle('enemy', battleLog);
                     }
                 }, 500);
             } else {
                 // Enemy attacks first
-                const enemyDamage = calculateDamage(enemy, player);
+                const enemyAttackResult = calculateDamageWithModifiers(enemy, player);
+                const enemyDamage = enemyAttackResult.damage;
                 currentPlayerHP -= enemyDamage;
 
+                // Log attack with modifier type
+                battleLog.push({
+                    type: 'attack',
+                    attacker: enemy.name,
+                    defender: player.name,
+                    damage: enemyDamage,
+                    hitType: enemyAttackResult.type
+                });
+
                 setBattleState(prev => ({ ...prev, playerHP: Math.max(0, currentPlayerHP), turn }));
-                addLog(`${enemy.name} attacks ${player.name} for ${enemyDamage} damage!`, 'damage');
+                
+                // Add appropriate log message based on hit type
+                if (enemyAttackResult.type === 'miss') {
+                    addLog(`${enemy.name} attacks but ${player.name} dodges!`, 'damage');
+                } else if (enemyAttackResult.type === 'blocked') {
+                    addLog(`${enemy.name} attacks but ${player.name} blocks!`, 'damage');
+                } else if (enemyAttackResult.type === 'critical') {
+                    addLog(`⚡ ${enemy.name} CRITICAL HIT ${player.name} for ${enemyDamage} damage!`, 'damage');
+                } else {
+                    addLog(`${enemy.name} attacks ${player.name} for ${enemyDamage} damage!`, 'damage');
+                }
 
                 if (currentPlayerHP <= 0) {
-                    endBattle('enemy');
+                    endBattle('enemy', battleLog);
                     return;
                 }
 
                 // Player attacks back
                 setTimeout(() => {
-                    const damage = calculateDamage(player, enemy);
+                    const playerAttackResult = calculateDamageWithModifiers(player, enemy);
+                    const damage = playerAttackResult.damage;
                     currentEnemyHP -= damage;
 
+                    // Log attack with modifier type
+                    battleLog.push({
+                        type: 'attack',
+                        attacker: player.name,
+                        defender: enemy.name,
+                        damage,
+                        hitType: playerAttackResult.type
+                    });
+
                     setBattleState(prev => ({ ...prev, enemyHP: Math.max(0, currentEnemyHP) }));
-                    addLog(`${player.name} attacks ${enemy.name} for ${damage} damage!`, 'attack');
+                    
+                    // Add appropriate log message based on hit type
+                    if (playerAttackResult.type === 'miss') {
+                        addLog(`${player.name} attacks but ${enemy.name} dodges!`, 'attack');
+                    } else if (playerAttackResult.type === 'blocked') {
+                        addLog(`${player.name} attacks but ${enemy.name} blocks!`, 'attack');
+                    } else if (playerAttackResult.type === 'critical') {
+                        addLog(`⚡ ${player.name} CRITICAL HIT ${enemy.name} for ${damage} damage!`, 'attack');
+                    } else {
+                        addLog(`${player.name} attacks ${enemy.name} for ${damage} damage!`, 'attack');
+                    }
 
                     if (currentEnemyHP <= 0) {
-                        endBattle('player');
+                        endBattle('player', battleLog);
                     }
                 }, 500);
             }
         }, 1500); // Battle speed: 1.5 seconds per turn
     };
-
     // End battle
-    const endBattle = async (winner: 'player' | 'enemy') => {
+    const endBattle = async (winner: 'player' | 'enemy', battleLogs: Array<{ type: string; attacker: string; defender: string; damage: number; hitType: string }> = []) => {
+        console.log('🏁 EndBattle called with winner:', winner);
+        console.log('📜 Battle logs:', battleLogs);
         if (battleInterval.current) {
             clearInterval(battleInterval.current);
         }
@@ -223,7 +339,43 @@ export default function BattlePage() {
                     addLog("Saving progress...", 'info');
                     const result = await CombatAPI.resolve(combatId);
                     if (result.reward) {
-                        addLog(`Rewards: ${result.reward.xpGained} XP`, 'victory'); // Corrected prop name
+                        const xpGained = (result.reward as any).xpGained || (result.reward as any).xp || 0;
+                        const goldGained = (result.reward as any).goldGained || (result.reward as any).gold || 0;
+                        
+                        addLog(`🎉 You earned ${xpGained} XP and ${goldGained} Gold!`, 'victory');
+                        
+                        // Update user stats in database with battle rewards
+                        if (user?.uid) {
+                            try {
+                                const response = await apiFetch<{
+                                    xpGained: number;
+                                    newXp: number;
+                                    newLevel: number;
+                                    leveledUp: boolean;
+                                    levelUpRewards?: any;
+                                    rewardMultipliers?: any;
+                                }>(`/users/${user.uid}/battle-rewards`, {
+                                    method: 'POST',
+                                    body: JSON.stringify({
+                                        xp: xpGained,
+                                        gold: goldGained,
+                                        worldId,
+                                        stage: levelId,
+                                        monsterName: enemy?.name,
+                                        battleLogs
+                                    })
+                                });
+
+                                // Check if level up occurred
+                                if (response.leveledUp) {
+                                    addLog(`⭐ LEVEL UP! You are now level ${response.newLevel}!`, 'levelup');
+                                    addLog(`💰 Rewards (${response.rewardMultipliers?.totalMultiplier?.toFixed(2)}x multiplier)`, 'levelup');
+                                }
+                            } catch (statsErr) {
+                                console.error("Failed to update user stats:", statsErr);
+                                // Continue even if database update fails
+                            }
+                        }
                     }
 
                     // Update local progress for immediate UI feedback if needed

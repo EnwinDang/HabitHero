@@ -1081,6 +1081,152 @@ app.post("/users/:uid/achievements/:achievementId/claim", requireAuth, async (re
 });
 
 /**
+ * POST /users/{uid}/battle-rewards
+ * Award XP and gold from battle, check for level up
+ * Scales rewards based on stage and world level
+ */
+app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { xp, gold, worldId, stage, monsterName, battleLogs } = req.body;
+
+    if (!uid) {
+      return res.status(400).json({ error: "Missing uid" });
+    }
+
+    if (xp == null || gold == null) {
+      return res.status(400).json({ error: "Missing xp or gold" });
+    }
+
+    const userRef = db.collection("users").doc(uid);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const userData = userDoc.data() as any;
+    const currentStats = userData.stats || {};
+    const currentTotalXP = currentStats.totalXP || 0;
+    const currentGold = currentStats.gold || 0;
+    const currentLevel = currentStats.level || 1;
+
+    // Calculate stage and world multipliers for rewards
+    let stageMultiplier = 1.0;
+    let worldLevelMultiplier = 1.0;
+    let scaledXp = xp;
+    let scaledGold = gold;
+
+    if (worldId && stage) {
+      try {
+        // Get world level from worldConfig
+        const worldConfigSnap = await db.collection("worldConfig").get();
+        const worldConfigs = worldConfigSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Find world level (usually worlds are numbered 1, 2, 3, etc.)
+        const worldNumber = parseInt(worldId.replace(/\D/g, '')) || 1;
+        worldLevelMultiplier = 1.0 + (worldNumber - 1) * 0.1; // 10% per world level
+        
+        // Get stage type multiplier
+        const stageTypeSnap = await db.collection("worldConfig").doc("stageTypes").get();
+        if (stageTypeSnap.exists) {
+          const stageConfig = stageTypeSnap.data() || {};
+          
+          // Determine stage type
+          const stageStructureConfig = worldConfigs.find(c => c.id === "stageStructure");
+          const stageStructure = (stageStructureConfig as any) || {};
+          const bossStage = stageStructure.bossStage || 10;
+          const miniBossStage = stageStructure.miniBossStage || 5;
+          const eliteStages = stageStructure.eliteStages || [];
+          
+          let stageType = "normal";
+          if (stage === bossStage) {
+            stageType = "boss";
+          } else if (stage === miniBossStage) {
+            stageType = "miniBoss";
+          } else if (eliteStages.includes(stage)) {
+            stageType = "elite";
+          }
+          
+          // Get multiplier for this stage type
+          const typeConfig = stageConfig[stageType];
+          if (typeConfig && typeConfig.rewards) {
+            stageMultiplier = (typeConfig.rewards.xpMultiplier || 1.0);
+          }
+        }
+
+        // Apply multipliers
+        scaledXp = Math.floor(xp * stageMultiplier * worldLevelMultiplier);
+        scaledGold = Math.floor(gold * stageMultiplier * worldLevelMultiplier);
+
+        console.log(`💰 Rewards Scaling: stage=${stage}, world=${worldNumber}, stageMultiplier=${stageMultiplier}, worldMultiplier=${worldLevelMultiplier}`);
+        console.log(`   Original: ${xp} XP, ${gold} Gold → Scaled: ${scaledXp} XP, ${scaledGold} Gold`);
+      } catch (scalingErr) {
+        console.warn("Failed to apply reward scaling, using base rewards:", scalingErr);
+        // Fall back to base rewards if scaling fails
+        scaledXp = xp;
+        scaledGold = gold;
+      }
+    }
+
+    // Add scaled XP and gold
+    const newTotalXP = currentTotalXP + scaledXp;
+    const newGold = currentGold + scaledGold;
+
+    // Calculate new level from total XP
+    const levelData = await calculateLevelFromXP(newTotalXP);
+    const leveledUp = levelData.level > currentLevel;
+
+    console.log(`🎮 Battle Reward: ${uid} earned ${scaledXp} XP and ${scaledGold} gold`);
+    console.log(`📊 Level Check: Current=${currentLevel}, New=${levelData.level}, LeveledUp=${leveledUp}`);
+
+    // Update user stats
+    await userRef.update({
+      "stats.level": levelData.level,
+      "stats.xp": levelData.currentXP,
+      "stats.nextLevelXP": levelData.nextLevelXP,
+      "stats.totalXP": newTotalXP,
+      "stats.gold": newGold,
+      updatedAt: Date.now(),
+    });
+
+    // Log battle in user's battle history if needed
+    if (worldId && stage && monsterName) {
+      const battleHistoryRef = db.collection("users").doc(uid).collection("battleHistory");
+      await battleHistoryRef.add({
+        worldId,
+        stage,
+        monsterName,
+        xpEarned: scaledXp,
+        goldEarned: scaledGold,
+        leveledUp,
+        newLevel: levelData.level,
+        stageMultiplier,
+        worldLevelMultiplier,
+        battleLogs: battleLogs || [], // Store detailed battle logs including crits, blocks, misses
+        timestamp: Date.now(),
+      });
+    }
+
+    return res.status(200).json({
+      xpGained: scaledXp,
+      newXp: levelData.currentXP,
+      newLevel: levelData.level,
+      leveledUp,
+      levelUpRewards: leveledUp && levelData.rewards ? levelData.rewards : undefined,
+      rewardMultipliers: {
+        stageMultiplier,
+        worldLevelMultiplier,
+        totalMultiplier: stageMultiplier * worldLevelMultiplier,
+      }
+    });
+  } catch (e: any) {
+    console.error("Error in POST /users/:uid/battle-rewards:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
  * GET /users/{uid}/achievements
  */
 app.get("/users/:uid/achievements", requireAuth, async (req, res) => {
@@ -3048,13 +3194,15 @@ app.get("/combat/:combatId", requireAuth, async (req, res) => {
 
 /**
  * GET /combat/monster-stats/:worldId/:stage/:userLevel
- * Calculate monster stats based on worldConfig, stage, and user level
+ * Calculate monster stats based on worldConfig, stage, user level, and equipped items
  */
 app.get("/combat/monster-stats/:worldId/:stage/:userLevel", async (req, res) => {
   try {
     const { worldId, stage, userLevel } = req.params;
+    const { equippedItemsCount } = req.query;
     const stageNum = parseInt(stage);
     const userLvl = parseInt(userLevel);
+    const itemsCount = equippedItemsCount ? parseInt(equippedItemsCount as string) : 0;
 
     // Get worldConfig
     const configSnap = await db.collection("worldConfig").doc("monsterScaling").get();
@@ -3073,21 +3221,44 @@ app.get("/combat/monster-stats/:worldId/:stage/:userLevel", async (req, res) => 
     // Get stage multiplier (array is 0-indexed, stage 1 = index 1)
     const stageMultiplier = multipliers[stageNum] || 1;
     
-    // Calculate user level scaling (monsters scale 0.5% per user level)
-    // At user level 1: 1.0x, at level 10: 1.045x, at level 50: 1.225x
-    const userLevelMultiplier = 1 + (userLvl - 1) * 0.005;
+    // User level scaling: more aggressive now
+    // At user level 1: 1.0x, at level 10: 1.09x, at level 50: 1.49x
+    const userLevelMultiplier = 1 + (userLvl - 1) * 0.01;
+
+    // Item scaling: each equipped item makes monster 8% stronger
+    // 0 items: 1.0x, 1 item: 1.08x, 2 items: 1.16x, 3 items: 1.24x, etc.
+    const itemScalingMultiplier = 1 + (itemsCount * 0.08);
+
+    // Calculate final stats
+    const baseAttack = baseStats.attack;
+    const baseHp = baseStats.hp;
+    
+    const finalAttack = Math.round(baseAttack * stageMultiplier * userLevelMultiplier * itemScalingMultiplier);
+    const finalHp = Math.round(baseHp * stageMultiplier * userLevelMultiplier * itemScalingMultiplier);
 
     const monsterStats = {
       worldId,
       stage: stageNum,
       userLevel: userLvl,
-      baseAttack: baseStats.attack,
-      baseHp: baseStats.hp,
+      equippedItemsCount: itemsCount,
+      baseAttack: baseAttack,
+      baseHp: baseHp,
       stageMultiplier: stageMultiplier,
       userLevelMultiplier: userLevelMultiplier,
-      attack: Math.round(baseStats.attack * stageMultiplier * userLevelMultiplier),
-      hp: Math.round(baseStats.hp * stageMultiplier * userLevelMultiplier),
+      itemScalingMultiplier: itemScalingMultiplier,
+      attack: finalAttack,
+      hp: finalHp,
     };
+
+    console.log(`⚔️ Monster Stats [${worldId}:${stageNum}] Level=${userLvl}, Items=${itemsCount}:`, {
+      base: { attack: baseAttack, hp: baseHp },
+      multipliers: {
+        stage: stageMultiplier.toFixed(2),
+        userLevel: userLevelMultiplier.toFixed(2),
+        items: itemScalingMultiplier.toFixed(2),
+      },
+      final: { attack: finalAttack, hp: finalHp },
+    });
 
     return res.status(200).json(monsterStats);
   } catch (e: any) {
