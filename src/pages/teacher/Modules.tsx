@@ -364,10 +364,10 @@ export default function Modules() {
                     <thead className="hh-thead">
                       <tr>
                         <th className="px-5 py-3">Module Name</th>
-                        <th className="px-5 py-3">Exercises</th>
-                        <th className="px-5 py-3">Avg Completion</th>
-                        <th className="px-5 py-3">Status</th>
-                        <th className="px-5 py-3" style={{ textAlign: 'right' }}>Actions</th>
+                        <th className="px-5 py-3" style={{ textAlign: 'center' }}>Exercises</th>
+                        <th className="px-5 py-3" style={{ textAlign: 'center' }}>Avg Completion</th>
+                        <th className="px-5 py-3" style={{ textAlign: 'center' }}>Status</th>
+                        <th className="px-5 py-3" style={{ textAlign: 'center' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody className="hh-tbody">
@@ -444,10 +444,10 @@ export default function Modules() {
                           </td>
                           <td 
                             className="px-5 py-4"
-                            style={{ cursor: m.id ? 'pointer' : 'not-allowed' }}
+                            style={{ textAlign: 'center', cursor: m.id ? 'pointer' : 'not-allowed' }}
                             onClick={handleRowClick}
                           >
-                            <div style={{ width: 128 }}>
+                            <div style={{ width: 128, margin: '0 auto' }}>
                               <div className="hh-progress">
                                 <div 
                                   className="hh-progress__bar" 
@@ -458,7 +458,7 @@ export default function Modules() {
                           </td>
                           <td 
                             className="px-5 py-4"
-                            style={{ cursor: m.id ? 'pointer' : 'not-allowed' }}
+                            style={{ cursor: m.id ? 'pointer' : 'not-allowed', textAlign: 'center' }}
                             onClick={handleRowClick}
                           >
                             {m.active === false ? (
@@ -473,9 +473,9 @@ export default function Modules() {
                               </span>
                             )}
                           </td>
-                          <td className="px-5 py-4" style={{ textAlign: 'right' }}>
+                          <td className="px-5 py-4">
                             <div
-                              style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}
+                              style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 6 }}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <button

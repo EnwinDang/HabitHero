@@ -95,7 +95,7 @@ export default function StatsPage() {
         {/* Top Stats Cards - REAL DATA */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           {/* Level Card */}
-          <div className="bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl p-5 text-white">
+          <div className="bg-purple-600 rounded-xl p-5 text-white">
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp size={18} />
               <span className="font-medium">Level</span>
@@ -105,7 +105,7 @@ export default function StatsPage() {
           </div>
 
           {/* XP Progress Card */}
-          <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-5 text-white">
+          <div className="bg-orange-500 rounded-xl p-5 text-white">
             <div className="flex items-center gap-2 mb-2">
               <Star size={18} />
               <span className="font-medium">XP Progress</span>
@@ -117,7 +117,7 @@ export default function StatsPage() {
           </div>
 
           {/* Gold Card */}
-          <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-5 text-white">
+          <div className="bg-yellow-500 rounded-xl p-5 text-white">
             <div className="flex items-center gap-2 mb-2">
               <Coins size={18} />
               <span className="font-medium">Gold</span>
@@ -127,7 +127,7 @@ export default function StatsPage() {
           </div>
 
           {/* Streak Card */}
-          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-5 text-white">
+          <div className="bg-green-600 rounded-xl p-5 text-white">
             <div className="flex items-center gap-2 mb-2">
               <Flame size={18} />
               <span className="font-medium">Streak</span>
@@ -223,7 +223,7 @@ export default function StatsPage() {
                         className="h-full rounded-full transition-all"
                         style={{
                           width: `${(completedTasks / totalTasks) * 100}%`,
-                          background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                          background: `${accentColor}`,
                         }}
                       />
                     </div>
@@ -327,7 +327,7 @@ export default function StatsPage() {
                   className="h-full rounded-full transition-all"
                   style={{
                     width: `${xpProgress}%`,
-                    background: `linear-gradient(to right, ${accentColor}, #a855f7)`,
+                    background: `${accentColor}`,
                     boxShadow: `0 0 10px ${accentColor}80`,
                   }}
                 />
@@ -422,7 +422,7 @@ function NavItem({
         style={
           active
             ? {
-              background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
+              background: `${accentColor}20`,
               color: accentColor,
               borderWidth: "1px",
               borderStyle: "solid",

@@ -20,6 +20,7 @@ export default defineConfig({
     // Proxy naar Firebase Cloud Functions (local emulator)
     proxy: {
       "/api": {
+        // Functions emulator running on port 5001 (configured in firebase.json)
         target: "http://127.0.0.1:5001/habithero-73d98/us-central1",
         changeOrigin: true,
         secure: false,

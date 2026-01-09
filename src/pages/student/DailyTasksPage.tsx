@@ -5,9 +5,11 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { TasksAPI } from "@/api/tasks.api";
 import { CoursesAPI } from "@/api/courses.api";
+import { SubmissionsAPI, type Submission } from "@/api/submissions.api";
 import { Modal } from "@/components/Modal";
-import { db } from "@/firebase";
+import { db, storage } from "@/firebase";
 import { collection, query, where, getDocs, doc, setDoc, getDoc, deleteDoc, updateDoc, deleteField } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import type { Task } from "@/models/task.model";
 import type { Course } from "@/models/course.model";
 import type { Module } from "@/models/module.model";
@@ -25,6 +27,10 @@ import {
     X,
     LogOut,
     ArrowUpDown,
+    Calendar,
+    Link as LinkIcon,
+    Upload,
+    Image as ImageIcon,
 } from "lucide-react";
 
 export default function DailyTasksPage() {
@@ -52,6 +58,11 @@ export default function DailyTasksPage() {
     const [moduleSortOrder, setModuleSortOrder] = useState<"order" | "a-z" | "z-a">("a-z");
     const [confirmLeave, setConfirmLeave] = useState<{ id: string; name: string } | null>(null);
     const [leavingCourse, setLeavingCourse] = useState(false);
+    const [submissionModal, setSubmissionModal] = useState<Task | null>(null);
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const [imageFile, setImageFile] = useState<File | null>(null);
+    const [imagePreview, setImagePreview] = useState<string | null>(null);
+    const [submissions, setSubmissions] = useState<Record<string, Submission>>({});
 
     useEffect(() => {
         loadCoursesAndTasks();
@@ -127,21 +138,8 @@ export default function DailyTasksPage() {
                 }
                 await selectModule(firstModule, course.courseId);
             } else {
-                // No modules, load all course tasks directly from Firestore
-                const tasksRef = collection(db, "tasks");
-                const q = query(
-                    tasksRef,
-                    where("courseId", "==", course.courseId),
-                    where("isActive", "==", true)
-                );
-                
-                const snapshot = await getDocs(q);
-                const courseTasks = snapshot.docs.map(doc => ({
-                    taskId: doc.id,
-                    ...doc.data()
-                })) as Task[];
-                
-                setTasks(courseTasks);
+                // No modules, no tasks to show
+                setTasks([]);
                 setSelectedModule(null);
             }
         } catch (error) {
@@ -155,16 +153,16 @@ export default function DailyTasksPage() {
         setSelectedModule(module);
         
         try {
-            // Load tasks directly from Firestore
-            const tasksRef = collection(db, "tasks");
-            const q = query(
-                tasksRef,
-                where("courseId", "==", courseId || selectedCourse?.courseId),
-                where("moduleId", "==", module.moduleId),
-                where("isActive", "==", true)
-            );
+            const cid = courseId || selectedCourse?.courseId;
+            if (!cid) {
+                console.error('No courseId available');
+                setTasks([]);
+                return;
+            }
             
-            const snapshot = await getDocs(q);
+            // Load tasks from module-scoped collection: courses/{courseId}/modules/{moduleId}/tasks
+            const tasksRef = collection(db, `courses/${cid}/modules/${module.moduleId}/tasks`);
+            const snapshot = await getDocs(tasksRef);
             const moduleTasks = snapshot.docs.map(doc => ({
                 taskId: doc.id,
                 ...doc.data()
@@ -172,6 +170,16 @@ export default function DailyTasksPage() {
             
             console.log('Loaded tasks for module:', module.title, moduleTasks);
             setTasks(moduleTasks);
+
+            // Load submissions for these tasks
+            if (firebaseUser && moduleTasks.length > 0) {
+                const latestSubs = await SubmissionsAPI.listLatestByTasks(
+                    moduleTasks.map((t) => t.taskId),
+                    cid,
+                    module.moduleId
+                );
+                setSubmissions(latestSubs);
+            }
         } catch (error) {
             console.error("Error loading module tasks:", error);
             setTasks([]);
@@ -308,36 +316,89 @@ export default function DailyTasksPage() {
         }
     }
 
-    async function handleCompleteTask(taskId: string) {
+    async function handleCompleteTask(task: Task) {
+        // Open submission modal instead of directly completing
+        setSubmissionModal(task);
+        setImageFile(null);
+        setImagePreview(null);
+    }
+
+    async function handleSubmitEvidence() {
+        if (!submissionModal || !imageFile || !selectedCourse || !selectedModule || !firebaseUser) return;
+
         try {
-            const result = await TasksAPI.complete(taskId, {
-                completedAt: Date.now()
-            });
+            setUploadingImage(true);
+
+            // Upload image to Firebase Storage
+            const timestamp = Date.now();
+            const storageRef = ref(
+                storage,
+                `submissions/${selectedCourse.courseId}/${selectedModule.moduleId}/${submissionModal.taskId}/${firebaseUser.uid}/${timestamp}.jpg`
+            );
+            await uploadBytes(storageRef, imageFile);
+            const imageUrl = await getDownloadURL(storageRef);
+
+            // Create submission
+            const submission = await SubmissionsAPI.create(
+                submissionModal.taskId,
+                selectedCourse.courseId,
+                selectedModule.moduleId,
+                imageUrl
+            );
+
+            // Update local state
+            setSubmissions(prev => ({ ...prev, [submissionModal.taskId]: submission }));
             
-            // Remove completed task from list
-            setTasks(tasks.filter(t => t.taskId !== taskId));
-            
+            setSubmissionModal(null);
+            alert("Evidence submitted! Waiting for teacher approval.");
+        } catch (error) {
+            console.error("Error submitting evidence:", error);
+            alert("Error submitting evidence. Please try again.");
+        } finally {
+            setUploadingImage(false);
+        }
+    }
+
+    async function handleClaimReward(task: Task) {
+        if (!selectedCourse || !selectedModule) return;
+
+        try {
+            const result = await SubmissionsAPI.claim(
+                task.taskId,
+                selectedCourse.courseId,
+                selectedModule.moduleId
+            );
+
+            // Remove task from list
+            setTasks(tasks.filter(t => t.taskId !== task.taskId));
+
             // Show reward notification
-            if (result.reward) {
-                const messages = [];
-                if (result.reward.xpGained) messages.push(`+${result.reward.xpGained} XP`);
-                if (result.reward.goldGained) messages.push(`+${result.reward.goldGained} Gold`);
-                if (result.reward.leveledUp) messages.push(`🎉 Level Up! Now level ${result.reward.newLevel}`);
-                if (result.reward.achievementsUnlocked?.length) {
-                    messages.push(`🏆 Achievement unlocked: ${result.reward.achievementsUnlocked.join(', ')}`);
-                }
-                if (result.reward.lootboxGranted) messages.push(`🎁 Lootbox received!`);
-                
-                if (messages.length > 0) {
-                    alert(messages.join('\n'));
-                }
+            const messages = [];
+            if (result.reward?.xp) messages.push(`+${result.reward.xp} XP`);
+            if (result.reward?.gold) messages.push(`+${result.reward.gold} Gold`);
+            if (result.leveledUp) messages.push(`🎉 Level Up! Now level ${result.newLevel}`);
+
+            if (messages.length > 0) {
+                alert(messages.join('\n'));
             }
-            
-            // Refresh user data to update stats
+
+            // Refresh
             window.location.reload();
         } catch (error) {
-            console.error("Error completing task:", error);
-            alert("Error completing task. Please try again.");
+            console.error("Error claiming reward:", error);
+            alert("Error claiming reward. Please try again.");
+        }
+    }
+
+    function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (file) {
+            setImageFile(file);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setImagePreview(reader.result as string);
+            };
+            reader.readAsDataURL(file);
         }
     }
 
@@ -737,6 +798,8 @@ export default function DailyTasksPage() {
                                         key={task.taskId}
                                         task={task}
                                         onComplete={handleCompleteTask}
+                                        onClaim={handleClaimReward}
+                                        submission={submissions[task.taskId]}
                                         darkMode={darkMode}
                                         accentColor={accentColor}
                                         theme={theme}
@@ -784,6 +847,73 @@ export default function DailyTasksPage() {
                                 onClick={confirmLeaveCourse}
                             >
                                 {leavingCourse ? "Leaving..." : "Leave"}
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+            {/* Submit Evidence Modal */}
+            {submissionModal && (
+                <Modal
+                    label="Submit Evidence"
+                    title={`Submit Evidence for: ${submissionModal.title}`}
+                    onClose={() => setSubmissionModal(null)}
+                >
+                    <div className="space-y-6">
+                        <p className={theme.textMuted}>
+                            Upload a screenshot or image showing you completed this task. Your teacher will review it.
+                        </p>
+
+                        <div className="space-y-3">
+                            <label className={`block text-sm font-medium ${theme.text}`}>
+                                Upload Image
+                            </label>
+                            <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleImageSelect}
+                                className="hidden"
+                                id="evidence-upload"
+                            />
+                            <label
+                                htmlFor="evidence-upload"
+                                className={`flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${theme.card}`}
+                                style={{ ...theme.borderStyle, borderStyle: 'dashed' }}
+                            >
+                                {imagePreview ? (
+                                    <img src={imagePreview} alt="Preview" className="max-h-full max-w-full object-contain rounded" />
+                                ) : (
+                                    <div className="flex flex-col items-center">
+                                        <ImageIcon size={48} className={theme.textMuted} />
+                                        <p className={`mt-2 text-sm ${theme.textMuted}`}>Click to upload image</p>
+                                    </div>
+                                )}
+                            </label>
+                        </div>
+
+                        <div className="flex justify-end gap-3">
+                            <button
+                                type="button"
+                                className={`px-4 py-2 rounded-xl ${theme.card}`}
+                                style={{ ...theme.borderStyle, borderWidth: "1px", borderStyle: "solid" }}
+                                onClick={() => setSubmissionModal(null)}
+                                disabled={uploadingImage}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                disabled={!imageFile || uploadingImage}
+                                className="px-4 py-2 rounded-xl font-semibold text-white"
+                                style={{
+                                    backgroundColor: (!imageFile || uploadingImage) ? '#6b7280' : accentColor,
+                                    opacity: (!imageFile || uploadingImage) ? 0.5 : 1,
+                                    cursor: (!imageFile || uploadingImage) ? 'not-allowed' : 'pointer',
+                                }}
+                                onClick={handleSubmitEvidence}
+                            >
+                                {uploadingImage ? 'Uploading...' : 'Submit'}
                             </button>
                         </div>
                     </div>
@@ -881,12 +1011,16 @@ export default function DailyTasksPage() {
 function TaskCard({
     task,
     onComplete,
+    onClaim,
+    submission,
     darkMode,
     accentColor,
     theme
 }: {
     task: Task;
-    onComplete: (taskId: string) => void;
+    onComplete: (task: Task) => void;
+    onClaim: (task: Task) => void;
+    submission?: Submission;
     darkMode: boolean;
     accentColor: string;
     theme: any;
@@ -905,11 +1039,26 @@ function TaskCard({
     async function handleComplete() {
         setCompleting(true);
         try {
-            await onComplete(task.taskId);
+            await onComplete(task);
         } finally {
             setCompleting(false);
         }
     }
+
+    async function handleClaim() {
+        setCompleting(true);
+        try {
+            await onClaim(task);
+        } finally {
+            setCompleting(false);
+        }
+    }
+
+    const statusColors = {
+        pending: { bg: 'rgba(245, 158, 11, 0.1)', text: '#f59e0b', label: 'Pending Review' },
+        approved: { bg: 'rgba(34, 197, 94, 0.1)', text: '#22c55e', label: 'Approved' },
+        rejected: { bg: 'rgba(239, 68, 68, 0.1)', text: '#ef4444', label: 'Needs Revision' },
+    };
 
     return (
         <div
@@ -936,10 +1085,36 @@ function TaskCard({
                 <p className={`${theme.textMuted} text-sm mb-4`}>{task.description}</p>
             )}
 
+            {task.canvasUrl && (
+                <div className="mb-3">
+                    <a
+                        href={task.canvasUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`text-xs ${theme.textMuted} hover:underline flex items-center gap-1`}
+                    >
+                        <LinkIcon className="w-3.5 h-3.5" /> Canvas Link
+                    </a>
+                </div>
+            )}
+
+            {submission && (
+                <div className="mb-3 p-3 rounded-lg" style={{ backgroundColor: statusColors[submission.status].bg }}>
+                    <p className="text-xs font-semibold mb-1" style={{ color: statusColors[submission.status].text }}>
+                        {statusColors[submission.status].label}
+                    </p>
+                    {submission.teacherComment && submission.status === 'rejected' && (
+                        <p className={`text-xs ${theme.textMuted} mt-1`}>
+                            Teacher feedback: {submission.teacherComment}
+                        </p>
+                    )}
+                </div>
+            )}
+
             {task.dueAt && (
                 <div className="mb-3">
                     <p className={`text-xs ${theme.textSubtle} flex items-center gap-1`}>
-                        📅 Due: {new Date(task.dueAt).toLocaleDateString('en-US', { 
+                        <Calendar className="w-3.5 h-3.5" /> Due: {new Date(task.dueAt).toLocaleDateString('en-US', { 
                             month: 'short', 
                             day: 'numeric',
                             year: 'numeric'
@@ -960,19 +1135,65 @@ function TaskCard({
                     </div>
                 </div>
 
-                <button
-                    onClick={handleComplete}
-                    disabled={completing}
-                    className="px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 text-white"
-                    style={{
-                        backgroundColor: completing ? '#6b7280' : accentColor, // Use solid accent color
-                        opacity: completing ? 0.5 : 1,
-                        cursor: completing ? 'not-allowed' : 'pointer'
-                    }}
-                >
-                    <Check size={16} />
-                    {completing ? 'Completing...' : 'Complete'}
-                </button>
+                {!submission && (
+                    <button
+                        onClick={handleComplete}
+                        disabled={completing}
+                        className="px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 text-white"
+                        style={{
+                            backgroundColor: completing ? '#6b7280' : accentColor,
+                            opacity: completing ? 0.5 : 1,
+                            cursor: completing ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        <Upload size={16} />
+                        {completing ? 'Submitting...' : 'Submit Evidence'}
+                    </button>
+                )}
+
+                {submission?.status === 'approved' && !submission.claimedAt && (
+                    <button
+                        onClick={handleClaim}
+                        disabled={completing}
+                        className="px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 text-white"
+                        style={{
+                            backgroundColor: completing ? '#6b7280' : '#22c55e',
+                            opacity: completing ? 0.5 : 1,
+                            cursor: completing ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        <Check size={16} />
+                        {completing ? 'Claiming...' : 'Claim Rewards'}
+                    </button>
+                )}
+
+                {submission?.status === 'rejected' && (
+                    <button
+                        onClick={handleComplete}
+                        disabled={completing}
+                        className="px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 text-white"
+                        style={{
+                            backgroundColor: completing ? '#6b7280' : accentColor,
+                            opacity: completing ? 0.5 : 1,
+                            cursor: completing ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        <Upload size={16} />
+                        {completing ? 'Resubmitting...' : 'Resubmit'}
+                    </button>
+                )}
+
+                {submission?.status === 'pending' && (
+                    <div className={`px-4 py-2 rounded-lg font-medium text-center ${theme.textMuted}`}>
+                        Waiting for teacher review...
+                    </div>
+                )}
+
+                {submission?.claimedAt && (
+                    <div className={`px-4 py-2 rounded-lg font-medium text-center`} style={{ color: '#22c55e' }}>
+                        ✓ Completed
+                    </div>
+                )}
             </div>
         </div>
     );

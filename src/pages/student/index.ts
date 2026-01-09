@@ -12,3 +12,4 @@ export { default as InventoryPage } from './InventoryPage';
 export { default as BattlePage } from './BattlePage';
 export { default as WorldMapPage } from './WorldMapPage';
 export { default as CoursesPage } from './CoursesPage';
+export { default as SubmissionsPage } from './SubmissionsPage';

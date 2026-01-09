@@ -9,7 +9,8 @@ import {
   User, 
   LogOut,
   Menu,
-  X
+  X,
+  ClipboardCheck
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -132,6 +133,12 @@ export default function Sidebar() {
           label="Student Progress" 
           icon={Users}
           delay={0.3}
+        />
+        <NavItem 
+          to="/teacher/submissions" 
+          label="Submissions" 
+          icon={ClipboardCheck}
+          delay={0.32}
         />
         <NavItem 
           to="/teacher/profile" 

@@ -299,17 +299,16 @@ export default function Students() {
         <table className="hh-table">
           <thead className="hh-thead">
             <tr>
-              <th className="px-5 py-3">Anonymous display name</th>
-              <th className="px-5 py-3">XP level</th>
-              <th className="px-5 py-3">Exercises completed</th>
-              <th className="px-5 py-3">Overall completion</th>
-              <th className="px-5 py-3">Status</th>
+              <th className="px-5 py-3">Display name</th>
+              <th className="px-5 py-3" style={{ textAlign: 'center' }}>Exercises completed</th>
+              <th className="px-5 py-3" style={{ textAlign: 'center' }}>Overall completion</th>
+              <th className="px-5 py-3" style={{ textAlign: 'center' }}>Status</th>
             </tr>
           </thead>
           <tbody className="hh-tbody">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ padding: 24, textAlign: 'center', color: 'var(--hh-muted)' }}>
+                <td colSpan={4} style={{ padding: 24, textAlign: 'center', color: 'var(--hh-muted)' }}>
                   No students found for this course.
                 </td>
               </tr>
@@ -329,19 +328,18 @@ export default function Students() {
                     <td className="px-5 py-4" style={{ fontWeight: 700, color: 'rgba(31,31,35,0.92)' }}>
                       {s.name}
                     </td>
-                    <td className="px-5 py-4">{s.level}</td>
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-4" style={{ textAlign: 'center' }}>
                       {s.completed} / {s.total}
                     </td>
-                    <td className="px-5 py-4">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <td className="px-5 py-4" style={{ textAlign: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                         <div className="hh-progress" style={{ minWidth: 100, flex: '1 1 100px' }}>
                           <div className="hh-progress__bar" style={{ width: `${completion}%` }} />
                         </div>
                         <span className="hh-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{completion}%</span>
                       </div>
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-4" style={{ textAlign: 'center' }}>
                       <StatusPill value={s.status} />
                     </td>
                   </tr>

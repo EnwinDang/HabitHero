@@ -20,7 +20,7 @@ function mapTaskFromAPI(apiTask: any, totalStudents: number = 0) {
     status: apiTask.isActive ? 'Active' : 'Inactive',
     completed: 0, // This would need to come from completion data
     total: totalStudents, // Number of students enrolled in the course
-    canvasUrl: '', // Not in API model
+    canvasUrl: apiTask.canvasUrl || '',
   };
 }
 
@@ -32,6 +32,7 @@ function mapTaskToAPI(uiTask: any, moduleId: string, courseId?: string) {
     easy: { xp: 100, gold: 50 },
     medium: { xp: 125, gold: 63 },      // 25% increase from easy
     hard: { xp: 156, gold: 78 },        // 25% increase from medium
+    extreme: { xp: 200, gold: 100 },    // Extreme difficulty
   };
   
   const rewards = difficultyMultipliers[difficulty] || difficultyMultipliers.medium;
@@ -48,6 +49,7 @@ function mapTaskToAPI(uiTask: any, moduleId: string, courseId?: string) {
     isRepeatable: false,
     xp: rewards.xp,
     gold: rewards.gold,
+    canvasUrl: uiTask.canvasUrl || null,
   };
 }
 
@@ -60,9 +62,11 @@ function DifficultyBadge({ value }: DifficultyBadgeProps) {
     Easy: { className: 'hh-pill hh-pill--easy', dotColor: 'var(--hh-green)' },
     Medium: { className: 'hh-pill hh-pill--medium', dotColor: 'var(--hh-gold)' },
     Hard: { className: 'hh-pill hh-pill--hard', dotColor: 'rgb(239, 68, 68)' },
+    Extreme: { className: 'hh-pill hh-pill--hard', dotColor: 'rgb(147, 51, 234)' },
     easy: { className: 'hh-pill hh-pill--easy', dotColor: 'var(--hh-green)' },
     medium: { className: 'hh-pill hh-pill--medium', dotColor: 'var(--hh-gold)' },
     hard: { className: 'hh-pill hh-pill--hard', dotColor: 'rgb(239, 68, 68)' },
+    extreme: { className: 'hh-pill hh-pill--hard', dotColor: 'rgb(147, 51, 234)' },
   } as const;
 
   const config = difficultyMap[value as keyof typeof difficultyMap] || difficultyMap.Easy;
@@ -242,6 +246,7 @@ export default function ModuleDetail() {
         // Update existing task
         const apiTask = mapTaskToAPI(exerciseData, moduleId, courseId);
         console.log('🔄 [ModuleDetail] Updating task:', { editingId, apiTask });
+        console.log('📋 [ModuleDetail] Full apiTask data:', JSON.stringify(apiTask, null, 2));
         await updateTask(editingId, apiTask);
       } else {
         // Create new task
@@ -405,10 +410,10 @@ export default function ModuleDetail() {
             <thead className="hh-thead">
               <tr>
                 <th className="px-5 py-3">Exercise</th>
-                <th className="px-5 py-3">Difficulty</th>
-                <th className="px-5 py-3">Due Date</th>
-                <th className="px-5 py-3">Completed</th>
-                <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3" style={{ textAlign: 'center' }}>Difficulty</th>
+                <th className="px-5 py-3" style={{ textAlign: 'center' }}>Due Date</th>
+                <th className="px-5 py-3" style={{ textAlign: 'center' }}>Completed</th>
+                <th className="px-5 py-3" style={{ textAlign: 'center' }}>Status</th>
                 <th className="px-5 py-3" style={{ width: 48 }}></th>
               </tr>
             </thead>
@@ -442,12 +447,12 @@ export default function ModuleDetail() {
                       )}
                     </div>
                   </td>
-                  <td className="px-5 py-4">
+                  <td className="px-5 py-4" style={{ textAlign: 'center' }}>
                     <DifficultyBadge value={e.difficulty} />
                   </td>
-                  <td className="px-5 py-4">
+                  <td className="px-5 py-4" style={{ textAlign: 'center' }}>
                     {e.date ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 14 }}>
                         <Calendar style={{ width: 14, height: 14, color: 'var(--hh-muted)' }} />
                         {new Date(e.date).toLocaleDateString('en-US', {
                           month: 'short',
@@ -458,12 +463,12 @@ export default function ModuleDetail() {
                       '—'
                     )}
                   </td>
-                  <td className="px-5 py-4">
+                  <td className="px-5 py-4" style={{ textAlign: 'center' }}>
                     <span style={{ fontSize: 14, fontWeight: 650 }}>
-                      {e.total === 0 ? 'No students' : `${e.completed || 0} / ${e.total} students`}
+                      {!e.total || e.total === 0 ? 'No students' : `${e.completed || 0} / ${e.total} students`}
                     </span>
                   </td>
-                  <td className="px-5 py-4">
+                  <td className="px-5 py-4" style={{ textAlign: 'center' }}>
                     <span
                       style={{
                         fontSize: 12,
@@ -593,6 +598,7 @@ export default function ModuleDetail() {
                   <option>Easy</option>
                   <option>Medium</option>
                   <option>Hard</option>
+                  <option>Extreme</option>
                 </select>
               </div>
               <div>

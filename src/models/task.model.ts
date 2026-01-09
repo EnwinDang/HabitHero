@@ -17,6 +17,7 @@ export interface Task {
   achievementTag?: string | null;
   isRepeatable: boolean;
   isActive: boolean;
+  canvasUrl?: string | null;
   createdAt?: number;
   completedAt?: number | null;
 }

@@ -233,7 +233,7 @@ export default function StudentDetail() {
                 width: 56,
                 height: 56,
                 borderRadius: 14,
-                background: 'linear-gradient(180deg, var(--hh-indigo), var(--hh-violet))',
+                background: 'var(--hh-indigo)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',

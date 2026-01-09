@@ -418,7 +418,7 @@ const formatStatName = (stat: string): string => {
                         <div className="text-center">
                             {/* Animated Chest */}
                             <div className={`inline-block p-12 rounded-3xl ${openingBox ? 'lootbox-opening' : ''}`} style={{ backgroundColor: `${openingLootbox.glowColor}20` }}>
-                                <div className="relative inline-flex items-center justify-center w-48 h-48 rounded-3xl bg-gradient-to-br text-white lootbox-opening-icon" style={{ background: `linear-gradient(to bottom right, ${openingLootbox.glowColor}, ${openingLootbox.glowColor}dd)` }}>
+                                <div className="relative inline-flex items-center justify-center w-48 h-48 rounded-3xl text-white lootbox-opening-icon" style={{ background: `${openingLootbox.glowColor}dd` }}>
                                     {/* Sparkles */}
                                     {openingBox && (
                                         <>
@@ -432,7 +432,7 @@ const formatStatName = (stat: string): string => {
                                     )}
                                     
                                     {/* Burst Effect */}
-                                    {openingBox && <div className="lootbox-burst-effect" style={{ background: `radial-gradient(circle, ${openingLootbox.glowColor}80 0%, transparent 70%)` }}></div>}
+                                    {openingBox && <div className="lootbox-burst-effect" style={{ background: `${openingLootbox.glowColor}80` }}></div>}
                                     
                                     {/* Chest body (stays) */}
                                     <div className="chest-body">
@@ -479,7 +479,7 @@ const formatStatName = (stat: string): string => {
                                                 borderColor: hasBonus ? '#FFD700' : accentColor,
                                                 ...(hasBonus ? {
                                                     boxShadow: '0 0 20px rgba(255, 215, 0, 0.3), inset 0 0 20px rgba(255, 215, 0, 0.1)',
-                                                    background: darkMode ? 'linear-gradient(135deg, rgba(255, 215, 0, 0.05), rgba(31, 41, 55, 0.8))' : 'linear-gradient(135deg, rgba(255, 215, 0, 0.05), rgba(255, 255, 255, 1))'
+                                                    background: darkMode ? 'rgba(255, 215, 0, 0.05)' : 'rgba(255, 215, 0, 0.1)'
                                                 } : {})
                                             }}
                                         >
@@ -585,7 +585,7 @@ function LootboxCard({
                 }}
             >
                 {/* Burst Effect */}
-                {isOpening && <div className="lootbox-burst-effect" style={{ background: `radial-gradient(circle, ${lootbox.glowColor}40 0%, transparent 70%)` }}></div>}
+                {isOpening && <div className="lootbox-burst-effect" style={{ background: `${lootbox.glowColor}40` }}></div>}
                 
                 {/* Sparkles */}
                 {isOpening && (

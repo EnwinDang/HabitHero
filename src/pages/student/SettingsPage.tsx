@@ -470,7 +470,7 @@ function NavItem({
         style={
           active
             ? {
-              background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
+              background: `${accentColor}20`,
               color: accentColor,
               borderWidth: "1px",
               borderStyle: "solid",

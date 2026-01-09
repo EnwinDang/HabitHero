@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "../pages/LoginPage";
 import RegisterPage from "../pages/RegisterPage";
 import HomePage from "../pages/HomePage";
@@ -21,6 +21,7 @@ import TeacherModuleDetail from "../pages/teacher/ModuleDetail";
 import TeacherStudents from "../pages/teacher/Students";
 import TeacherStudentDetail from "../pages/teacher/StudentDetail";
 import TeacherProfile from "../pages/teacher/Profile";
+import TeacherSubmissions from "../pages/teacher/Submissions";
 import {
   StudentHomePage,
   DailyTasksPage,
@@ -35,6 +36,7 @@ import {
   BattlePage,
   WorldMapPage,
   CoursesPage,
+  SubmissionsPage,
 } from "../pages/student";
 import AutoBattlePage from "../pages/student/AutoBattlePage";
 
@@ -98,6 +100,7 @@ export const AppRoutes = () => {
       >
         <Route index element={<StudentHomePage />} />
         <Route path="home" element={<StudentHomePage />} />
+        <Route path="dashboard" element={<StudentHomePage />} />
         <Route path="daily-tasks" element={<DailyTasksPage />} />
         <Route path="courses-tasks">
           <Route index element={<DailyTasksPage />} />
@@ -114,6 +117,7 @@ export const AppRoutes = () => {
         <Route path="battle" element={<BattlePage />} />
         <Route path="world-map" element={<WorldMapPage />} />
         <Route path="courses" element={<CoursesPage />} />
+        <Route path="submissions" element={<SubmissionsPage />} />
       </Route>
 
       {/* Teacher Routes (Nested in TeacherLayout) */}
@@ -132,6 +136,7 @@ export const AppRoutes = () => {
         <Route path="modules/:moduleId" element={<TeacherModuleDetail />} />
         <Route path="students" element={<TeacherStudents />} />
         <Route path="students/:studentId" element={<TeacherStudentDetail />} />
+        <Route path="submissions" element={<TeacherSubmissions />} />
         <Route path="profile" element={<TeacherProfile />} />
       </Route>
     </Routes>

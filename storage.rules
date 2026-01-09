@@ -1,0 +1,34 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is a teacher
+    function isTeacher() {
+      return isAuthenticated() && 
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+    
+    // Submission evidence images
+    match /submissions/{courseId}/{moduleId}/{taskId}/{studentId}/{fileName} {
+      // Students can upload to their own folder
+      allow create: if isAuthenticated() && request.auth.uid == studentId;
+      
+      // Students can read their own submissions, teachers can read all
+      allow read: if isAuthenticated() && (request.auth.uid == studentId || isTeacher());
+      
+      // No one can update or delete (immutable evidence)
+      allow update, delete: if false;
+    }
+    
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

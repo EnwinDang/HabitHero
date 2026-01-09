@@ -172,7 +172,7 @@ export default function AchievementsPage() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl p-5 text-white">
+          <div className="bg-yellow-500 rounded-xl p-5 text-white">
             <div className="flex items-center gap-2 mb-2">
               <Trophy size={18} />
               <span className="font-medium">Unlocked</span>
@@ -186,7 +186,7 @@ export default function AchievementsPage() {
             </p>
           </div>
 
-          <div className="bg-gradient-to-br from-purple-600 to-purple-700 rounded-xl p-5 text-white">
+          <div className="bg-purple-600 rounded-xl p-5 text-white">
             <div className="flex items-center gap-2 mb-2">
               <Star size={18} />
               <span className="font-medium">XP Earned</span>
@@ -195,7 +195,7 @@ export default function AchievementsPage() {
             <p className="text-purple-200 text-sm">From achievements</p>
           </div>
 
-          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-5 text-white">
+          <div className="bg-green-600 rounded-xl p-5 text-white">
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp size={18} />
               <span className="font-medium">Your Level</span>
@@ -371,7 +371,7 @@ function AchievementCard({
             style={{
               width: `${progressPercent}%`,
               background: achievement.isUnlocked
-                ? `linear-gradient(to right, ${accentColor}, #a855f7)`
+                ? accentColor
                 : darkMode
                   ? "#4b5563"
                   : "#9ca3af",
@@ -457,7 +457,7 @@ function NavItem({
         style={
           active
             ? {
-              background: `linear-gradient(to right, ${accentColor}20, rgba(168, 85, 247, 0.1))`,
+              background: `${accentColor}20`,
               color: accentColor,
               borderWidth: "1px",
               borderStyle: "solid",
