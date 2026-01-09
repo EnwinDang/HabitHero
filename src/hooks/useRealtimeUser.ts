@@ -36,6 +36,9 @@ export function useRealtimeUser() {
           console.log("📊 Full user data:", userData);
           console.log("⭐ Stats object:", userData.stats);
           console.log("💎 XP value:", userData.stats?.xp, "Type:", typeof userData.stats?.xp);
+          console.log("🎯 Level value:", userData.stats?.level, "Type:", typeof userData.stats?.level);
+          console.log("📈 TotalXP value:", userData.stats?.totalXP, "Type:", typeof userData.stats?.totalXP);
+          console.log("⬆️ NextLevelXP value:", userData.stats?.nextLevelXP, "Type:", typeof userData.stats?.nextLevelXP);
         }
       },
       (err) => {

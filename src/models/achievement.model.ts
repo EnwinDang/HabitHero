@@ -5,6 +5,15 @@ export interface Achievement {
   category?: string | null;
   reward?: AchievementReward;
   isActive: boolean;
+  condition?: {
+    description?: string;
+    operator?: string;
+    type?: string;
+    value?: number;
+  };
+  iconLocked?: string;
+  iconUnlocked?: string;
+  icon?: string; // Fallback for frontend
 }
 
 export interface AchievementReward {

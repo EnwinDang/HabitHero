@@ -2,8 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { getCurrentLevelProgress, getLevelFromXP } from "@/utils/xpCurve";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "@/firebase";
+import { UsersAPI } from "@/api/users.api";
 import {
   ClipboardList,
   Mail,
@@ -62,8 +61,7 @@ export default function ProfilePage() {
     setSaveMessage(null);
 
     try {
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, {
+      await UsersAPI.patch(user.uid, {
         photoURL: selectedAvatar.toString(),
       });
 
@@ -138,7 +136,7 @@ export default function ProfilePage() {
                   {user.displayName}
                 </h3>
                 <p className={`text-xs ${theme.textMuted} uppercase tracking-widest mt-2`}>
-                  Level {getLevelFromXP(user.stats.xp)} Adventurer
+                  Level {user.stats?.level || 1} Adventurer
                 </p>
 
                 {/* Stats Preview */}
@@ -151,7 +149,7 @@ export default function ProfilePage() {
                   </div>
                   <div className={`${theme.inputBg} rounded-lg p-2`}>
                     <p className="font-bold" style={theme.accentText}>
-                      {getCurrentLevelProgress(user.stats.xp, getLevelFromXP(user.stats.xp)).current}
+                      {user.stats?.xp || 0}
                     </p>
                     <p className={`${theme.textSubtle} text-xs`}>XP</p>
                   </div>

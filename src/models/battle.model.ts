@@ -2,6 +2,8 @@
 
 import type { ElementType } from "./worldMap.model";
 
+import type { MonsterTier } from "./monster.model";
+
 export interface BattleEnemy {
     id: string;
     name: string;
@@ -15,6 +17,7 @@ export interface BattleEnemy {
     emoji: string;
     realmId: string;
     levelId: number;
+    tier?: MonsterTier;
 }
 
 export interface BattlePlayer {

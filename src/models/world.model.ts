@@ -5,6 +5,7 @@ export interface World {
   description?: string | null;
   order: number;
   isActive: boolean;
+  requiredLevel?: number; // Minimum level required to unlock this world
 
   // Optional game fields used in admin UI
   element?: string | null;
