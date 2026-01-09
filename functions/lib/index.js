@@ -459,15 +459,18 @@ app.get("/tasks/:taskId/submissions", requireAuth, async (req, res) => {
             .collection("tasks")
             .doc(taskId)
             .collection("submissions");
-        let query = submissionsRef;
-        if (status && typeof status === "string" && SUBMISSION_STATUS.includes(status)) {
-            query = query.where("status", "==", status);
-        }
+        // Haal alle submissions op (geen index nodig)
+        const snap = await submissionsRef.get();
+        let submissions = snap.docs.map((doc) => ({ submissionId: doc.id, ...doc.data() }));
+        // Filter in memory
         if (role === "student") {
-            query = query.where("studentId", "==", uid);
+            submissions = submissions.filter((s) => s.studentId === uid);
         }
-        const snap = await query.orderBy("createdAt", "desc").get();
-        const submissions = snap.docs.map((doc) => ({ submissionId: doc.id, ...doc.data() }));
+        if (status && typeof status === "string" && SUBMISSION_STATUS.includes(status)) {
+            submissions = submissions.filter((s) => s.status === status);
+        }
+        // Sorteer op createdAt descending
+        submissions.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         return res.status(200).json(submissions);
     }
     catch (e) {

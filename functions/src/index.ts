@@ -489,16 +489,20 @@ app.get("/tasks/:taskId/submissions", requireAuth, async (req, res) => {
       .doc(taskId)
       .collection("submissions");
 
-    let query: FirebaseFirestore.Query = submissionsRef;
-    if (status && typeof status === "string" && SUBMISSION_STATUS.includes(status as any)) {
-      query = query.where("status", "==", status);
-    }
-    if (role === "student") {
-      query = query.where("studentId", "==", uid);
-    }
+      // Haal alle submissions op (geen index nodig)
+      const snap = await submissionsRef.get();
+      let submissions = snap.docs.map((doc) => ({ submissionId: doc.id, ...doc.data() }));
 
-    const snap = await query.orderBy("createdAt", "desc").get();
-    const submissions = snap.docs.map((doc) => ({ submissionId: doc.id, ...doc.data() }));
+      // Filter in memory
+      if (role === "student") {
+        submissions = submissions.filter((s: any) => s.studentId === uid);
+      }
+      if (status && typeof status === "string" && SUBMISSION_STATUS.includes(status as any)) {
+        submissions = submissions.filter((s: any) => s.status === status);
+      }
+
+      // Sorteer op createdAt descending
+      submissions.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
 
     return res.status(200).json(submissions);
   } catch (e: any) {
