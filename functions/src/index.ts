@@ -211,75 +211,16 @@ app.get("/auth/me", requireAuth, async (req, res) => {
 /**
  * GET /tasks
  */
-app.get("/tasks", async (req, res) => {
+app.get("/tasks", requireAuth, async (req, res) => {
   try {
-    const { courseId, moduleId, activeOnly } = req.query;
-    let tasks = [];
+    const uid = (req as any).user.uid;
+    const tasksRef = db.collection("users").doc(uid).collection("tasks");
+    const snap = await tasksRef.get();
 
-    if (courseId) {
-      // First, try new collection
-      let query = db.collection("tasks").where('courseId', '==', courseId);
-      if (activeOnly === 'true') {
-        query = query.where('isActive', '==', true);
-      }
-      if (moduleId) {
-        query = query.where('moduleId', '==', moduleId);
-      }
-      const snap = await query.get();
-      tasks = snap.docs.map((doc) => ({
-        taskId: doc.id,
-        ...doc.data(),
-      }));
-
-      // If no tasks, try old locations
-      if (tasks.length === 0) {
-        // Try courses/courseId/tasks
-        let oldQuery: any = db.collection("courses").doc(courseId as string).collection("tasks");
-        if (activeOnly === 'true') {
-          oldQuery = oldQuery.where('isActive', '==', true);
-        }
-        const oldSnap = await oldQuery.get();
-        const oldTasks = oldSnap.docs.map((doc) => ({
-          taskId: doc.id,
-          ...doc.data(),
-        }));
-        tasks = [...tasks, ...oldTasks];
-
-        // Also try modules
-        const modulesSnap = await db.collection("courses").doc(courseId as string).collection("modules").get();
-        for (const moduleDoc of modulesSnap.docs) {
-          const moduleTasksSnap = await moduleDoc.ref.collection("tasks").get();
-          const moduleTasks = moduleTasksSnap.docs.map((doc) => ({
-            taskId: doc.id,
-            ...doc.data(),
-          }));
-          tasks = [...tasks, ...moduleTasks];
-        }
-      }
-    } else {
-      // For user tasks
-      const uid = (req as any).user?.uid;
-      if (!uid) return res.status(401).json({ error: "Auth required for user tasks" });
-      let query = db.collection("tasks").where('userId', '==', uid);
-      if (activeOnly === 'true') {
-        query = query.where('isActive', '==', true);
-      }
-      const snap = await query.get();
-      tasks = snap.docs.map((doc) => ({
-        taskId: doc.id,
-        ...doc.data(),
-      }));
-
-      // Also try old user tasks
-      if (tasks.length === 0) {
-        const oldSnap = await db.collection("users").doc(uid).collection("tasks").get();
-        const oldTasks = oldSnap.docs.map((doc) => ({
-          taskId: doc.id,
-          ...doc.data(),
-        }));
-        tasks = [...tasks, ...oldTasks];
-      }
-    }
+    const tasks = snap.docs.map((doc) => ({
+      taskId: doc.id,
+      ...doc.data(),
+    }));
 
     return res.status(200).json(tasks);
   } catch (e: any) {
@@ -294,9 +235,10 @@ app.get("/tasks", async (req, res) => {
 app.post("/tasks", requireAuth, async (req, res) => {
   try {
     const uid = (req as any).user.uid;
-    const { title, description, difficulty, xp, gold, dueAt, isRepeatable, courseId, moduleId, achievementTag } = req.body;
+    const { title, description, difficulty, xp, gold, dueAt, isRepeatable } = req.body;
 
-    const newTaskRef = db.collection("tasks").doc();
+    const tasksRef = db.collection("users").doc(uid).collection("tasks");
+    const newTaskRef = tasksRef.doc();
 
     const task = {
       title,
@@ -309,10 +251,6 @@ app.post("/tasks", requireAuth, async (req, res) => {
       isActive: true,
       createdAt: Date.now(),
       completedAt: null,
-      courseId: courseId || null,
-      moduleId: moduleId || null,
-      achievementTag: achievementTag || null,
-      userId: courseId ? null : uid, // For user tasks
     };
 
     await newTaskRef.set(task);
@@ -330,11 +268,17 @@ app.post("/tasks", requireAuth, async (req, res) => {
 /**
  * GET /tasks/{taskId}
  */
-app.get("/tasks/:taskId", async (req, res) => {
+app.get("/tasks/:taskId", requireAuth, async (req, res) => {
   try {
+    const uid = (req as any).user.uid;
     const { taskId } = req.params;
 
-    const taskSnap = await db.collection("tasks").doc(taskId).get();
+    const taskSnap = await db
+      .collection("users")
+      .doc(uid)
+      .collection("tasks")
+      .doc(taskId)
+      .get();
 
     if (!taskSnap.exists) {
       return res.status(404).json({ error: "Task not found" });
@@ -355,9 +299,14 @@ app.get("/tasks/:taskId", async (req, res) => {
  */
 app.patch("/tasks/:taskId", requireAuth, async (req, res) => {
   try {
+    const uid = (req as any).user.uid;
     const { taskId } = req.params;
 
-    const taskRef = db.collection("tasks").doc(taskId);
+    const taskRef = db
+      .collection("users")
+      .doc(uid)
+      .collection("tasks")
+      .doc(taskId);
 
     await taskRef.update({
       ...req.body,
@@ -1667,15 +1616,29 @@ app.get("/leaderboards/global", async (req, res) => {
 
 /**
  * GET /courses
+ * Teachers can only see their own courses (createdBy = uid)
+ * Students and admins can see all courses
  */
-app.get("/courses", async (req, res) => {
+app.get("/courses", requireAuth, async (req, res) => {
   try {
+    const uid = (req as any).user.uid;
     const activeOnly = req.query.activeOnly === "true";
+    
+    // Get user role
+    const userSnap = await db.collection("users").doc(uid).get();
+    const userData = userSnap.data();
+    const userRole = userData?.role || "student";
+    
     const coursesRef = db.collection("courses");
-    let query = coursesRef;
+    let query: any = coursesRef;
+    
+    // Teachers can only see their own courses
+    if (userRole === "teacher") {
+      query = query.where("createdBy", "==", uid);
+    }
     
     if (activeOnly) {
-      query = query.where("isActive", "==", true) as any;
+      query = query.where("isActive", "==", true);
     }
 
     const snap = await query.get();
@@ -1693,12 +1656,15 @@ app.get("/courses", async (req, res) => {
 
 /**
  * POST /courses
+ * Automatically set createdBy to the authenticated user's uid
  */
 app.post("/courses", requireAuth, async (req, res) => {
   try {
+    const uid = (req as any).user.uid;
     const newCourseRef = db.collection("courses").doc();
     const course = {
       ...req.body,
+      createdBy: uid,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -1738,13 +1704,32 @@ app.get("/courses/:courseId", async (req, res) => {
 
 /**
  * PUT /courses/:courseId
+ * Teachers can only modify their own courses
  */
 app.put("/courses/:courseId", requireAuth, async (req, res) => {
   try {
+    const uid = (req as any).user.uid;
     const { courseId } = req.params;
     const courseRef = db.collection("courses").doc(courseId);
+    
+    // Check if course exists and user has permission
+    const courseSnap = await courseRef.get();
+    if (!courseSnap.exists) {
+      return res.status(404).json({ error: "Course not found" });
+    }
+    
+    const courseData = courseSnap.data();
+    const userSnap = await db.collection("users").doc(uid).get();
+    const userRole = userSnap.data()?.role || "student";
+    
+    // Only creator or admin can modify
+    if (userRole !== "admin" && courseData?.createdBy !== uid) {
+      return res.status(403).json({ error: "Not authorized to modify this course" });
+    }
+    
     const course = {
       ...req.body,
+      createdBy: courseData?.createdBy || uid,
       updatedAt: Date.now(),
     };
     await courseRef.set(course, { merge: false });
@@ -1761,11 +1746,29 @@ app.put("/courses/:courseId", requireAuth, async (req, res) => {
 
 /**
  * PATCH /courses/:courseId
+ * Teachers can only modify their own courses
  */
 app.patch("/courses/:courseId", requireAuth, async (req, res) => {
   try {
+    const uid = (req as any).user.uid;
     const { courseId } = req.params;
     const courseRef = db.collection("courses").doc(courseId);
+    
+    // Check if course exists and user has permission
+    const courseSnap = await courseRef.get();
+    if (!courseSnap.exists) {
+      return res.status(404).json({ error: "Course not found" });
+    }
+    
+    const courseData = courseSnap.data();
+    const userSnap = await db.collection("users").doc(uid).get();
+    const userRole = userSnap.data()?.role || "student";
+    
+    // Only creator or admin can modify
+    if (userRole !== "admin" && courseData?.createdBy !== uid) {
+      return res.status(403).json({ error: "Not authorized to modify this course" });
+    }
+    
     await courseRef.update({
       ...req.body,
       updatedAt: Date.now(),
@@ -1784,11 +1787,30 @@ app.patch("/courses/:courseId", requireAuth, async (req, res) => {
 
 /**
  * DELETE /courses/:courseId
+ * Teachers can only delete their own courses
  */
 app.delete("/courses/:courseId", requireAuth, async (req, res) => {
   try {
+    const uid = (req as any).user.uid;
     const { courseId } = req.params;
-    await db.collection("courses").doc(courseId).delete();
+    const courseRef = db.collection("courses").doc(courseId);
+    
+    // Check if course exists and user has permission
+    const courseSnap = await courseRef.get();
+    if (!courseSnap.exists) {
+      return res.status(404).json({ error: "Course not found" });
+    }
+    
+    const courseData = courseSnap.data();
+    const userSnap = await db.collection("users").doc(uid).get();
+    const userRole = userSnap.data()?.role || "student";
+    
+    // Only creator or admin can delete
+    if (userRole !== "admin" && courseData?.createdBy !== uid) {
+      return res.status(403).json({ error: "Not authorized to delete this course" });
+    }
+    
+    await courseRef.delete();
     return res.status(200).json({ success: true });
   } catch (e: any) {
     console.error("Error in DELETE /courses/:courseId:", e);
@@ -2881,32 +2903,7 @@ app.delete("/monsters/:monsterId", requireAuth, async (req, res) => {
  */
 app.get("/lootboxes", async (req, res) => {
   try {
-    // We gebruiken de requireAuth middleware logica of checken het token direct
-    const header = req.headers.authorization || "";
-    const token = header.split(" ")[1];
-    
-    let isAdmin = false;
-
-    if (token) {
-      try {
-        const decodedToken = await admin.auth().verifyIdToken(token);
-        const userDoc = await db.collection("users").doc(decodedToken.uid).get();
-        isAdmin = userDoc.data()?.role === 'admin';
-      } catch (e) {
-        // Token ongeldig of geen gebruiker gevonden, we gaan uit van een 'gast' of student
-        isAdmin = false;
-      }
-    }
-
-    //Bouw de query op basis van de rol
-    let query: admin.firestore.Query = db.collection("lootboxes");
-
-    // Als de gebruiker GEEN admin is, filter dan streng op 'enable == true'
-    if (!isAdmin) {
-      query = query.where("enable", "==", true);
-    }
-
-    const lootboxesSnap = await query.get();
+    const lootboxesSnap = await db.collection("lootboxes").where("enable", "==", true).get();
     const lootboxes = lootboxesSnap.docs.map((doc) => ({
       lootboxId: doc.id,
       ...doc.data(),
@@ -2922,49 +2919,21 @@ app.get("/lootboxes", async (req, res) => {
 /**
  * POST /lootboxes
  */
-/**
- * POST /lootboxes/:lootboxId/open
- */
-app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
+app.post("/lootboxes", requireAuth, async (req, res) => {
   try {
-    const uid = (req as any).user.uid;
-    const { lootboxId } = req.params;
-    const { count = 1 } = req.body;
+    const lootboxRef = db.collection("lootboxes").doc();
+    const lootbox = {
+      ...req.body,
+      createdAt: Date.now(),
+    };
+    await lootboxRef.set(lootbox);
 
-    // Haal de lootbox configuratie op
-    const lootboxSnap = await db.collection("lootboxes").doc(lootboxId).get();
-    if (!lootboxSnap.exists) {
-      return res.status(404).json({ error: "Lootbox niet gevonden" });
-    }
-    const lootbox = lootboxSnap.data() as any;
-
-    // beveiliging controleer of de box beschikbaar is
-    // We checken de rol van de gebruiker die in de requireAuth middleware is gezet
-    const requesterRef = await db.collection("users").doc(uid).get();
-    const isAdmin = requesterRef.data()?.role === 'admin';
-
-    if (!lootbox.enable && !isAdmin) {
-      return res.status(403).json({ 
-        error: "Deze lootbox is momenteel niet beschikbaar voor studenten." 
-      });
-    }
-
-    //Haal de gebruiker op en controleer het goud
-    const userRef = db.collection("users").doc(uid);
-    const userSnap = await userRef.get();
-    const user = userSnap.data() as any;
-    
-    const totalCost = (lootbox.priceGold || 0) * count;
-    const currentGold = user.stats?.gold || 0;
-
-    if (currentGold < totalCost) {
-      return res.status(400).json({ 
-        error: `Onvoldoende goud. Nodig: ${totalCost}, je hebt: ${currentGold}` 
-      });
-    }
-
+    return res.status(201).json({
+      lootboxId: lootboxRef.id,
+      ...lootbox,
+    });
   } catch (e: any) {
-    console.error("Fout in POST /lootboxes/:lootboxId/open:", e);
+    console.error("Error in POST /lootboxes:", e);
     return res.status(500).json({ error: e?.message });
   }
 });

@@ -13,6 +13,8 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc,
+  query,
+  where,
 } from 'firebase/firestore';
 
 // UI format types
@@ -190,17 +192,11 @@ export function useCourses() {
       setLoading(true);
       setError(null);
       
-      // Check cache first
+      // Clear cache to ensure fresh data for current user (teachers should only see their courses)
       const cacheKey = cacheKeys.courses();
-      const cached = cache.get<UICourse[]>(cacheKey);
-      if (cached !== null && cached !== undefined) {
-        console.log('📦 Cache hit for courses');
-        setCourses(cached);
-        setLoading(false);
-        return;
-      }
+      cache.delete(cacheKey);
       
-      console.log('🌐 Cache miss, fetching courses...');
+      console.log('🌐 Fetching courses...');
       
       // Try API first, fallback to Firestore if API is not available
       let coursesList: any[] = [];
@@ -268,10 +264,34 @@ export function useCourses() {
         console.warn('⚠️ [FALLBACK] API unavailable, falling back to Firestore:', apiErr.message);
         console.log('🔄 [FALLBACK] Fetching courses from Firestore...');
         
-        // Get all courses from Firestore
+        // Get current user and role for filtering
+        const { auth } = await import('../firebase');
+        const currentUser = auth.currentUser;
+        let userRole = 'student';
+        
+        if (currentUser) {
+          try {
+            const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+            userRole = userDoc.data()?.role || 'student';
+          } catch (err) {
+            console.error('Error fetching user role:', err);
+          }
+        }
+        
+        // Get courses from Firestore - filter by createdBy if user is a teacher
         const coursesRef = collection(db, 'courses');
-        const coursesSnapshot = await getDocs(coursesRef);
-        console.log(`✅ [FALLBACK] Loaded ${coursesSnapshot.size} courses from Firestore`);
+        let coursesSnapshot;
+        
+        if (userRole === 'teacher' && currentUser) {
+          // Teachers only see their own courses
+          const teacherQuery = query(coursesRef, where('createdBy', '==', currentUser.uid));
+          coursesSnapshot = await getDocs(teacherQuery);
+          console.log(`✅ [FALLBACK] Loaded ${coursesSnapshot.size} courses for teacher from Firestore`);
+        } else {
+          // Students and admins see all courses
+          coursesSnapshot = await getDocs(coursesRef);
+          console.log(`✅ [FALLBACK] Loaded ${coursesSnapshot.size} courses from Firestore`);
+        }
         
         // Map all courses first (without task data)
         const coursePromises = coursesSnapshot.docs.map(async (courseDoc) => {

@@ -486,7 +486,7 @@ const formatStatName = (stat: string): string => {
                                                     </div>
                                                     {hasBonus && (
                                                         <div className="mt-2 text-xs space-y-1">
-                                                            {Object.entries(item.bonus).map(([stat, value]) => {
+                                                            {Object.entries(item.bonus || {}).map(([stat, value]) => {
                                                                 const isPercentage = stat.toLowerCase().includes('chance') || stat.toLowerCase().includes('damage');
                                                                 const displayValue = typeof value === 'number' ? value.toFixed(isPercentage ? 1 : 0) : value;
                                                                 const formattedStatName = formatStatName(stat);
