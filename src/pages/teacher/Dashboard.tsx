@@ -1,10 +1,11 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Users, Zap, BarChart3, CheckCircle2, ArrowRight, BookOpen, GraduationCap } from 'lucide-react';
+import { Users, BarChart3, FileText, ArrowRight, BookOpen, GraduationCap } from 'lucide-react';
 import { useCourses } from '../../store/courseStore';
 import { useAuth } from '../../context/AuthContext';
 import { useEffect, useState, useMemo } from 'react';
 import { loadTeacherDashboard, type TeacherDashboard } from '../../services/teacherDashboard.service';
+import { SubmissionsAPI } from '../../api/submissions.api';
 import { cache, cacheKeys } from '../../utils/cache';
 
 // Activities will be fetched from backend in the future
@@ -214,10 +215,6 @@ function CourseOverviewCard({ courseId, courseData, courseInfo, delay = 0, onVie
             {totalModules} modules • {String(totalTasks)} exercises
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 14 }}>
-          <span style={{ color: 'var(--hh-muted)', width: 96 }}>Avg XP:</span>
-          <span style={{ fontWeight: 650 }}>{overview.averageXP || 0} XP</span>
-        </div>
       </div>
 
       <div style={{ marginBottom: 24 }}>
@@ -226,21 +223,6 @@ function CourseOverviewCard({ courseId, courseData, courseInfo, delay = 0, onVie
           label="Average Completion"
           size="lg"
         />
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 24 }}>
-        <div style={{ padding: '14px 12px', borderRadius: 12, background: 'rgba(74, 222, 128, 0.10)', textAlign: 'center' }}>
-          <p style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 850, color: 'rgb(21, 128, 61)', marginBottom: 4 }}>
-            {overview.modulesCompleted || 0}
-          </p>
-          <p style={{ fontSize: 11, color: 'var(--hh-muted)' }}>Modules Completed</p>
-        </div>
-        <div style={{ padding: '14px 12px', borderRadius: 12, background: 'rgba(59, 130, 246, 0.10)', textAlign: 'center' }}>
-          <p style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 850, color: 'rgb(29, 78, 216)', marginBottom: 4 }}>
-            {overview.tasksCompletedToday || 0}
-          </p>
-          <p style={{ fontSize: 11, color: 'var(--hh-muted)' }}>Tasks Today</p>
-        </div>
       </div>
 
       <button
@@ -267,6 +249,7 @@ export default function Dashboard() {
   const [dashboardData, setDashboardData] = useState<TeacherDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
 
   // Fetch teacher dashboard data
   useEffect(() => {
@@ -286,6 +269,15 @@ export default function Dashboard() {
         setError(null);
         const data = await loadTeacherDashboard(firebaseUser.uid);
         setDashboardData(data);
+        
+        // Load pending submissions count
+        try {
+          const pendingSubs = await SubmissionsAPI.listForTeacher('pending');
+          setPendingCount(pendingSubs.length);
+        } catch (err) {
+          console.warn('Failed to load pending submissions count:', err);
+          setPendingCount(0);
+        }
       } catch (err) {
         console.error('Error loading dashboard:', err);
         setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
@@ -340,21 +332,19 @@ export default function Dashboard() {
     };
   }, [dashboardData]);
 
-  // Get courses to display (from dashboard data, limit to 2)
+  // Get courses to display (from dashboard data, show all)
   const coursesToDisplay = useMemo(() => {
     if (!dashboardData?.managedCourses) return [];
     
     const courseEntries = Object.entries(dashboardData.managedCourses);
-    return courseEntries.slice(0, 2).map(([courseId, courseData]) => {
+    return courseEntries.map(([courseId, courseData]) => {
       // Try to find matching course info from courseStore
       const courseInfo = courses.find(c => c.id === courseId);
       return { courseId, courseData, courseInfo };
     });
   }, [dashboardData, courses]);
 
-  const hasMoreCourses = dashboardData?.managedCourses 
-    ? Object.keys(dashboardData.managedCourses).length > 2 
-    : false;
+  const hasMoreCourses = false;
 
   if (loading) {
     return (
@@ -387,16 +377,8 @@ export default function Dashboard() {
     <div className="hh-page" style={{ display: 'grid', gap: 16 }}>
       <div>
         <div className="hh-label">Dashboard</div>
-        <div className="hh-title" style={{ marginTop: 8 }}>
-          Dashboard
-        </div>
         <div className="hh-hint" style={{ marginTop: 8 }}>
           Overview
-          {user?.role && (
-            <span style={{ marginLeft: 12, padding: '4px 8px', borderRadius: 6, background: 'rgba(75, 74, 239, 0.10)', color: 'var(--hh-indigo)', fontSize: 11, fontWeight: 650 }}>
-              Role: {user.role}
-            </span>
-          )}
         </div>
       </div>
 
@@ -411,27 +393,19 @@ export default function Dashboard() {
           delay={0}
         />
         <KPICard
-          title="Average XP"
-          value={kpis.averageXP}
-          subtitle="Class average"
-          icon={Zap}
-          variant="gold"
-          delay={0.1}
-        />
-        <KPICard
           title="Module Completion"
           value={`${kpis.avgCompletionRate}%`}
           subtitle="Overall progress"
           icon={BarChart3}
           variant="success"
-          delay={0.2}
+          delay={0.1}
         />
         <KPICard
-          title="Tasks Today"
-          value={kpis.tasksCompletedToday}
-          subtitle="Completed today"
-          icon={CheckCircle2}
-          delay={0.3}
+          title="Submissions to Review"
+          value={pendingCount}
+          subtitle="Pending submissions"
+          icon={FileText}
+          delay={0.2}
         />
       </div>
 

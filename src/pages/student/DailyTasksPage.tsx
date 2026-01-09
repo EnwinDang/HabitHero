@@ -63,6 +63,7 @@ export default function DailyTasksPage() {
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [submissions, setSubmissions] = useState<Record<string, Submission>>({});
+    const [moduleProgress, setModuleProgress] = useState<Record<string, { completed: number; total: number }>>({});
 
     useEffect(() => {
         loadCoursesAndTasks();
@@ -185,6 +186,51 @@ export default function DailyTasksPage() {
             setTasks([]);
         }
     }
+
+    // Compute module progress for all modules when course or modules change
+    useEffect(() => {
+        if (!selectedCourse || modules.length === 0 || !firebaseUser) return;
+
+        async function computeModuleProgress() {
+            const progress: Record<string, { completed: number; total: number }> = {};
+
+            for (const module of modules) {
+                try {
+                    // Load tasks for this module
+                    const tasksRef = collection(db, `courses/${selectedCourse!.courseId}/modules/${module.moduleId}/tasks`);
+                    const snapshot = await getDocs(tasksRef);
+                    const moduleTasks = snapshot.docs.map(doc => ({ taskId: doc.id, ...doc.data() })) as Task[];
+
+                    if (moduleTasks.length === 0) {
+                        progress[module.moduleId] = { completed: 0, total: 0 };
+                        continue;
+                    }
+
+                    // Load submissions for this student
+                    const latestSubs = await SubmissionsAPI.listLatestByTasks(
+                        moduleTasks.map((t) => t.taskId),
+                        selectedCourse!.courseId,
+                        module.moduleId
+                    );
+
+                    // Count approved submissions
+                    const approvedCount = Object.values(latestSubs).filter((sub: Submission) => sub.status === 'approved').length;
+
+                    progress[module.moduleId] = {
+                        completed: approvedCount,
+                        total: moduleTasks.length,
+                    };
+                } catch (err) {
+                    console.warn(`Failed to compute progress for module ${module.moduleId}:`, err);
+                    progress[module.moduleId] = { completed: 0, total: 0 };
+                }
+            }
+
+            setModuleProgress(progress);
+        }
+
+        computeModuleProgress();
+    }, [selectedCourse, modules, firebaseUser, submissions]);
 
     async function handleEnrollCourse(course: Course) {
         if (!firebaseUser) return;
@@ -350,10 +396,10 @@ export default function DailyTasksPage() {
             setSubmissions(prev => ({ ...prev, [submissionModal.taskId]: submission }));
             
             setSubmissionModal(null);
-            alert("Evidence submitted! Waiting for teacher approval.");
+            console.log("✅ Evidence submitted! Waiting for teacher approval.");
         } catch (error) {
             console.error("Error submitting evidence:", error);
-            alert("Error submitting evidence. Please try again.");
+            console.error("❌ Error submitting evidence. Please try again.");
         } finally {
             setUploadingImage(false);
         }
@@ -679,33 +725,57 @@ export default function DailyTasksPage() {
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                             {sortedModules.map((module) => (
-                                <button
-                                    key={module.moduleId}
-                                    onClick={() => selectModule(module)}
-                                    className={`${theme.card} rounded-xl p-4 text-left transition-all hover:scale-105`}
-                                    style={{
-                                        ...theme.borderStyle,
-                                        borderWidth: '2px',
-                                        borderStyle: 'solid',
-                                        borderColor: selectedModule?.moduleId === module.moduleId ? accentColor : 'transparent',
-                                        backgroundColor: selectedModule?.moduleId === module.moduleId 
-                                            ? `${accentColor}10` 
-                                            : undefined
-                                    }}
-                                >
-                                    <div className="flex items-start gap-3">
-                                        <div className="flex-1 min-w-0">
-                                            <h4 className={`font-bold ${theme.text} mb-1 truncate`}>
-                                                {module.title}
-                                            </h4>
-                                            {module.description && (
-                                                <p className={`text-xs ${theme.textSubtle} line-clamp-2`}>
-                                                    {module.description}
-                                                </p>
-                                            )}
+                                <div key={module.moduleId}>
+                                    <button
+                                        onClick={() => selectModule(module)}
+                                        className={`${theme.card} rounded-xl p-4 text-left transition-all hover:scale-105`}
+                                        style={{
+                                            ...theme.borderStyle,
+                                            borderWidth: '2px',
+                                            borderStyle: 'solid',
+                                            borderColor: selectedModule?.moduleId === module.moduleId ? accentColor : 'transparent',
+                                            backgroundColor: selectedModule?.moduleId === module.moduleId
+                                                ? `${accentColor}10`
+                                                : undefined,
+                                            width: '100%'
+                                        }}
+                                    >
+                                        <div className="flex items-start gap-3 mb-3">
+                                            <div className="flex-1 min-w-0">
+                                                <h4 className={`font-bold ${theme.text} mb-1 truncate`}>
+                                                    {module.title}
+                                                </h4>
+                                                {module.description && (
+                                                    <p className={`text-xs ${theme.textSubtle} line-clamp-2`}>
+                                                        {module.description}
+                                                    </p>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                </button>
+                                        {/* Progress bar for module */}
+                                        {moduleProgress[module.moduleId] && moduleProgress[module.moduleId].total > 0 && (
+                                            <div className="mt-2">
+                                                <div className="flex justify-between text-xs mb-1">
+                                                    <span className={theme.textMuted}>Progress</span>
+                                                    <span style={{ color: accentColor }}>
+                                                        {moduleProgress[module.moduleId].completed}/{moduleProgress[module.moduleId].total}
+                                                    </span>
+                                                </div>
+                                                <div
+                                                    className={`h-2 rounded-full overflow-hidden ${darkMode ? "bg-gray-800" : "bg-gray-200"}`}
+                                                >
+                                                    <div
+                                                        className="h-full rounded-full transition-all"
+                                                        style={{
+                                                            width: `${(moduleProgress[module.moduleId].completed / moduleProgress[module.moduleId].total) * 100}%`,
+                                                            backgroundColor: accentColor,
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </button>
+                                </div>
                             ))}
                         </div>
                     </div>

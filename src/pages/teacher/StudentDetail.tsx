@@ -5,6 +5,8 @@ import { useCourses } from "../../store/courseStore";
 import { useAuth } from "../../context/AuthContext";
 import { useEffect, useState } from "react";
 import { loadCourseStudents } from "../../services/teacherDashboard.service";
+import { SubmissionsAPI } from "../../api/submissions.api";
+import { TasksAPI } from "../../api/tasks.api";
 
 interface StatusBadgeProps {
   variant: string;
@@ -106,10 +108,51 @@ export default function StudentDetail() {
 
         const studentInfo = studentsData[studentId];
         
-        // Calculate total tasks from course modules
-        const totalTasks = currentCourse.modules?.reduce((sum, m) => sum + (m.exercises || 0), 0) || 0;
+        // Load all tasks for real completion calculation
+        const allTasks: any[] = [];
+        if (currentCourse.modules) {
+          for (const module of currentCourse.modules) {
+            try {
+              const tasks = await TasksAPI.list({
+                courseId: currentCourse.id,
+                moduleId: module.id,
+              });
+              allTasks.push(...tasks.map(t => ({ ...t, moduleId: module.id })));
+            } catch (err) {
+              console.warn(`Failed to load tasks for module ${module.id}:`, err);
+            }
+          }
+        }
+        
+        const totalTasks = allTasks.length;
+        
+        // Calculate real approved count for this student
+        let approvedCount = 0;
+        for (const task of allTasks) {
+          try {
+            const submissions = await SubmissionsAPI.list(
+              task.taskId,
+              currentCourse.id,
+              task.moduleId
+            );
+            
+            const studentSubmissions = (submissions as any[]).filter(
+              s => s.studentId === studentId
+            );
+            
+            if (studentSubmissions.length > 0) {
+              const latest = studentSubmissions[0];
+              if (latest.status === 'approved') {
+                approvedCount++;
+              }
+            }
+          } catch (err) {
+            console.warn(`Failed to check submissions for task ${task.taskId}:`, err);
+          }
+        }
+        
         const completionPercent = totalTasks > 0 
-          ? Math.round((studentInfo.tasksCompleted / totalTasks) * 100) 
+          ? Math.round((approvedCount / totalTasks) * 100) 
           : 0;
         
         // Determine status
@@ -123,21 +166,57 @@ export default function StudentDetail() {
         // Calculate level from XP
         const xpLevel = Math.floor(studentInfo.totalXP / 100) + 1;
         
-        // Build module progress from course modules, sorted alphabetically
-        const modules: ModuleProgress[] = (currentCourse.modules || [])
-          .map(module => {
-            // For now, we'll estimate based on overall completion
-            // In a real implementation, you'd fetch task completion per module
-            const moduleTasks = module.exercises || 0;
-            const completed = Math.round((completionPercent / 100) * moduleTasks);
+        // Build real module progress from actual submissions
+        const modules: ModuleProgress[] = [];
+        
+        for (const module of (currentCourse.modules || [])) {
+          try {
+            const tasks = await TasksAPI.list({
+              courseId: currentCourse.id,
+              moduleId: module.id,
+            });
             
-            return {
+            let moduleApprovedCount = 0;
+            for (const task of tasks) {
+              try {
+                const submissions = await SubmissionsAPI.list(
+                  task.taskId,
+                  currentCourse.id,
+                  module.id
+                );
+                
+                const studentSubmissions = (submissions as any[]).filter(
+                  s => s.studentId === studentId
+                );
+                
+                if (studentSubmissions.length > 0) {
+                  const latest = studentSubmissions[0];
+                  if (latest.status === 'approved') {
+                    moduleApprovedCount++;
+                  }
+                }
+              } catch (err) {
+                console.warn(`Failed to check submissions for task ${task.taskId}:`, err);
+              }
+            }
+            
+            modules.push({
               name: module.name,
-              completed: completed,
-              total: moduleTasks,
-            };
-          })
-          .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+              completed: moduleApprovedCount,
+              total: tasks.length,
+            });
+          } catch (err) {
+            console.warn(`Failed to load tasks for module ${module.id}:`, err);
+            modules.push({
+              name: module.name,
+              completed: 0,
+              total: 0,
+            });
+          }
+        }
+        
+        // Sort modules alphabetically
+        modules.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
         
         // Timeline would need to come from task completion history
         // For now, we'll show an empty timeline
