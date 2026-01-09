@@ -106,7 +106,7 @@ const WorldList: React.FC = () => {
             onClick={loadData}
             className="px-6 py-3 bg-rose-500 text-white rounded-xl hover:bg-rose-600 transition-all font-semibold"
           >
-            🔄 Retry Loading
+             Retry Loading
           </button>
         </div>
       ) : (
