@@ -40,10 +40,10 @@ async function calculateLevelFromXP(totalXP: number): Promise<{
     const levelsData = levelsSnap.data() || {};
     // Support both 'levels' array and 'value' array structures
     let levels = levelsData.levels || levelsData.value || [];
-    
+
     // Filter out null entries (entry 0 is often null in Firestore arrays)
     levels = levels.filter((level: any) => level !== null && level !== undefined);
-    
+
     console.log(`📚 [calculateLevelFromXP] Found ${levels.length} level definitions (after filtering nulls)`);
     console.log(`📋 [calculateLevelFromXP] Levels data structure:`, {
       hasLevelsData: !!levelsData,
@@ -70,20 +70,20 @@ async function calculateLevelFromXP(totalXP: number): Promise<{
     // Note: levels array may be 1-based (entry 0 is null), so level number = array index
     for (let i = 0; i < levels.length; i++) {
       const levelDef = levels[i];
-      
+
       // Check if levelDef has required fields
       if (!levelDef || typeof levelDef.xpRequiredTotal === 'undefined') {
         console.warn(`⚠️ [calculateLevelFromXP] Invalid level definition at index ${i}:`, levelDef);
         continue;
       }
-      
+
       // Use level field if exists, otherwise use array index + 1 (1-based)
       const levelNumber = levelDef.level !== undefined ? levelDef.level : (i + 1);
-      
+
       if (totalXP >= levelDef.xpRequiredTotal) {
         currentLevel = levelNumber;
         currentXP = totalXP - levelDef.xpRequiredTotal;
-        
+
         // Get next level XP if exists
         if (i + 1 < levels.length) {
           const nextLevelDef = levels[i + 1];
@@ -196,7 +196,7 @@ app.get("/auth/me", requireAuth, async (req, res) => {
 
     const user = snap.data();
     const lastLoginDate = user.stats?.lastLoginDate;
-    
+
     // Calculate new login streak
     let loginStreak = user.stats?.loginStreak || 0;
     let maxLoginStreak = user.stats?.maxLoginStreak || 0;
@@ -240,7 +240,7 @@ app.get("/auth/me", requireAuth, async (req, res) => {
     // Return updated user data
     const updatedSnap = await userRef.get();
     const userData = updatedSnap.data() || {};
-    
+
     return res.status(200).json(userData);
   } catch (e: any) {
     console.error("Error in /auth/me:", e);
@@ -464,7 +464,7 @@ app.post("/tasks/:taskId/submissions", requireAuth, async (req, res) => {
     const taskSnap = await taskRef.get();
     const taskData = taskSnap.data() || {};
     const existingSubmissions = taskData.submissions || {};
-    
+
     // Find existing submission by this student
     let submissionId: string | null = null;
     for (const [sid, sub] of Object.entries(existingSubmissions)) {
@@ -481,7 +481,7 @@ app.post("/tasks/:taskId/submissions", requireAuth, async (req, res) => {
 
     const now = Date.now();
     const existingSubmission = submissionId && existingSubmissions[submissionId] ? existingSubmissions[submissionId] : null;
-    
+
     const submission = {
       studentId: uid,
       imageUrl: imageUrl || null,
@@ -846,7 +846,7 @@ app.post("/tasks/:taskId/claim", requireAuth, async (req, res) => {
     const baseXP = taskData.xp || 50;
     const baseGold = taskData.gold || 10;
     const multiplier = difficultyMultipliers[difficulty] || difficultyMultipliers.medium;
-    
+
     const xpGained = Math.floor(baseXP * (multiplier.xp || 1));
     const goldGained = Math.floor(baseGold * (multiplier.gold || 1));
 
@@ -970,12 +970,12 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
       currentXP: levelData.currentXP,
       nextLevelXP: levelData.nextLevelXP,
     };
-    
+
     // Only add levelUpRewards if it exists
     if (levelUpRewards) {
       response.levelUpRewards = levelUpRewards;
     }
-    
+
     return res.status(200).json(response);
   } catch (e: any) {
     console.error("Error in POST /tasks/:taskId/complete:", e);
@@ -993,7 +993,7 @@ app.post("/users/:uid/achievements/:achievementId/claim", requireAuth, async (re
   try {
     const { uid, achievementId } = req.params;
     const requestingUid = (req as any).user.uid;
-    
+
     // Ensure user can only claim their own achievements
     if (uid !== requestingUid) {
       return res.status(403).json({ error: "Forbidden: Cannot claim achievements for other users" });
@@ -1122,23 +1122,23 @@ app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
         // Get world level from worldConfig
         const worldConfigSnap = await db.collection("worldConfig").get();
         const worldConfigs = worldConfigSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
+
         // Find world level (usually worlds are numbered 1, 2, 3, etc.)
         const worldNumber = parseInt(worldId.replace(/\D/g, '')) || 1;
         worldLevelMultiplier = 1.0 + (worldNumber - 1) * 0.1; // 10% per world level
-        
+
         // Get stage type multiplier
         const stageTypeSnap = await db.collection("worldConfig").doc("stageTypes").get();
         if (stageTypeSnap.exists) {
           const stageConfig = stageTypeSnap.data() || {};
-          
+
           // Determine stage type
           const stageStructureConfig = worldConfigs.find(c => c.id === "stageStructure");
           const stageStructure = (stageStructureConfig as any) || {};
           const bossStage = stageStructure.bossStage || 10;
           const miniBossStage = stageStructure.miniBossStage || 5;
           const eliteStages = stageStructure.eliteStages || [];
-          
+
           let stageType = "normal";
           if (stage === bossStage) {
             stageType = "boss";
@@ -1147,7 +1147,7 @@ app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
           } else if (eliteStages.includes(stage)) {
             stageType = "elite";
           }
-          
+
           // Get multiplier for this stage type
           const typeConfig = stageConfig[stageType];
           if (typeConfig && typeConfig.rewards) {
@@ -1256,29 +1256,29 @@ app.patch("/users/:uid/achievements/:achievementId", requireAuth, async (req, re
   try {
     const { uid, achievementId } = req.params;
     const requestingUid = (req as any).user.uid;
-    
+
     // Ensure user can only update their own achievements
     if (uid !== requestingUid) {
       return res.status(403).json({ error: "Forbidden: Cannot update achievements for other users" });
     }
 
     const { progress, isUnlocked, unlockedAt } = req.body;
-    
+
     if (progress === undefined && isUnlocked === undefined) {
       return res.status(400).json({ error: "At least one of 'progress' or 'isUnlocked' must be provided" });
     }
 
     const achievementRef = db.collection("users").doc(uid).collection("achievements").doc(achievementId);
-    
+
     // Check if document exists, if not create it
     const existingDoc = await achievementRef.get();
     const existingData = existingDoc.exists ? existingDoc.data() : {};
-    
+
     const updateData: any = {
       achievementId,
       ...existingData, // Preserve existing data
     };
-    
+
     if (progress !== undefined) updateData.progress = progress;
     if (isUnlocked !== undefined) {
       updateData.isUnlocked = isUnlocked;
@@ -1375,15 +1375,15 @@ app.post("/achievements", requireAuth, async (req, res) => {
 app.get("/users/:uid/inventory", requireAuth, async (req, res) => {
   try {
     const { uid } = req.params;
-    
+
     // Get user document for gold and other data
     const userSnap = await db.collection("users").doc(uid).get();
     const user = userSnap.data() || {};
-    
+
     // Get inventory subcollection
     const inventorySnapshot = await db.collection("users").doc(uid).collection("inventory").get();
     const items = inventorySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    
+
     // Normalize the inventory structure
     const normalizedInventory = {
       gold: user.stats?.gold || user.inventory?.gold || 0,
@@ -1391,7 +1391,7 @@ app.get("/users/:uid/inventory", requireAuth, async (req, res) => {
       materials: user.inventory?.materials || {},
       lastUpdatedAt: user.inventory?.lastUpdatedAt || Date.now()
     };
-    
+
     return res.status(200).json(normalizedInventory);
   } catch (e: any) {
     console.error("Error in GET /users/:uid/inventory:", e);
@@ -1452,10 +1452,29 @@ app.post("/users/:uid/equip", requireAuth, async (req, res) => {
       return res.status(404).json({ error: "Item not found in inventory" });
     }
 
+    // Determine item type from collection FIRST (most reliable)
+    let itemType = "weapon"; // default
+    const collection = itemInInventory.collection || "";
+
+    // Collection-based type determination ALWAYS takes priority
+    // This normalizes all weapon subtypes (sword, bow, hammer) to "weapon"
+    if (collection.includes("weapon")) {
+      itemType = "weapon";
+    } else if (collection.includes("armor")) {
+      itemType = "armor";
+    } else if (collection.includes("pet")) {
+      itemType = "pet";
+    } else if (collection.includes("arcane")) {
+      itemType = "accessory";
+    } else {
+      // Fallback to stored type only if no collection
+      itemType = itemInInventory.type || itemInInventory.itemType || "weapon";
+    }
+
     // Validate slot based on item type
-    const itemType = itemInInventory.type || itemInInventory.itemType;
     const validSlots: Record<string, string[]> = {
       weapon: ["weapon"],
+      armor: ["helmet", "chestplate", "pants", "boots"],
       helmet: ["helmet"],
       chestplate: ["chestplate"],
       pants: ["pants"],
@@ -1466,9 +1485,11 @@ app.post("/users/:uid/equip", requireAuth, async (req, res) => {
 
     const allowedSlots = validSlots[itemType] || [];
     if (!allowedSlots.includes(slot)) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: `Item type '${itemType}' cannot be equipped in slot '${slot}'`,
-        allowedSlots 
+        allowedSlots,
+        collection,
+        storedType: itemInInventory.type
       });
     }
 
@@ -1799,7 +1820,7 @@ app.post("/users/:uid/reroll", requireAuth, async (req, res) => {
 
     // Validate all items have same rarity
     if (rarities.size !== 1) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: "All 3 items must have the same rarity",
         rarities: Array.from(rarities)
       });
@@ -1825,7 +1846,7 @@ app.post("/users/:uid/reroll", requireAuth, async (req, res) => {
 
     // Check if user has enough gold
     if (currentGold < goldCost) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: `Not enough gold. Need ${goldCost}, have ${currentGold}`,
         required: goldCost,
         current: currentGold
@@ -1864,7 +1885,7 @@ app.post("/users/:uid/reroll", requireAuth, async (req, res) => {
         const targetRarity = rarityOrder[i];
         const multiplier = rarityMultipliers[targetRarity] || 1;
         const chance = 1 / multiplier; // Higher multiplier = lower chance
-        
+
         cumulativeChance += chance;
         if (roll <= cumulativeChance) {
           newRarity = targetRarity;
@@ -1911,7 +1932,7 @@ app.post("/users/:uid/reroll", requireAuth, async (req, res) => {
 
     // Determine if reroll was successful (upgraded)
     const upgraded = newRarity !== baseRarity;
-    
+
     // Update pity counter
     let newPityCount = userPityCount;
     if (pityEnabled) {
@@ -1925,31 +1946,31 @@ app.post("/users/:uid/reroll", requireAuth, async (req, res) => {
     // Roll for bonus stats (higher chance on reroll)
     let bonusStats = null;
     let bonusChance = (bonusSystem.bonusChance || 0) * 2; // 2x chance on reroll
-    
+
     // Guaranteed bonus if pity triggered
     if (guaranteedUpgrade && guaranteedBonusOnNext) {
       bonusChance = 1; // 100% bonus chance
     }
-    
+
     if (bonusSystem.enabled && Math.random() <= bonusChance) {
       bonusStats = {};
       const possibleBonuses = bonusSystem.possibleBonuses || {};
       const bonusTypes = Object.keys(possibleBonuses);
-      
+
       if (bonusTypes.length > 0) {
         // Higher rarity = more bonus stats
         const rarityIndex = rarityOrder.indexOf(newRarity);
         const numBonuses = Math.min(rarityIndex + 1, 3); // 1-3 bonuses
-        
+
         for (let b = 0; b < numBonuses && bonusTypes.length > 0; b++) {
           const randomIndex = Math.floor(Math.random() * bonusTypes.length);
           const bonusType = bonusTypes.splice(randomIndex, 1)[0];
-          
+
           const bonusRange = possibleBonuses[bonusType];
           const min = bonusRange?.min || 0;
           const max = bonusRange?.max || 0;
           const bonusValue = min + Math.random() * (max - min);
-          
+
           if (bonusType === "critChance" || bonusType === "critDamage") {
             bonusStats[bonusType] = Math.round(bonusValue * 1000) / 1000;
           } else {
@@ -2026,7 +2047,7 @@ app.post("/users/:uid/reroll", requireAuth, async (req, res) => {
 app.get("/game-config", async (req, res) => {
   try {
     const configSnap = await db.collection("gameConfig").get();
-    
+
     const configs: any = {};
     configSnap.docs.forEach((doc) => {
       configs[doc.id] = doc.data();
@@ -2046,7 +2067,7 @@ app.get("/game-config", async (req, res) => {
 app.get("/world-config", async (req, res) => {
   try {
     const configSnap = await db.collection("worldConfig").get();
-    
+
     const configs: any = {};
     configSnap.docs.forEach((doc) => {
       configs[doc.id] = doc.data();
@@ -2067,7 +2088,7 @@ app.get("/templates/:templateId", async (req, res) => {
   try {
     const { templateId } = req.params;
     const templateSnap = await db.collection("templates").doc(templateId).get();
-    
+
     if (!templateSnap.exists) {
       return res.status(404).json({ error: "Template not found" });
     }
@@ -2086,7 +2107,7 @@ app.get("/templates/:templateId", async (req, res) => {
 app.get("/game-rules", async (req, res) => {
   try {
     const rulesSnap = await db.collection("gameRules").doc("main").get();
-    
+
     if (!rulesSnap.exists) {
       return res.status(404).json({ error: "Game rules not found" });
     }
@@ -2105,13 +2126,13 @@ app.get("/game-rules", async (req, res) => {
 app.get("/game-rules/combat", async (req, res) => {
   try {
     const rulesSnap = await db.collection("gameRules").doc("main").get();
-    
+
     if (!rulesSnap.exists) {
       return res.status(404).json({ error: "Game rules not found" });
     }
 
     const rules = rulesSnap.data() || {};
-    
+
     return res.status(200).json({
       combatRules: rules.combatRules || {},
       caps: rules.caps || {},
@@ -2130,13 +2151,13 @@ app.get("/game-rules/combat", async (req, res) => {
 app.get("/game-rules/elements", async (req, res) => {
   try {
     const rulesSnap = await db.collection("gameRules").doc("main").get();
-    
+
     if (!rulesSnap.exists) {
       return res.status(404).json({ error: "Game rules not found" });
     }
 
     const rules = rulesSnap.data() || {};
-    
+
     return res.status(200).json(rules.elements || {});
   } catch (e: any) {
     console.error("Error in GET /game-rules/elements:", e);
@@ -2151,7 +2172,7 @@ app.get("/game-rules/elements", async (req, res) => {
 app.get("/levels/definitions", async (req, res) => {
   try {
     const levelsSnap = await db.collection("levels").doc("definitions").get();
-    
+
     if (!levelsSnap.exists) {
       return res.status(404).json({ error: "Level definitions not found" });
     }
@@ -2171,9 +2192,9 @@ app.get("/levels/:level", async (req, res) => {
   try {
     const { level } = req.params;
     const levelNum = parseInt(level);
-    
+
     const levelsSnap = await db.collection("levels").doc("definitions").get();
-    
+
     if (!levelsSnap.exists) {
       return res.status(404).json({ error: "Level definitions not found" });
     }
@@ -2255,7 +2276,7 @@ app.post("/levels/definitions/init", async (req, res) => {
 app.get("/reroll-rules", async (req, res) => {
   try {
     const rerollSnap = await db.collection("rerollRules").get();
-    
+
     const rules: any = {};
     rerollSnap.docs.forEach((doc) => {
       rules[doc.id] = doc.data();
@@ -2275,7 +2296,7 @@ app.get("/reroll-rules", async (req, res) => {
 app.get("/reroll-rules/bonus-system", async (req, res) => {
   try {
     const bonusSnap = await db.collection("rerollRules").doc("bonusSystem").get();
-    
+
     if (!bonusSnap.exists) {
       return res.status(404).json({ error: "Bonus system config not found" });
     }
@@ -2384,35 +2405,35 @@ app.patch("/users/:uid", requireAuth, async (req, res) => {
  * GET /users
  */
 app.get("/users", requireAuth, async (req, res) => {
-    try {
-        const { role, status, limit = 50 } = req.query;
-        let query: any = db.collection("users");
+  try {
+    const { role, status, limit = 50 } = req.query;
+    let query: any = db.collection("users");
 
-        if (role) {
-            query = query.where("role", "==", role);
-        }
+    if (role) {
+      query = query.where("role", "==", role);
+    }
 
-        if (status) {
-            query = query.where("status", "==", status);
-        }
+    if (status) {
+      query = query.where("status", "==", status);
+    }
 
-        // We halen de data op zonder de complexe sortering die indexen vereist
-        const snap = await query.limit(parseInt(limit as string, 10) || 50).get();
+    // We halen de data op zonder de complexe sortering die indexen vereist
+    const snap = await query.limit(parseInt(limit as string, 10) || 50).get();
 
-        const users = snap.docs.map((doc: any) => ({
-            uid: doc.id,
-            ...doc.data(),
-        }));
+    const users = snap.docs.map((doc: any) => ({
+      uid: doc.id,
+      ...doc.data(),
+    }));
 
-        return res.status(200).json({
-            data: users,
-            pagination: {
-                total: snap.size,
-                limit: parseInt(limit as string, 10) || 50
-            },
-        });
-    } catch (e: any) {
-        console.error("Error in GET /users:", e);
+    return res.status(200).json({
+      data: users,
+      pagination: {
+        total: snap.size,
+        limit: parseInt(limit as string, 10) || 50
+      },
+    });
+  } catch (e: any) {
+    console.error("Error in GET /users:", e);
     return res.status(500).json({ error: e?.message });
   }
 });
@@ -2546,20 +2567,20 @@ app.get("/courses", requireAuth, async (req, res) => {
   try {
     const uid = (req as any).user.uid;
     const activeOnly = req.query.activeOnly === "true";
-    
+
     // Get user role
     const userSnap = await db.collection("users").doc(uid).get();
     const userData = userSnap.data();
     const userRole = userData?.role || "student";
-    
+
     const coursesRef = db.collection("courses");
     let query: any = coursesRef;
-    
+
     // Teachers can only see their own courses
     if (userRole === "teacher") {
       query = query.where("createdBy", "==", uid);
     }
-    
+
     if (activeOnly) {
       query = query.where("isActive", "==", true);
     }
@@ -2634,22 +2655,22 @@ app.put("/courses/:courseId", requireAuth, async (req, res) => {
     const uid = (req as any).user.uid;
     const { courseId } = req.params;
     const courseRef = db.collection("courses").doc(courseId);
-    
+
     // Check if course exists and user has permission
     const courseSnap = await courseRef.get();
     if (!courseSnap.exists) {
       return res.status(404).json({ error: "Course not found" });
     }
-    
+
     const courseData = courseSnap.data();
     const userSnap = await db.collection("users").doc(uid).get();
     const userRole = userSnap.data()?.role || "student";
-    
+
     // Only creator or admin can modify
     if (userRole !== "admin" && courseData?.createdBy !== uid) {
       return res.status(403).json({ error: "Not authorized to modify this course" });
     }
-    
+
     const course = {
       ...req.body,
       createdBy: courseData?.createdBy || uid,
@@ -2676,22 +2697,22 @@ app.patch("/courses/:courseId", requireAuth, async (req, res) => {
     const uid = (req as any).user.uid;
     const { courseId } = req.params;
     const courseRef = db.collection("courses").doc(courseId);
-    
+
     // Check if course exists and user has permission
     const courseSnap = await courseRef.get();
     if (!courseSnap.exists) {
       return res.status(404).json({ error: "Course not found" });
     }
-    
+
     const courseData = courseSnap.data();
     const userSnap = await db.collection("users").doc(uid).get();
     const userRole = userSnap.data()?.role || "student";
-    
+
     // Only creator or admin can modify
     if (userRole !== "admin" && courseData?.createdBy !== uid) {
       return res.status(403).json({ error: "Not authorized to modify this course" });
     }
-    
+
     await courseRef.update({
       ...req.body,
       updatedAt: Date.now(),
@@ -2717,22 +2738,22 @@ app.delete("/courses/:courseId", requireAuth, async (req, res) => {
     const uid = (req as any).user.uid;
     const { courseId } = req.params;
     const courseRef = db.collection("courses").doc(courseId);
-    
+
     // Check if course exists and user has permission
     const courseSnap = await courseRef.get();
     if (!courseSnap.exists) {
       return res.status(404).json({ error: "Course not found" });
     }
-    
+
     const courseData = courseSnap.data();
     const userSnap = await db.collection("users").doc(uid).get();
     const userRole = userSnap.data()?.role || "student";
-    
+
     // Only creator or admin can delete
     if (userRole !== "admin" && courseData?.createdBy !== uid) {
       return res.status(403).json({ error: "Not authorized to delete this course" });
     }
-    
+
     await courseRef.delete();
     return res.status(200).json({ success: true });
   } catch (e: any) {
@@ -2756,7 +2777,7 @@ app.get("/courses/:courseId/students", requireAuth, async (req, res) => {
     const students = await Promise.all(
       studentsSnap.docs.map(async (doc) => {
         const studentData = doc.data();
-        
+
         // Fetch displayName from users collection
         let displayName = doc.id;
         try {
@@ -2889,7 +2910,7 @@ app.get("/modules/:moduleId", async (req, res) => {
     const { moduleId } = req.params;
     // We need to search across all courses - simplified approach
     const coursesSnap = await db.collection("courses").get();
-    
+
     for (const courseDoc of coursesSnap.docs) {
       const moduleSnap = await courseDoc.ref.collection("modules").doc(moduleId).get();
       if (moduleSnap.exists) {
@@ -2914,7 +2935,7 @@ app.put("/modules/:moduleId", requireAuth, async (req, res) => {
   try {
     const { moduleId } = req.params;
     const coursesSnap = await db.collection("courses").get();
-    
+
     for (const courseDoc of coursesSnap.docs) {
       const moduleRef = courseDoc.ref.collection("modules").doc(moduleId);
       const moduleSnap = await moduleRef.get();
@@ -2945,7 +2966,7 @@ app.patch("/modules/:moduleId", requireAuth, async (req, res) => {
   try {
     const { moduleId } = req.params;
     const coursesSnap = await db.collection("courses").get();
-    
+
     for (const courseDoc of coursesSnap.docs) {
       const moduleRef = courseDoc.ref.collection("modules").doc(moduleId);
       const moduleSnap = await moduleRef.get();
@@ -2976,7 +2997,7 @@ app.delete("/modules/:moduleId", requireAuth, async (req, res) => {
   try {
     const { moduleId } = req.params;
     const coursesSnap = await db.collection("courses").get();
-    
+
     for (const courseDoc of coursesSnap.docs) {
       const moduleRef = courseDoc.ref.collection("modules").doc(moduleId);
       const moduleSnap = await moduleRef.get();
@@ -3090,7 +3111,7 @@ app.get("/combat/stage-type/:stage", async (req, res) => {
     const eliteStages = config.eliteStages || [];
 
     let stageType = "normal";
-    
+
     if (stageNum === bossStage) {
       stageType = "boss";
     } else if (stageNum === miniBossStage) {
@@ -3220,7 +3241,7 @@ app.get("/combat/monster-stats/:worldId/:stage/:userLevel", async (req, res) => 
 
     // Get stage multiplier (array is 0-indexed, stage 1 = index 1)
     const stageMultiplier = multipliers[stageNum] || 1;
-    
+
     // User level scaling: more aggressive now
     // At user level 1: 1.0x, at level 10: 1.09x, at level 50: 1.49x
     const userLevelMultiplier = 1 + (userLvl - 1) * 0.01;
@@ -3232,7 +3253,7 @@ app.get("/combat/monster-stats/:worldId/:stage/:userLevel", async (req, res) => 
     // Calculate final stats
     const baseAttack = baseStats.attack;
     const baseHp = baseStats.hp;
-    
+
     const finalAttack = Math.round(baseAttack * stageMultiplier * userLevelMultiplier * itemScalingMultiplier);
     const finalHp = Math.round(baseHp * stageMultiplier * userLevelMultiplier * itemScalingMultiplier);
 
@@ -3453,7 +3474,7 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
       const combatData = combatSnap.data();
       const worldId = combatData?.worldId;
       const monsterId = combatData?.monsterId;
-      
+
       if (worldId && monsterId) {
         try {
           // Get world to find monster position
@@ -3461,7 +3482,7 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
           if (worldSnap.exists) {
             const world = worldSnap.data();
             const stages = world?.stages || [];
-            
+
             // Find monster index in world (first appearance in stages)
             let monsterIndex = -1;
             for (let stageIndex = 0; stageIndex < stages.length; stageIndex++) {
@@ -3497,18 +3518,18 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
               const currentProgress = user.worldMapProgress || {};
               const worldProgress = currentProgress[worldId] || { completedLevels: [] };
               const completedLevels = worldProgress.completedLevels || [];
-              
+
               console.log(`🔓 [Combat Resolve] Monster unlock check:`, {
                 worldId,
                 monsterId,
                 monsterIndex,
                 currentCompletedLevels: completedLevels,
               });
-              
+
               // Add this monster index if not already completed
               if (!completedLevels.includes(monsterIndex)) {
                 const updatedCompletedLevels = [...completedLevels, monsterIndex];
-                
+
                 console.log(`✅ [Combat Resolve] Unlocking monster:`, {
                   worldId,
                   monsterIndex,
@@ -3516,7 +3537,7 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
                   newCompletedLevels: updatedCompletedLevels,
                   nextMonsterWillUnlock: monsterIndex + 1,
                 });
-                
+
                 await userRef.update({
                   [`worldMapProgress.${worldId}.completedLevels`]: updatedCompletedLevels,
                   updatedAt: Date.now(),
@@ -3541,12 +3562,12 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
         leveledUp,
         newLevel: levelData.level,
       };
-      
+
       // Only add levelUpRewards if it exists (not undefined)
       if (leveledUp && levelData.rewards) {
         rewardUpdate.levelUpRewards = levelData.rewards;
       }
-      
+
       await combatRef.update({
         status: "victory",
         completedAt: Date.now(),
@@ -3596,7 +3617,7 @@ app.get("/worlds", async (req, res) => {
         if (userSnap.exists) {
           const user = userSnap.data() || {};
           const userLevel = user.stats?.level || 1;
-          
+
           const worldsWithUnlockStatus = worlds.map((world: any) => {
             try {
               const requiredLevel = world.requiredLevel || 1;
@@ -3618,7 +3639,7 @@ app.get("/worlds", async (req, res) => {
               };
             }
           });
-          
+
           return res.status(200).json(worldsWithUnlockStatus);
         } else {
           // User doesn't exist, return worlds without unlock status
@@ -3654,7 +3675,7 @@ app.post("/worlds", requireAuth, async (req, res) => {
     const customId = `world_${slug}`;
 
     const worldRef = db.collection("worlds").doc(customId);
-    
+
     const newWorld = {
       ...worldData,
       worldId: customId,
@@ -3750,11 +3771,11 @@ app.patch("/worlds/:worldId", requireAuth, async (req, res) => {
 app.delete("/worlds/:worldId", requireAuth, async (req, res) => {
   try {
     const { worldId } = req.params;
-    
+
     await db.collection("worlds").doc(worldId).delete();
 
-    return res.status(200).json({ 
-      message: `World ${worldId} has been destroyed` 
+    return res.status(200).json({
+      message: `World ${worldId} has been destroyed`
     });
   } catch (e: any) {
     console.error("Error in DELETE /worlds:", e);
@@ -3918,7 +3939,7 @@ app.delete("/pets/:petId", requireAuth, async (req, res) => {
 app.get("/monsters", async (req, res) => {
   try {
     let query = db.collection("monsters");
-    
+
     if (req.query.worldId) {
       query = query.where("worldId", "==", req.query.worldId) as any;
     }
@@ -3954,7 +3975,7 @@ app.post("/monsters", requireAuth, async (req, res) => {
     const customId = `mon_${slug}`;
 
     const monsterRef = db.collection("monsters").doc(customId);
-    
+
     const newMonster = {
       ...monsterData,
       monsterId: customId,
@@ -4060,11 +4081,11 @@ app.patch("/monsters/:monsterId", requireAuth, async (req, res) => {
 app.delete("/monsters/:monsterId", requireAuth, async (req, res) => {
   try {
     const { monsterId } = req.params;
-    
+
     await db.collection("monsters").doc(monsterId).delete();
 
-    return res.status(200).json({ 
-      message: `Entity ${monsterId} successfully banished from the bestiary` 
+    return res.status(200).json({
+      message: `Entity ${monsterId} successfully banished from the bestiary`
     });
   } catch (e: any) {
     console.error("Error in DELETE /monsters:", e);
@@ -4230,7 +4251,7 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
 
     // 3. Determine minimum items from lootbox config (or derive from id as fallback)
     let minItems = lootbox.count || 1; // Use count from DB first
-    
+
     // Fallback: if count not set, derive from id
     if (!lootbox.count) {
       if (lootboxId.includes("legendary")) {
@@ -4241,10 +4262,10 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
         minItems = 2;
       }
     }
-    
+
     // Determine guaranteed rarity floor based on box type
     let guaranteedRarityFloor = "common"; // basic boxes: common items
-    
+
     if (lootboxId.includes("legendary")) {
       guaranteedRarityFloor = "epic";
     } else if (lootboxId.includes("epic")) {
@@ -4255,7 +4276,7 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
 
     // 4. Roll loot for each box
     const results: any[] = [];
-    
+
     // Get bonus system config
     const bonusSystemSnap = await db.collection("rerollRules").doc("bonusSystem").get();
     const bonusSystem = bonusSystemSnap.exists ? bonusSystemSnap.data() : null;
@@ -4268,13 +4289,13 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
     const arcaneTweaks = arcaneTweaksSnap.exists ? arcaneTweaksSnap.data() : null;
     const arcaneEnabled = arcaneTweaks?.enabled || false;
     const extraArcaneChance = arcaneTweaks?.extraArcaneItemChance || 0;
-    
+
     for (let i = 0; i < count; i++) {
       // Roll minimum guaranteed items
       for (let itemSlot = 0; itemSlot < minItems; itemSlot++) {
         // FIRST ITEM: Enforce guaranteed minimum rarity
         let selectedRarity = "common";
-        
+
         if (itemSlot === 0) {
           // First item is GUARANTEED at floor rarity
           selectedRarity = guaranteedRarityFloor;
@@ -4283,23 +4304,23 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
           // Other items: Roll normally based on dropChances
           const rarityRoll = Math.random();
           let cumulativeChance = 0;
-          
+
           const dropChances = lootbox.dropChances || {};
           console.log(`Item ${itemSlot + 1}: Rolling with dropChances:`, dropChances, `Roll value: ${rarityRoll}`);
-          
+
           const rarities = ["common", "uncommon", "rare", "epic", "legendary"]; // Start from common to build cumulative
-          
+
           for (const rarity of rarities) {
             const chance = dropChances[rarity] || 0;
             cumulativeChance += chance;
-            
+
             if (rarityRoll < cumulativeChance) {
               selectedRarity = rarity;
               console.log(`  -> Selected: ${rarity} (cumulative: ${cumulativeChance})`);
               break;
             }
           }
-          
+
           // Fallback to common if nothing selected
           if (rarityRoll >= cumulativeChance && selectedRarity === "common") {
             console.log(`  -> Defaulted to common (roll ${rarityRoll} >= cumulative ${cumulativeChance})`);
@@ -4317,7 +4338,7 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
             const items = itemsSnap.docs
               .map(doc => ({ itemId: doc.id, ...doc.data() }))
               .filter((item: any) => item.isActive !== false && item.rarity === selectedRarity);
-            
+
             if (items.length > 0) {
               allItemsOfRarity.push(...items.map(item => ({ ...item, collection: collectionName })));
             }
@@ -4331,14 +4352,14 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
           const fallbackRarities = [selectedRarity, "rare", "uncommon", "common"];
           for (const fallbackRarity of fallbackRarities) {
             if (allItemsOfRarity.length > 0) break;
-            
+
             for (const collectionName of itemCollections) {
               try {
                 const itemsSnap = await db.collection(collectionName).get();
                 const items = itemsSnap.docs
                   .map(doc => ({ itemId: doc.id, ...doc.data() }))
                   .filter((item: any) => item.isActive !== false && item.rarity === fallbackRarity);
-                
+
                 if (items.length > 0) {
                   allItemsOfRarity.push(...items.map(item => ({ ...item, collection: collectionName })));
                 }
@@ -4353,7 +4374,7 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
         if (allItemsOfRarity.length > 0) {
           const randomItem = allItemsOfRarity[Math.floor(Math.random() * allItemsOfRarity.length)];
           sourceCollection = randomItem.collection;
-          
+
           // Roll for bonus stats
           let bonusStats = null;
           if (bonusEnabled && Math.random() <= bonusChance) {
@@ -4364,17 +4385,17 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
               // Pick 1-2 random bonus types
               const numBonuses = Math.random() > 0.7 ? 2 : 1;
               const selectedBonusTypes = [];
-              
+
               for (let b = 0; b < numBonuses && bonusTypes.length > 0; b++) {
                 const randomIndex = Math.floor(Math.random() * bonusTypes.length);
                 const bonusType = bonusTypes.splice(randomIndex, 1)[0];
                 selectedBonusTypes.push(bonusType);
-                
+
                 const bonusRange = possibleBonuses[bonusType];
                 const min = bonusRange?.min || 0;
                 const max = bonusRange?.max || 0;
                 const bonusValue = min + Math.random() * (max - min);
-                
+
                 // Round based on type with minimum values
                 if (bonusType === "critChance" || bonusType === "critDamage") {
                   // For crit percentages, ensure minimum of 1% and round to 1 decimal
@@ -4392,16 +4413,37 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
               console.log(`  -> Rolled bonus stats:`, bonusStats);
             }
           }
-          
+
+          // Determine item type from collection name (most reliable)
+          let resolvedType = "weapon";
+          if (sourceCollection.includes("weapon")) {
+            resolvedType = "weapon";
+          } else if (sourceCollection.includes("armor")) {
+            resolvedType = "armor";
+          } else if (sourceCollection.includes("pet")) {
+            resolvedType = "pet";
+          } else if (sourceCollection.includes("arcane")) {
+            resolvedType = "accessory";
+          } else if (randomItem.itemType) {
+            resolvedType = randomItem.itemType;
+          } else if (randomItem.slot) {
+            // Fallback to slot-based type (helmet, ring, etc. -> armor/accessory)
+            if (["helmet", "chestplate", "pants", "boots"].includes(randomItem.slot)) {
+              resolvedType = "armor";
+            } else if (["ring", "amulet", "accessory"].includes(randomItem.slot)) {
+              resolvedType = "accessory";
+            }
+          }
+
           const itemResult = {
             ...randomItem,
-            type: "item",
+            type: resolvedType,
             rarity: randomItem.rarity,
             collection: sourceCollection,
             bonus: bonusStats,
           };
-          
-          console.log(`  -> Adding item to results:`, itemResult.name, `with bonus:`, itemResult.bonus);
+
+          console.log(`  -> Adding item to results:`, itemResult.name, `type:`, resolvedType, `collection:`, sourceCollection);
           results.push(itemResult);
         }
       }
@@ -4413,7 +4455,7 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
         const petRarityRoll = Math.random();
         let petCumulativeChance = 0;
         let selectedPetRarity = "common";
-        
+
         const petRarityChances = lootbox.petRarityChances || {};
         const petRarities = ["legendary", "epic", "rare", "uncommon", "common"];
         for (const rarity of petRarities) {
@@ -4425,10 +4467,10 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
         }
 
         // Get pet from items_pets or pets_arcane
-        const petCollection = selectedPetRarity === "legendary" || selectedPetRarity === "epic" 
-          ? "pets_arcane" 
+        const petCollection = selectedPetRarity === "legendary" || selectedPetRarity === "epic"
+          ? "pets_arcane"
           : "items_pets";
-        
+
         const petsSnap = await db.collection(petCollection).get();
         const availablePets = petsSnap.docs
           .map(doc => ({ itemId: doc.id, ...doc.data() }))
@@ -4527,8 +4569,8 @@ app.get("/items", async (req, res) => {
     snapshot.docs.forEach(doc => {
       const data = doc.data();
       const fieldValues = Object.values(data);
-      
-      const isBundleDoc = fieldValues.some(val => 
+
+      const isBundleDoc = fieldValues.some(val =>
         typeof val === 'object' && val !== null && (val as any).name
       );
 
@@ -4557,7 +4599,7 @@ app.get("/items", async (req, res) => {
 app.post("/items", requireAuth, async (req, res) => {
   try {
     const { collection, ...itemData } = req.body;
-    
+
     if (!collection) {
       return res.status(400).json({ error: "Collection is required in body" });
     }
@@ -4567,7 +4609,7 @@ app.post("/items", requireAuth, async (req, res) => {
     const customId = `${prefix}${slug}`;
 
     const itemRef = db.collection(collection).doc(customId);
-    
+
     const item = {
       ...itemData,
       id: customId,
@@ -4579,7 +4621,7 @@ app.post("/items", requireAuth, async (req, res) => {
     return res.status(201).json({
       data: {
         itemId: customId,
-      ...item,
+        ...item,
       }
     });
   } catch (e: any) {

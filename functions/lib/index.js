@@ -1281,10 +1281,31 @@ app.post("/users/:uid/equip", requireAuth, async (req, res) => {
         if (!itemInInventory) {
             return res.status(404).json({ error: "Item not found in inventory" });
         }
+        // Determine item type from collection FIRST (most reliable)
+        let itemType = "weapon"; // default
+        const collection = itemInInventory.collection || "";
+        // Collection-based type determination ALWAYS takes priority
+        // This normalizes all weapon subtypes (sword, bow, hammer) to "weapon"
+        if (collection.includes("weapon")) {
+            itemType = "weapon";
+        }
+        else if (collection.includes("armor")) {
+            itemType = "armor";
+        }
+        else if (collection.includes("pet")) {
+            itemType = "pet";
+        }
+        else if (collection.includes("arcane")) {
+            itemType = "accessory";
+        }
+        else {
+            // Fallback to stored type only if no collection
+            itemType = itemInInventory.type || itemInInventory.itemType || "weapon";
+        }
         // Validate slot based on item type
-        const itemType = itemInInventory.type || itemInInventory.itemType;
         const validSlots = {
             weapon: ["weapon"],
+            armor: ["helmet", "chestplate", "pants", "boots"],
             helmet: ["helmet"],
             chestplate: ["chestplate"],
             pants: ["pants"],
@@ -1296,7 +1317,9 @@ app.post("/users/:uid/equip", requireAuth, async (req, res) => {
         if (!allowedSlots.includes(slot)) {
             return res.status(400).json({
                 error: `Item type '${itemType}' cannot be equipped in slot '${slot}'`,
-                allowedSlots
+                allowedSlots,
+                collection,
+                storedType: itemInInventory.type
             });
         }
         // Unequip current item in slot if exists
@@ -3932,14 +3955,40 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
                             console.log(`  -> Rolled bonus stats:`, bonusStats);
                         }
                     }
+                    // Determine item type from collection name (most reliable)
+                    let resolvedType = "weapon";
+                    if (sourceCollection.includes("weapon")) {
+                        resolvedType = "weapon";
+                    }
+                    else if (sourceCollection.includes("armor")) {
+                        resolvedType = "armor";
+                    }
+                    else if (sourceCollection.includes("pet")) {
+                        resolvedType = "pet";
+                    }
+                    else if (sourceCollection.includes("arcane")) {
+                        resolvedType = "accessory";
+                    }
+                    else if (randomItem.itemType) {
+                        resolvedType = randomItem.itemType;
+                    }
+                    else if (randomItem.slot) {
+                        // Fallback to slot-based type (helmet, ring, etc. -> armor/accessory)
+                        if (["helmet", "chestplate", "pants", "boots"].includes(randomItem.slot)) {
+                            resolvedType = "armor";
+                        }
+                        else if (["ring", "amulet", "accessory"].includes(randomItem.slot)) {
+                            resolvedType = "accessory";
+                        }
+                    }
                     const itemResult = {
                         ...randomItem,
-                        type: "item",
+                        type: resolvedType,
                         rarity: randomItem.rarity,
                         collection: sourceCollection,
                         bonus: bonusStats,
                     };
-                    console.log(`  -> Adding item to results:`, itemResult.name, `with bonus:`, itemResult.bonus);
+                    console.log(`  -> Adding item to results:`, itemResult.name, `type:`, resolvedType, `collection:`, sourceCollection);
                     results.push(itemResult);
                 }
             }

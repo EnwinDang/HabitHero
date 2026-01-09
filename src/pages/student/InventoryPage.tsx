@@ -20,12 +20,25 @@ type ItemRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
 interface InventoryItem {
     id: string;
+    itemId: string;
     name: string;
     type: ItemType;
     rarity: ItemRarity;
     icon: string;
     isEquipped: boolean;
-    level?: number; // Added level property (optional for potential backward compatibility)
+    level?: number;
+    // Stats from database
+    stats?: {
+        hp?: number;
+        attack?: number;
+        defense?: number;
+        crit?: number;
+        speed?: number;
+    };
+    valueGold?: number; // Sell price
+    description?: string;
+    bonus?: Record<string, number>; // Bonus stats from lootbox
+    collection?: string; // Source collection for equip logic
 }
 
 // Rarity colors matching the screenshot
@@ -37,6 +50,15 @@ const rarityColors = {
     common: { border: "#6b7280", bg: "rgba(107, 114, 128, 0.1)", text: "#6b7280" }
 };
 
+// Helper to determine item type from collection name
+const getTypeFromCollection = (collection: string): ItemType => {
+    if (collection?.includes('weapon')) return 'weapon';
+    if (collection?.includes('armor')) return 'armor';
+    if (collection?.includes('pet')) return 'accessory'; // pets treated as accessory for equip
+    if (collection?.includes('arcane')) return 'accessory';
+    return 'weapon'; // default fallback
+};
+
 export default function InventoryPage() {
     const { user, loading: userLoading } = useRealtimeUser();
     const { darkMode, accentColor } = useTheme();
@@ -44,26 +66,30 @@ export default function InventoryPage() {
 
     const [items, setItems] = useState<InventoryItem[]>([]);
     const [equipped, setEquipped] = useState<any>({});
+    const [equippedItemsData, setEquippedItemsData] = useState<InventoryItem[]>([]); // Full equipped item data
     const [loading, setLoading] = useState(true);
     const [selectedCategory, setSelectedCategory] = useState<string>("all");
     const [mergeMessage, setMergeMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-    // Fetch inventory from API
+    // Fetch inventory from user object (realtime via Firebase)
     const loadInventory = useCallback(async () => {
         if (!user) return;
-        
+
         try {
             setLoading(true);
-            // Get inventory from API
-            const inventory = await InventoryAPI.get();
-            
+
+            // Read items directly from user object (where lootbox saves them)
+            // Items are stored at user.inventory.inventory.items by the lootbox open endpoint
+            const userInventory = (user as any).inventory?.inventory?.items || [];
+            console.log("📦 Reading inventory from user object:", userInventory);
+
             // Get equipped items
             const equippedData = await InventoryAPI.getEquipped();
             setEquipped(equippedData || {});
-            
+
             // Map inventory items to display format
             // Items in inventory only have itemId, need to fetch item details
-            const inventoryItemIds = (inventory?.inventory?.items || []).map((item: any) => ({
+            const inventoryItemIds = userInventory.map((item: any) => ({
                 itemId: item.itemId,
                 collection: item.collection,
                 rarity: item.rarity,
@@ -71,7 +97,7 @@ export default function InventoryPage() {
                 level: item.level || item.meta?.level || 1,
                 bonus: item.bonus,
             }));
-            
+
             // Group items by collection to batch fetch
             const itemsByCollection: Record<string, any[]> = {};
             inventoryItemIds.forEach((invItem: any) => {
@@ -81,7 +107,7 @@ export default function InventoryPage() {
                 }
                 itemsByCollection[collection].push(invItem);
             });
-            
+
             // Fetch all items from each collection
             const allItemDetails: Record<string, any> = {};
             await Promise.all(
@@ -97,31 +123,109 @@ export default function InventoryPage() {
                     }
                 })
             );
-            
+
             // Map inventory items with details
             const itemsWithDetails = inventoryItemIds.map((invItem: any, index: number) => {
                 const itemDetails = allItemDetails[invItem.itemId];
-                
+
                 // Check if item is equipped
-                const isEquipped = 
+                const isEquipped =
                     equippedData?.weapon === invItem.itemId ||
                     Object.values(equippedData?.armor || {}).includes(invItem.itemId) ||
                     Object.values(equippedData?.pets || {}).includes(invItem.itemId) ||
                     Object.values(equippedData?.accessoiries || {}).includes(invItem.itemId);
-                
+
+                // Determine type from: 1. database itemType, 2. database type, 3. collection name, 4. fallback
+                const resolvedType = itemDetails?.itemType || itemDetails?.type || getTypeFromCollection(invItem.collection) || 'weapon';
+
                 return {
                     id: invItem.itemId || `item_${index}`,
                     itemId: invItem.itemId,
                     name: itemDetails?.name || invItem.itemId || "Unknown Item",
-                    type: (itemDetails?.type || itemDetails?.itemType || invItem.type || "misc") as ItemType,
+                    type: resolvedType as ItemType,
                     rarity: (invItem.rarity || itemDetails?.rarity || "common") as ItemRarity,
                     icon: itemDetails?.icon || "📦",
                     isEquipped: isEquipped,
                     level: invItem.level || 1,
+                    // Add stats from database
+                    stats: itemDetails?.stats || itemDetails?.baseStats || undefined,
+                    valueGold: itemDetails?.sellValue || itemDetails?.valueGold || itemDetails?.value || undefined,
+                    description: itemDetails?.description || undefined,
+                    bonus: invItem.bonus || undefined,
+                    collection: invItem.collection, // Keep collection for equip logic
                 } as InventoryItem;
             });
-            
+
             setItems(itemsWithDetails);
+
+            // Now fetch details for EQUIPPED items separately
+            // Since equipped items are removed from inventory, we need to fetch their details
+            const equippedItemIds: string[] = [
+                equippedData?.weapon,
+                ...Object.values(equippedData?.armor || {}),
+                ...Object.values(equippedData?.pets || {}),
+                ...Object.values(equippedData?.accessoiries || {}),
+            ].filter(Boolean) as string[];
+
+            console.log("🔧 Equipped item IDs:", equippedItemIds);
+
+            // Fetch details for equipped items
+            const equippedItemsDetails: InventoryItem[] = [];
+            for (const itemId of equippedItemIds) {
+                // Try to find in allItemDetails first (might already be loaded)
+                if (allItemDetails[itemId]) {
+                    const itemDetails = allItemDetails[itemId];
+                    const resolvedType = itemDetails?.itemType || itemDetails?.type || 'weapon';
+                    equippedItemsDetails.push({
+                        id: itemId,
+                        itemId: itemId,
+                        name: itemDetails?.name || itemId,
+                        type: resolvedType as ItemType,
+                        rarity: (itemDetails?.rarity || "common") as ItemRarity,
+                        icon: itemDetails?.icon || "📦",
+                        isEquipped: true,
+                        level: 1,
+                        stats: itemDetails?.stats || itemDetails?.baseStats,
+                        valueGold: itemDetails?.sellValue || itemDetails?.valueGold,
+                        description: itemDetails?.description,
+                    });
+                } else {
+                    // Item not in cache, try to determine collection from itemId
+                    let collection = "items_weapons";
+                    if (itemId.includes('armor') || itemId.includes('hood') || itemId.includes('plate') || itemId.includes('pants') || itemId.includes('boots')) {
+                        collection = "items_armor";
+                    } else if (itemId.includes('pet')) {
+                        collection = "items_pets";
+                    }
+
+                    try {
+                        const response = await ItemsAPI.list({ collection });
+                        const items = response.data || [];
+                        const itemDetails = items.find((i: any) => i.itemId === itemId);
+                        if (itemDetails) {
+                            const resolvedType = itemDetails?.itemType || itemDetails?.type || getTypeFromCollection(collection);
+                            equippedItemsDetails.push({
+                                id: itemId,
+                                itemId: itemId,
+                                name: itemDetails?.name || itemId,
+                                type: resolvedType as ItemType,
+                                rarity: (itemDetails?.rarity || "common") as ItemRarity,
+                                icon: itemDetails?.icon || "📦",
+                                isEquipped: true,
+                                level: 1,
+                                stats: itemDetails?.stats || itemDetails?.baseStats,
+                                valueGold: itemDetails?.sellValue || itemDetails?.valueGold,
+                                description: itemDetails?.description,
+                            });
+                        }
+                    } catch (err) {
+                        console.warn(`Failed to fetch equipped item ${itemId}:`, err);
+                    }
+                }
+            }
+
+            console.log("🔧 Equipped items with details:", equippedItemsDetails);
+            setEquippedItemsData(equippedItemsDetails);
         } catch (err) {
             console.error("Failed to load inventory:", err);
         } finally {
@@ -147,15 +251,8 @@ export default function InventoryPage() {
         return null;
     }
 
-    // Filter items - get equipped items from equipped state
-    const equippedItemIds = new Set([
-        equipped?.weapon,
-        ...Object.values(equipped?.armor || {}),
-        ...Object.values(equipped?.pets || {}),
-        ...Object.values(equipped?.accessoiries || {}),
-    ].filter(Boolean));
-    
-    const equippedItems = items.filter(item => equippedItemIds.has(item.itemId));
+    // Filter items - equipped items are now in equippedItemsData state
+    const equippedItems = equippedItemsData; // Use separately fetched equipped items with full details
     const filteredItems = selectedCategory === "all"
         ? items
         : items.filter(item => item.type === selectedCategory);
@@ -228,19 +325,50 @@ export default function InventoryPage() {
         if (!user) return;
 
         try {
-            // Determine slot based on item type
+            // Determine slot based on collection and type
             let slot = "weapon";
-            if (item.type === "armor") {
-                // For armor, we'd need to know which piece, but for now use a default
-                slot = "helmet";
+
+            // First check collection name for more accurate slot determination
+            if (item.collection?.includes('weapon')) {
+                slot = "weapon";
+            } else if (item.collection?.includes('armor')) {
+                // Determine correct armor slot from itemId
+                const itemIdLower = item.itemId.toLowerCase();
+                if (itemIdLower.includes('pants') || itemIdLower.includes('legging')) {
+                    slot = "pants";
+                } else if (itemIdLower.includes('boots') || itemIdLower.includes('shoes')) {
+                    slot = "boots";
+                } else if (itemIdLower.includes('plate') || itemIdLower.includes('chest')) {
+                    slot = "chestplate";
+                } else {
+                    // Default to helmet for hoods, crowns, helmets, etc.
+                    slot = "helmet";
+                }
+            } else if (item.collection?.includes('pet')) {
+                slot = "pet1";
+            } else if (item.collection?.includes('arcane')) {
+                slot = "accessory1";
+            } else if (item.type === "armor") {
+                // Fallback armor slot detection
+                const itemIdLower = item.itemId.toLowerCase();
+                if (itemIdLower.includes('pants') || itemIdLower.includes('legging')) {
+                    slot = "pants";
+                } else if (itemIdLower.includes('boots') || itemIdLower.includes('shoes')) {
+                    slot = "boots";
+                } else if (itemIdLower.includes('plate') || itemIdLower.includes('chest')) {
+                    slot = "chestplate";
+                } else {
+                    slot = "helmet";
+                }
             } else if (item.type === "accessory") {
                 slot = "accessory1";
             }
 
+            console.log(`Equipping ${item.name} (${item.collection}) to slot: ${slot}`);
             await InventoryAPI.equip(item.itemId, slot);
             setMergeMessage({ type: 'success', text: `Equipped ${item.name}!` });
             setTimeout(() => setMergeMessage(null), 3000);
-            
+
             // Reload inventory to reflect changes
             await loadInventory();
         } catch (error: any) {
@@ -271,7 +399,7 @@ export default function InventoryPage() {
             await InventoryAPI.unequip(slot);
             setMergeMessage({ type: 'success', text: `Unequipped ${item.name}` });
             setTimeout(() => setMergeMessage(null), 3000);
-            
+
             // Reload inventory
             await loadInventory();
         } catch (error: any) {
@@ -492,7 +620,47 @@ function ItemCard({
                 <h4 className={`font-medium ${theme.text} text-sm truncate`}>{item.name}</h4>
                 <p className={`text-xs ${theme.textMuted} capitalize`}>{item.rarity}</p>
 
-                {/* Merge Button if available */}
+                {/* Stats Display */}
+                {item.stats && (
+                    <div className={`mt-1 text-[10px] ${theme.textMuted} space-y-0.5`}>
+                        {item.stats.attack && (
+                            <div className="flex items-center justify-center gap-1">
+                                <span>⚔️ {item.stats.attack}</span>
+                                {item.bonus?.attack && <span className="text-green-400">+{item.bonus.attack}</span>}
+                            </div>
+                        )}
+                        {item.stats.defense && (
+                            <div className="flex items-center justify-center gap-1">
+                                <span>🛡️ {item.stats.defense}</span>
+                                {item.bonus?.defense && <span className="text-green-400">+{item.bonus.defense}</span>}
+                            </div>
+                        )}
+                        {item.stats.hp && (
+                            <div className="flex items-center justify-center gap-1">
+                                <span>❤️ {item.stats.hp}</span>
+                                {item.bonus?.hp && <span className="text-green-400">+{item.bonus.hp}</span>}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Bonus-only stats (if no base stats) */}
+                {!item.stats && item.bonus && Object.keys(item.bonus).length > 0 && (
+                    <div className={`mt-1 text-[10px] text-green-400 space-y-0.5`}>
+                        {item.bonus.attack && <div>⚔️ +{item.bonus.attack}</div>}
+                        {item.bonus.defense && <div>🛡️ +{item.bonus.defense}</div>}
+                        {item.bonus.hp && <div>❤️ +{item.bonus.hp}</div>}
+                        {item.bonus.critChance && <div>💥 +{item.bonus.critChance}% crit</div>}
+                    </div>
+                )}
+
+                {/* Sell Price */}
+                {item.valueGold && (
+                    <div className={`mt-1 text-[10px] ${theme.textMuted} flex items-center justify-center gap-1`}>
+                        <span>💰</span>
+                        <span>{item.valueGold}g</span>
+                    </div>
+                )}
                 {canMerge && (
                     <button
                         onClick={(e) => {
