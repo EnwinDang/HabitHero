@@ -10,8 +10,9 @@ const WorldList: React.FC = () => {
   const [availableMonsters, setAvailableMonsters] = useState<Monster[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedWorld, setSelectedWorld] = useState<World | null>(null);
-  const [activeStageIndex, setActiveStageIndex] = useState<number>(1);
+  const [selectedWorld, setSelectedWorld] = useState<any | null>(null);
+  const [activeStageIndex, setActiveStageIndex] = useState<string>("1");
+  const [searchTerm, setSearchTerm] = useState('');
 
   const loadData = async () => {
     setLoading(true);
@@ -46,25 +47,19 @@ const WorldList: React.FC = () => {
     }
   };
 
-  const handleCopyStage = (fromIndex: number) => {
+  const handleCopyStage = (fromKey: string) => {
     if (!selectedWorld || !selectedWorld.stages) return;
-    const targetIndex = window.prompt(`Kopieer monsters van Stage ${fromIndex} naar welk stage nummer?`);
-    if (!targetIndex) return;
+    const targetKey = window.prompt(`Kopieer monsters van Stage ${fromKey} naar welk stage nummer?`);
+    if (!targetKey) return;
     
-    const targetIdx = parseInt(targetIndex);
-    if (isNaN(targetIdx) || targetIdx <= 0 || targetIdx >= (selectedWorld.stages?.length || 0)) {
-      alert("Ongeldig stage nummer");
-      return;
-    }
-
-    const newStages = [...selectedWorld.stages];
-    newStages[targetIdx] = { 
-      ...newStages[targetIdx], 
-      monsters: [...(newStages[fromIndex]?.monsters || [])] 
+    const newStages = { ...selectedWorld.stages };
+    newStages[targetKey] = { 
+      ...newStages[targetKey], 
+      values: [...(newStages[fromKey]?.values || [])] 
     };
     
     setSelectedWorld({ ...selectedWorld, stages: newStages });
-    setActiveStageIndex(targetIdx);
+    setActiveStageIndex(targetKey);
   };
 
   const getElementIcon = (element: string | null | undefined) => {
@@ -76,77 +71,64 @@ const WorldList: React.FC = () => {
     }
   };
 
+  const filteredWorlds = worlds.filter(w => 
+    w.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    w.worldId?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <div className="min-h-screen bg-violet-50 p-8 text-[#1a1c2e]">
       <div className="mb-10">
         <h1 className="text-3xl font-black flex items-center gap-3 italic uppercase tracking-tight text-slate-900">
           <Globe className="text-violet-500" size={32} /> Monster Spawns
         </h1>
+        {/* Lettertype aangepast naar de vorige medium stijl */}
         <p className="text-slate-500 font-medium text-sm mt-1">
-          Beheer monster spawns per stage • Controleer element matching
+          Beheer monster spawns per stage | Controleer element matching
         </p>
       </div>
 
-      <div className="relative mb-10">
-        <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+      <div className="relative mb-10 group">
+        <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-violet-500 transition-colors" size={20} />
         <input 
           type="text" 
-          placeholder="Search by name or ID..." 
-          className="w-full bg-white border border-violet-100 rounded-[1.5rem] py-5 pl-14 pr-6 outline-none shadow-sm focus:ring-2 focus:ring-violet-500/20 transition-all"
+          placeholder="Search worlds by name or ID..." 
+          className="w-full bg-white border border-violet-100 rounded-[2rem] py-5 pl-16 pr-8 outline-none shadow-sm focus:ring-4 focus:ring-violet-500/5 focus:border-violet-200 transition-all font-bold text-slate-700"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
         />
       </div>
 
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="animate-spin text-violet-500" size={40} /></div>
       ) : error ? (
-        <div className="bg-rose-50 border-2 border-rose-200 rounded-2xl p-8 text-center">
-          <p className="text-rose-700 font-semibold mb-4">⚠️ {error}</p>
-          <p className="text-rose-600 text-sm mb-6">Make sure you're logged in as an admin</p>
-          <button 
-            onClick={loadData}
-            className="px-6 py-3 bg-rose-500 text-white rounded-xl hover:bg-rose-600 transition-all font-semibold"
-          >
-             Retry Loading
+        <div className="bg-rose-50 border-2 border-rose-100 rounded-[2rem] p-10 text-center">
+          <p className="text-rose-700 font-black uppercase tracking-widest text-xs mb-4">Fout bij laden: {error}</p>
+          <button onClick={loadData} className="px-8 py-3 bg-rose-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-rose-600 transition-all shadow-lg shadow-rose-100">
+            Opnieuw proberen
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {worlds.map((world) => (
-            <div 
-              key={world.worldId} 
-              className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-violet-100 relative group transition-all hover:border-violet-300"
-            >
+          {filteredWorlds.map((world) => (
+            <div key={world.worldId} className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-violet-100 relative transition-all hover:border-violet-300">
               <div className="flex justify-between items-start mb-8">
-                <div className="p-4 bg-slate-50 rounded-[1.25rem]">
-                  {getElementIcon(world.element)}
-                </div>
-                
-                {/* Edit knop overgenomen van monster management */}
+                <div className="p-4 bg-slate-50 rounded-[1.25rem]">{getElementIcon(world.element)}</div>
                 <button 
-                  type="button"
-                  onClick={() => {
-                    setSelectedWorld(world);
-                    setActiveStageIndex(1);
-                  }}
+                  onClick={() => { setSelectedWorld(world); setActiveStageIndex("1"); }}
                   className="text-slate-300 hover:text-violet-600 transition-colors p-1"
                 >
                   <Edit3 size={18} />
                 </button>
               </div>
-
               <h3 className="text-2xl font-black uppercase italic tracking-tighter mb-2 text-slate-900">{world.name}</h3>
-              <p className="text-slate-500 text-sm font-medium mb-12 leading-relaxed line-clamp-2">
-                {world.description}
-              </p>
-
+              <p className="text-slate-500 text-xs font-medium mb-12 line-clamp-2 leading-relaxed">{world.description}</p>
               <div className="pt-8 border-t border-violet-50 flex justify-between items-center">
                 <div>
                   <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Stages</span>
-                  <span className="text-xl font-black italic text-slate-900">{(world.stages?.length || 1) - 1} Levels</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status</span>
-                  <div className={`w-2 h-2 rounded-full ${world.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
+                  <span className="text-xl font-black italic text-slate-900">
+                    {world.stages ? Object.keys(world.stages).filter(k => k !== "0").length : 0} Levels
+                  </span>
                 </div>
               </div>
             </div>
@@ -163,71 +145,72 @@ const WorldList: React.FC = () => {
 
           <div className="space-y-8">
             <div className="grid grid-cols-5 gap-2 bg-slate-50 p-2 rounded-[2rem]">
-              {selectedWorld.stages?.map((_, idx) => idx !== 0 && (
+              {selectedWorld.stages && Object.keys(selectedWorld.stages).sort((a,b) => Number(a)-Number(b)).map((key) => key !== "0" && (
                 <button
-                  key={idx}
-                  type="button"
-                  onClick={() => setActiveStageIndex(idx)}
-                  className={`py-3 rounded-xl font-black text-xs transition-all ${activeStageIndex === idx ? 'bg-violet-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-600'}`}
+                  key={key}
+                  onClick={() => setActiveStageIndex(key)}
+                  className={`py-3 rounded-xl font-black text-[10px] tracking-widest transition-all ${activeStageIndex === key ? 'bg-violet-600 text-white shadow-lg shadow-violet-100' : 'text-slate-400 hover:text-slate-600'}`}
                 >
-                  S{idx}
+                  S{key}
                 </button>
               ))}
             </div>
 
             <div className="space-y-6">
               <div className="flex justify-between items-center px-2">
-                <h4 className="text-[10px] font-black text-violet-400 uppercase tracking-widest">
-                  Stage {activeStageIndex} Monsters
-                </h4>
-                <button 
-                  onClick={() => handleCopyStage(activeStageIndex)}
-                  className="flex items-center gap-1.5 text-[10px] font-black text-slate-400 uppercase hover:text-violet-600 transition-colors"
-                >
+                <h4 className="text-[10px] font-black text-violet-400 uppercase tracking-widest">Stage {activeStageIndex} Monsters</h4>
+                <button onClick={() => handleCopyStage(activeStageIndex)} className="flex items-center gap-1.5 text-[10px] font-black text-slate-400 uppercase hover:text-violet-600 transition-colors">
                   <Copy size={14} /> Duplicate
                 </button>
               </div>
 
-              {(selectedWorld.stages?.[activeStageIndex]?.monsters || []).map((mId: string, mIdx: number) => {
+              {(selectedWorld.stages?.[activeStageIndex]?.values || []).map((mId: string, mIdx: number) => {
                 const monsterObj = availableMonsters.find(m => m.monsterId === mId);
                 const isMismatched = monsterObj && monsterObj.elementType?.toLowerCase() !== selectedWorld.element?.toLowerCase();
 
                 return (
                   <div key={mIdx} className="space-y-2">
                     <div className="flex gap-4 items-center">
-                      <select 
-                        className={`flex-1 bg-violet-50 border-none rounded-xl p-4 font-bold text-slate-700 text-sm outline-none focus:ring-2 ${isMismatched ? 'ring-rose-500' : 'focus:ring-violet-500'}`}
-                        value={mId}
-                        onChange={(e) => {
-                          if (!selectedWorld.stages) return;
-                          const newStages = [...selectedWorld.stages];
-                          if (!newStages[activeStageIndex]) newStages[activeStageIndex] = { monsters: [] };
-                          newStages[activeStageIndex].monsters[mIdx] = e.target.value;
-                          setSelectedWorld({...selectedWorld, stages: newStages});
-                        }}
-                      >
-                        <option value="">Select Monster...</option>
-                        {availableMonsters.map(m => (
-                          <option key={m.monsterId} value={m.monsterId}>{m.name} ({m.elementType})</option>
-                        ))}
-                      </select>
+                      <div className="relative flex-1 group">
+                        <select 
+                          className={`w-full bg-violet-50/50 border-2 border-transparent rounded-[1.25rem] p-4 pr-12 font-bold text-slate-700 text-sm outline-none transition-all cursor-pointer appearance-none hover:bg-violet-100/50 focus:border-violet-200 focus:bg-white ${
+                            isMismatched ? 'border-rose-200 bg-rose-50/30' : ''
+                          }`}
+                          style={{
+                            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8' stroke-width='3'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                            backgroundRepeat: 'no-repeat',
+                            backgroundPosition: 'right 1.25rem center',
+                            backgroundSize: '1rem'
+                          }}
+                          value={mId}
+                          onChange={(e) => {
+                            const newStages = {...selectedWorld.stages};
+                            if (!newStages[activeStageIndex]) newStages[activeStageIndex] = { values: [] };
+                            newStages[activeStageIndex].values[mIdx] = e.target.value;
+                            setSelectedWorld({...selectedWorld, stages: newStages});
+                          }}
+                        >
+                          <option value="">Select Monster...</option>
+                          {availableMonsters.map(m => (
+                            <option key={m.monsterId} value={m.monsterId}>{m.name} ({m.elementType})</option>
+                          ))}
+                        </select>
+                      </div>
                       <button 
-                        type="button"
                         onClick={() => {
-                          if (!selectedWorld.stages) return;
-                          const newStages = [...selectedWorld.stages];
-                          newStages[activeStageIndex].monsters.splice(mIdx, 1);
+                          const newStages = {...selectedWorld.stages};
+                          newStages[activeStageIndex].values.splice(mIdx, 1);
                           setSelectedWorld({...selectedWorld, stages: newStages});
-                        }}
-                        className="text-slate-300 hover:text-rose-500 transition-colors p-1"
+                        }} 
+                        className="p-3 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
                       >
                         <Trash2 size={18} />
                       </button>
                     </div>
                     {isMismatched && (
-                      <div className="flex items-center gap-2 text-rose-500 px-5">
-                        <AlertTriangle size={14} />
-                        <span className="text-[10px] font-black uppercase tracking-widest">Element mismatch: Monster is {monsterObj?.elementType}</span>
+                      <div className="flex items-center gap-2 text-rose-500 px-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <AlertTriangle size={12} />
+                        <span className="text-[9px] font-black uppercase tracking-wider">Element mismatch: {monsterObj?.elementType}</span>
                       </div>
                     )}
                   </div>
@@ -235,13 +218,10 @@ const WorldList: React.FC = () => {
               })}
 
               <button 
-                type="button"
                 onClick={() => {
-                  if (!selectedWorld.stages) return;
-                  const newStages = [...selectedWorld.stages];
-                  if (!newStages[activeStageIndex]) newStages[activeStageIndex] = { monsters: [] };
-                  if (!newStages[activeStageIndex].monsters) newStages[activeStageIndex].monsters = [];
-                  newStages[activeStageIndex].monsters.push("");
+                  const newStages = {...selectedWorld.stages};
+                  if (!newStages[activeStageIndex]) newStages[activeStageIndex] = { values: [] };
+                  newStages[activeStageIndex].values.push("");
                   setSelectedWorld({...selectedWorld, stages: newStages});
                 }}
                 className="w-full py-5 border-2 border-dashed border-slate-200 rounded-[1.5rem] text-slate-400 text-[10px] font-black uppercase tracking-widest hover:border-violet-300 hover:text-violet-600 transition-all"
@@ -251,14 +231,10 @@ const WorldList: React.FC = () => {
             </div>
           </div>
 
-          <button 
-            type="button"
-            onClick={handleSave} 
-            className="w-full mt-12 bg-violet-600 text-white font-black py-5 rounded-[1.5rem] flex items-center justify-center gap-2 shadow-xl shadow-violet-100 hover:bg-violet-700 transition-all uppercase tracking-widest active:scale-[0.98]"
-          >
-            <Save size={20} /> Update Database
+          <button onClick={handleSave} className="w-full mt-12 bg-violet-600 text-white font-black py-5 rounded-[1.5rem] shadow-xl shadow-violet-100 hover:bg-violet-700 transition-all uppercase tracking-widest active:scale-[0.98]">
+            <Save size={20} className="inline mr-2" /> Update Database
           </button>
-        </div>
+        </div> 
       )}
     </div>
   );
