@@ -250,6 +250,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [recentSubmissions, setRecentSubmissions] = useState<any[]>([]);
 
   // Fetch teacher dashboard data
   useEffect(() => {
@@ -277,6 +278,20 @@ export default function Dashboard() {
         } catch (err) {
           console.warn('Failed to load pending submissions count:', err);
           setPendingCount(0);
+        }
+
+        // Load recent submissions (3 most recent pending submissions)
+        try {
+          const pendingSubs = await SubmissionsAPI.listForTeacher('pending');
+          const sorted = pendingSubs.sort((a: any, b: any) => {
+            const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+            const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
+            return dateB - dateA;
+          });
+          setRecentSubmissions(sorted.slice(0, 3));
+        } catch (err) {
+          console.warn('Failed to load recent submissions:', err);
+          setRecentSubmissions([]);
         }
       } catch (err) {
         console.error('Error loading dashboard:', err);
@@ -488,17 +503,20 @@ export default function Dashboard() {
           </h2>
           
           <div style={{ display: 'grid', gap: 4 }}>
-            {activities.length > 0 ? (
-              activities.map((activity, index) => (
+            {recentSubmissions.length > 0 ? (
+              recentSubmissions.map((submission, index) => (
                 <ActivityItem
                   key={index}
-                  {...activity}
+                  type="completed"
+                  title={submission.studentName || 'Student'}
+                  description={`Submitted: ${submission.taskName || 'Assignment'}`}
+                  timestamp={new Date(submission.submittedAt || submission.createdAt).toLocaleDateString()}
                   delay={0.6 + index * 0.05}
                 />
               ))
             ) : (
               <p style={{ fontSize: 14, color: 'var(--hh-muted)', textAlign: 'center', padding: 16 }}>
-                No recent activity
+                No recent submissions
               </p>
             )}
           </div>
