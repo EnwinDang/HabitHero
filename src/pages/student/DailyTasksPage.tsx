@@ -173,20 +173,12 @@ export default function DailyTasksPage() {
 
             // Load submissions for these tasks
             if (firebaseUser && moduleTasks.length > 0) {
-                const submissionsMap: Record<string, Submission> = {};
-                await Promise.all(
-                    moduleTasks.map(async (task) => {
-                        try {
-                            const subs = await SubmissionsAPI.list(task.taskId, cid, module.moduleId);
-                            if (subs.length > 0) {
-                                submissionsMap[task.taskId] = subs[0]; // Latest submission
-                            }
-                        } catch (err) {
-                            console.error(`Error loading submissions for task ${task.taskId}:`, err);
-                        }
-                    })
+                const latestSubs = await SubmissionsAPI.listLatestByTasks(
+                    moduleTasks.map((t) => t.taskId),
+                    cid,
+                    module.moduleId
                 );
-                setSubmissions(submissionsMap);
+                setSubmissions(latestSubs);
             }
         } catch (error) {
             console.error("Error loading module tasks:", error);

@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "../pages/LoginPage";
 import RegisterPage from "../pages/RegisterPage";
 import HomePage from "../pages/HomePage";
@@ -21,6 +21,7 @@ import TeacherModuleDetail from "../pages/teacher/ModuleDetail";
 import TeacherStudents from "../pages/teacher/Students";
 import TeacherStudentDetail from "../pages/teacher/StudentDetail";
 import TeacherProfile from "../pages/teacher/Profile";
+import TeacherSubmissions from "../pages/teacher/Submissions";
 import {
   StudentHomePage,
   DailyTasksPage,
@@ -54,6 +55,8 @@ export const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
+      {/* Legacy battle path redirect */}
+      <Route path="/dashboard/battle" element={<Navigate to="/student/battle" replace />} />
 
       {/* Admin Routes (Nested in AdminLayout) */}
       <Route
@@ -119,6 +122,7 @@ export const AppRoutes = () => {
         <Route path="modules/:moduleId" element={<TeacherModuleDetail />} />
         <Route path="students" element={<TeacherStudents />} />
         <Route path="students/:studentId" element={<TeacherStudentDetail />} />
+        <Route path="submissions" element={<TeacherSubmissions />} />
         <Route path="profile" element={<TeacherProfile />} />
       </Route>
     </Routes>

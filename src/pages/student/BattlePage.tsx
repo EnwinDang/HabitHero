@@ -344,7 +344,7 @@ export default function BattlePage() {
                         <div
                             className="rounded-3xl p-8 min-h-[500px] flex flex-col"
                             style={{
-                                background: `linear-gradient(135deg, ${accentColor}40 0%, ${accentColor}20 100%)`,
+                                background: `${accentColor}20`,
                                 borderWidth: "2px",
                                 borderStyle: "solid",
                                 borderColor: `${accentColor}60`,
@@ -412,12 +412,12 @@ export default function BattlePage() {
                                         className="w-32 h-32 rounded-2xl flex items-center justify-center mb-4 mx-auto"
                                         style={{
                                             background: enemy.element === 'fire'
-                                                ? 'linear-gradient(135deg, #ff5722 0%, #ff9800 100%)'
+                                                ? '#ff5722'
                                                 : enemy.element === 'ice'
-                                                    ? 'linear-gradient(135deg, #00bcd4 0%, #03a9f4 100%)'
+                                                    ? '#00bcd4'
                                                     : enemy.element === 'earth'
-                                                        ? 'linear-gradient(135deg, #795548 0%, #8d6e63 100%)'
-                                                        : 'linear-gradient(135deg, #9c27b0 0%, #673ab7 100%)',
+                                                        ? '#795548'
+                                                        : '#9c27b0',
                                             borderWidth: "2px",
                                             borderStyle: "solid",
                                             borderColor: 'rgba(255,255,255,0.5)',

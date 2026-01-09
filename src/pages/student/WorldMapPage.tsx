@@ -105,35 +105,35 @@ export default function WorldMapPage() {
                 return {
                     element: "fire",
                     color: "#ff5722",
-                    gradient: "linear-gradient(135deg, #ff5722 0%, #ff9800 100%)",
+                    gradient: "#ff5722",
                     icon: <Flame size={48} />,
                 };
             case "water":
                 return {
                     element: "water",
                     color: "#00bcd4",
-                    gradient: "linear-gradient(135deg, #00bcd4 0%, #03a9f4 100%)",
+                    gradient: "#00bcd4",
                     icon: <Snowflake size={48} />,
                 };
             case "earth":
                 return {
                     element: "earth",
                     color: "#795548",
-                    gradient: "linear-gradient(135deg, #795548 0%, #8d6e63 100%)",
+                    gradient: "#795548",
                     icon: <Mountain size={48} />,
                 };
             case "wind":
                 return {
                     element: "wind",
                     color: "#9c27b0",
-                    gradient: "linear-gradient(135deg, #9c27b0 0%, #673ab7 100%)",
+                    gradient: "#9c27b0",
                     icon: <Zap size={48} />,
                 };
             default:
                 return {
                     element: "fire",
                     color: "#ff5722",
-                    gradient: "linear-gradient(135deg, #ff5722 0%, #ff9800 100%)",
+                    gradient: "#ff5722",
                     icon: <Flame size={48} />,
                 };
         }
@@ -199,7 +199,7 @@ export default function WorldMapPage() {
             <div
                 className="mb-8 p-6 rounded-2xl"
                 style={{
-                    background: `linear-gradient(135deg, ${accentColor}30 0%, ${accentColor}10 100%)`,
+                    background: `${accentColor}10`,
                     borderWidth: "1px",
                     borderStyle: "solid",
                     borderColor: `${accentColor}40`,
@@ -235,7 +235,7 @@ export default function WorldMapPage() {
                             key={world.worldId}
                             className="rounded-2xl p-6 transition-all hover:scale-[1.02] cursor-pointer"
                             style={{
-                                background: worldTheme.gradient,
+                                background: worldTheme.color,
                                 borderWidth: "1px",
                                 borderStyle: "solid",
                                 borderColor: `${worldTheme.color}80`,
@@ -370,7 +370,7 @@ export default function WorldMapPage() {
                 <div
                     className="rounded-3xl p-8 mb-8"
                     style={{
-                        background: worldTheme.gradient,
+                        background: worldTheme.color,
                     }}
                 >
                     <h3 className="text-2xl font-bold text-white mb-6">Monsters</h3>
