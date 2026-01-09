@@ -98,6 +98,17 @@ async function requireAuth(
   }
 }
 
+// Helper: get user role from Firestore (defaults to 'student')
+async function getUserRole(uid: string): Promise<string> {
+  try {
+    const snap = await db.collection("users").doc(uid).get();
+    return snap.data()?.role || "student";
+  } catch (err) {
+    console.error("Error fetching user role", err);
+    return "student";
+  }
+}
+
 // ============ AUTH ============
 
 /**
@@ -214,6 +225,27 @@ app.get("/auth/me", requireAuth, async (req, res) => {
 app.get("/tasks", requireAuth, async (req, res) => {
   try {
     const uid = (req as any).user.uid;
+    const { courseId, moduleId } = req.query;
+
+    // If courseId + moduleId provided, read from module-scoped tasks
+    if (courseId && moduleId) {
+      const tasksRef = db
+        .collection("courses")
+        .doc(String(courseId))
+        .collection("modules")
+        .doc(String(moduleId))
+        .collection("tasks");
+
+      const snap = await tasksRef.get();
+      const tasks = snap.docs.map((doc) => ({
+        taskId: doc.id,
+        ...doc.data(),
+      }));
+
+      return res.status(200).json(tasks);
+    }
+
+    // Fallback: user-scoped tasks
     const tasksRef = db.collection("users").doc(uid).collection("tasks");
     const snap = await tasksRef.get();
 
@@ -234,10 +266,19 @@ app.get("/tasks", requireAuth, async (req, res) => {
  */
 app.post("/tasks", requireAuth, async (req, res) => {
   try {
-    const uid = (req as any).user.uid;
-    const { title, description, difficulty, xp, gold, dueAt, isRepeatable } = req.body;
+    const { title, description, difficulty, xp, gold, dueAt, isRepeatable, canvasUrl, courseId, moduleId } = req.body;
 
-    const tasksRef = db.collection("users").doc(uid).collection("tasks");
+    if (!courseId || !moduleId) {
+      return res.status(400).json({ error: "courseId and moduleId are required" });
+    }
+
+    const tasksRef = db
+      .collection("courses")
+      .doc(String(courseId))
+      .collection("modules")
+      .doc(String(moduleId))
+      .collection("tasks");
+
     const newTaskRef = tasksRef.doc();
 
     const task = {
@@ -249,6 +290,9 @@ app.post("/tasks", requireAuth, async (req, res) => {
       dueAt: dueAt || null,
       isRepeatable: isRepeatable || false,
       isActive: true,
+      canvasUrl: canvasUrl || null,
+      courseId,
+      moduleId,
       createdAt: Date.now(),
       completedAt: null,
     };
@@ -270,12 +314,18 @@ app.post("/tasks", requireAuth, async (req, res) => {
  */
 app.get("/tasks/:taskId", requireAuth, async (req, res) => {
   try {
-    const uid = (req as any).user.uid;
     const { taskId } = req.params;
+    const { courseId, moduleId } = req.query;
+
+    if (!courseId || !moduleId) {
+      return res.status(400).json({ error: "courseId and moduleId are required" });
+    }
 
     const taskSnap = await db
-      .collection("users")
-      .doc(uid)
+      .collection("courses")
+      .doc(String(courseId))
+      .collection("modules")
+      .doc(String(moduleId))
       .collection("tasks")
       .doc(taskId)
       .get();
@@ -299,12 +349,18 @@ app.get("/tasks/:taskId", requireAuth, async (req, res) => {
  */
 app.patch("/tasks/:taskId", requireAuth, async (req, res) => {
   try {
-    const uid = (req as any).user.uid;
     const { taskId } = req.params;
+    const { courseId, moduleId } = req.body;
+
+    if (!courseId || !moduleId) {
+      return res.status(400).json({ error: "courseId and moduleId are required" });
+    }
 
     const taskRef = db
-      .collection("users")
-      .doc(uid)
+      .collection("courses")
+      .doc(String(courseId))
+      .collection("modules")
+      .doc(String(moduleId))
       .collection("tasks")
       .doc(taskId);
 
@@ -329,12 +385,18 @@ app.patch("/tasks/:taskId", requireAuth, async (req, res) => {
  */
 app.delete("/tasks/:taskId", requireAuth, async (req, res) => {
   try {
-    const uid = (req as any).user.uid;
     const { taskId } = req.params;
+    const { courseId, moduleId } = req.query;
+
+    if (!courseId || !moduleId) {
+      return res.status(400).json({ error: "courseId and moduleId are required" });
+    }
 
     await db
-      .collection("users")
-      .doc(uid)
+      .collection("courses")
+      .doc(String(courseId))
+      .collection("modules")
+      .doc(String(moduleId))
       .collection("tasks")
       .doc(taskId)
       .delete();
@@ -342,6 +404,270 @@ app.delete("/tasks/:taskId", requireAuth, async (req, res) => {
     return res.status(200).json({ success: true });
   } catch (e: any) {
     console.error("Error in DELETE /tasks/:taskId:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+// ============ TASK SUBMISSIONS ============
+
+const SUBMISSION_STATUS = ["pending", "approved", "rejected"] as const;
+
+/**
+ * POST /tasks/:taskId/submissions
+ * Student uploads evidence (imageUrl) for a task inside a module
+ */
+app.post("/tasks/:taskId/submissions", requireAuth, async (req, res) => {
+  try {
+    const uid = (req as any).user.uid;
+    const { taskId } = req.params;
+    const { courseId, moduleId, imageUrl } = req.body;
+
+    if (!courseId || !moduleId) {
+      return res.status(400).json({ error: "courseId and moduleId are required" });
+    }
+
+    const submissionsRef = db
+      .collection("courses")
+      .doc(String(courseId))
+      .collection("modules")
+      .doc(String(moduleId))
+      .collection("tasks")
+      .doc(taskId)
+      .collection("submissions");
+
+    const newRef = submissionsRef.doc();
+    const now = Date.now();
+    const submission = {
+      studentId: uid,
+      imageUrl: imageUrl || null,
+      status: "pending" as (typeof SUBMISSION_STATUS)[number],
+      teacherComment: null as string | null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await newRef.set(submission);
+
+    // Track latest submission status on task for quick lookup
+    await db
+      .collection("courses")
+      .doc(String(courseId))
+      .collection("modules")
+      .doc(String(moduleId))
+      .collection("tasks")
+      .doc(taskId)
+      .set({ latestSubmissionStatus: submission.status }, { merge: true });
+
+    return res.status(201).json({ submissionId: newRef.id, ...submission });
+  } catch (e: any) {
+    console.error("Error in POST /tasks/:taskId/submissions:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /tasks/:taskId/submissions
+ * Students get their own submissions; teachers/admin see all
+ */
+app.get("/tasks/:taskId/submissions", requireAuth, async (req, res) => {
+  try {
+    const uid = (req as any).user.uid;
+    const { taskId } = req.params;
+    const { courseId, moduleId, status } = req.query;
+
+    if (!courseId || !moduleId) {
+      return res.status(400).json({ error: "courseId and moduleId are required" });
+    }
+
+    const role = await getUserRole(uid);
+    const submissionsRef = db
+      .collection("courses")
+      .doc(String(courseId))
+      .collection("modules")
+      .doc(String(moduleId))
+      .collection("tasks")
+      .doc(taskId)
+      .collection("submissions");
+
+    let query: FirebaseFirestore.Query = submissionsRef;
+    if (status && typeof status === "string" && SUBMISSION_STATUS.includes(status as any)) {
+      query = query.where("status", "==", status);
+    }
+    if (role === "student") {
+      query = query.where("studentId", "==", uid);
+    }
+
+    const snap = await query.orderBy("createdAt", "desc").get();
+    const submissions = snap.docs.map((doc) => ({ submissionId: doc.id, ...doc.data() }));
+
+    return res.status(200).json(submissions);
+  } catch (e: any) {
+    console.error("Error in GET /tasks/:taskId/submissions:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * PATCH /tasks/:taskId/submissions/:submissionId
+ * Teacher/admin can approve/reject/undo with comment
+ */
+app.patch("/tasks/:taskId/submissions/:submissionId", requireAuth, async (req, res) => {
+  try {
+    const uid = (req as any).user.uid;
+    const role = await getUserRole(uid);
+    if (role !== "teacher" && role !== "admin") {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    const { taskId, submissionId } = req.params;
+    const { courseId, moduleId, status, teacherComment } = req.body;
+
+    if (!courseId || !moduleId) {
+      return res.status(400).json({ error: "courseId and moduleId are required" });
+    }
+
+    if (!status || !SUBMISSION_STATUS.includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+
+    const submissionRef = db
+      .collection("courses")
+      .doc(String(courseId))
+      .collection("modules")
+      .doc(String(moduleId))
+      .collection("tasks")
+      .doc(taskId)
+      .collection("submissions")
+      .doc(submissionId);
+
+    const snap = await submissionRef.get();
+    if (!snap.exists) {
+      return res.status(404).json({ error: "Submission not found" });
+    }
+
+    await submissionRef.update({
+      status,
+      teacherComment: teacherComment ?? null,
+      updatedAt: Date.now(),
+    });
+
+    // update task latest status
+    await db
+      .collection("courses")
+      .doc(String(courseId))
+      .collection("modules")
+      .doc(String(moduleId))
+      .collection("tasks")
+      .doc(taskId)
+      .set({ latestSubmissionStatus: status }, { merge: true });
+
+    const updated = await submissionRef.get();
+    return res.status(200).json({ submissionId, ...updated.data() });
+  } catch (e: any) {
+    console.error("Error in PATCH /tasks/:taskId/submissions/:submissionId:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * POST /tasks/:taskId/claim
+ * Student claims rewards after an approved submission
+ */
+app.post("/tasks/:taskId/claim", requireAuth, async (req, res) => {
+  try {
+    const uid = (req as any).user.uid;
+    const { taskId } = req.params;
+    const { courseId, moduleId } = req.body;
+
+    if (!courseId || !moduleId) {
+      return res.status(400).json({ error: "courseId and moduleId are required" });
+    }
+
+    const submissionsRef = db
+      .collection("courses")
+      .doc(String(courseId))
+      .collection("modules")
+      .doc(String(moduleId))
+      .collection("tasks")
+      .doc(taskId)
+      .collection("submissions");
+
+    const approvedSnap = await submissionsRef
+      .where("studentId", "==", uid)
+      .where("status", "==", "approved")
+      .orderBy("createdAt", "desc")
+      .limit(1)
+      .get();
+
+    if (approvedSnap.empty) {
+      return res.status(400).json({ error: "No approved submission to claim" });
+    }
+
+    const submissionDoc = approvedSnap.docs[0];
+    const submissionData: any = submissionDoc.data();
+    if (submissionData.claimedAt) {
+      return res.status(400).json({ error: "Already claimed" });
+    }
+
+    // Get task for rewards
+    const taskSnap = await db
+      .collection("courses")
+      .doc(String(courseId))
+      .collection("modules")
+      .doc(String(moduleId))
+      .collection("tasks")
+      .doc(taskId)
+      .get();
+
+    if (!taskSnap.exists) {
+      return res.status(404).json({ error: "Task not found" });
+    }
+
+    const taskData: any = taskSnap.data() || {};
+
+    // Load user stats
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+    const user = userSnap.data() || {};
+
+    const oldLevel = user.stats?.level || 1;
+    const newTotalXP = (user.stats?.totalXP || 0) + (taskData.xp || 0);
+    let newGold = (user.stats?.gold || 0) + (taskData.gold || 0);
+
+    const levelData = await calculateLevelFromXP(newTotalXP);
+    const leveledUp = levelData.level > oldLevel;
+
+    let levelUpRewards = undefined;
+    if (leveledUp && levelData.rewards) {
+      newGold += levelData.rewards.gold || 0;
+      levelUpRewards = levelData.rewards;
+    }
+
+    const statsUpdate = {
+      "stats.level": levelData.level,
+      "stats.xp": levelData.currentXP,
+      "stats.nextLevelXP": levelData.nextLevelXP,
+      "stats.totalXP": newTotalXP,
+      "stats.gold": newGold,
+      updatedAt: Date.now(),
+    };
+
+    await userRef.update(statsUpdate);
+
+    // Mark submission claimed
+    await submissionDoc.ref.update({ claimedAt: Date.now(), updatedAt: Date.now() });
+
+    return res.status(200).json({
+      success: true,
+      reward: { xp: taskData.xp, gold: taskData.gold },
+      leveledUp,
+      newLevel: levelData.level,
+      currentXP: levelData.currentXP,
+      nextLevelXP: levelData.nextLevelXP,
+      levelUpRewards,
+    });
+  } catch (e: any) {
+    console.error("Error in POST /tasks/:taskId/claim:", e);
     return res.status(500).json({ error: e?.message });
   }
 });
