@@ -224,9 +224,9 @@ export default function InventoryPage() {
             const { apiFetch } = await import("@/api/client");
             const userInventory = (await apiFetch(`/users/${user.uid}/inventory`)) as any;
             
-            // Get equipped items from user-specific endpoint
-            const equippedData = (await apiFetch(`/users/${user.uid}/equipped`)) as any;
-            setEquipped(equippedData || {});
+            // Get equipped items from API
+            const equippedData = await InventoryAPI.getEquipped();
+            setEquipped(equippedData?.equipped || {});
             
             // Set lootbox counts directly from API response
             setUserLootboxes(userInventory.lootboxes || {});

@@ -5,6 +5,8 @@ import { getCurrentLevelProgress, getXPForLevel, getXPToNextLevel, getLevelFromX
 import { useState, useEffect } from "react";
 import { AchievementsAPI } from "@/api/achievements.api";
 import { auth } from "@/firebase";
+import { db } from "@/firebase";
+import { doc, getDoc } from "firebase/firestore";
 import {
   Sword,
   BarChart3,
@@ -27,6 +29,7 @@ export default function StatsPage() {
   const { tasks } = useRealtimeTasks();
   const { darkMode, accentColor } = useTheme();
   const [achievements, setAchievements] = useState<any[]>([]);
+  const [equippedStats, setEquippedStats] = useState<Record<string, number>>({});
 
   // Get theme classes
   const theme = getThemeClasses(darkMode, accentColor);
@@ -68,6 +71,39 @@ export default function StatsPage() {
 
     loadAchievements();
   }, []);
+
+  // Load equipped stats (server source to include equipped items totals)
+  useEffect(() => {
+    const fetchEquippedStats = async () => {
+      if (!user?.uid) return;
+      try {
+        const { apiFetch } = await import("@/api/client");
+
+        // Primary: /equipped for totals (now includes totalStats = userBaseStats + equippedStats)
+        const statsData = await apiFetch(`/users/${user.uid}/stats`);
+        const totals = statsData?.totalStats || {};
+
+        if (totals && Object.keys(totals).length > 0) {
+          setEquippedStats(totals);
+        } else {
+          setEquippedStats({});
+        }
+      } catch (err) {
+        console.error("Failed to fetch stats", err);
+        setEquippedStats({});
+      }
+    };
+
+    fetchEquippedStats();
+  }, [user?.uid]);
+
+  // Keep total stats in sync with realtime user updates (e.g., after equip/unequip)
+  useEffect(() => {
+    const totals = user?.stats?.totalStats;
+    if (totals && Object.keys(totals).length > 0) {
+      setEquippedStats(totals);
+    }
+  }, [user?.stats?.totalStats]);
 
 
 
@@ -615,7 +651,7 @@ export default function StatsPage() {
           </div>
         </div>
 
-        {/* Equipment Stats */}
+        {/* Total Stats Card */}
         <div
           className={`${theme.card} rounded-2xl p-6 mb-6`}
           style={{
@@ -627,29 +663,28 @@ export default function StatsPage() {
           <h3
             className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
           >
-            <Shield size={20} /> Equipment Stats
+            <Sword size={20} /> Total Stats
           </h3>
 
           {(() => {
-            const equippedStats = user.inventory?.equippedStats || {};
-            const statEntries = Object.entries(equippedStats).filter(
-              ([, v]) => v !== undefined && v !== null && Number(v) !== 0
-            );
+            const statKeys = [
+              "hp",
+              "attack",
+              "magicAttack",
+              "defense",
+              "magicResist",
+              "speed",
+              "critChance",
+              "critDamage",
+              "goldBonus",
+              "xpBonus",
+            ];
 
-            if (statEntries.length === 0) {
-              return (
-                <div className="text-center py-8">
-                  <Shield
-                    size={40}
-                    className={`mb-4 mx-auto ${darkMode ? "text-gray-500" : "text-gray-400"}`}
-                  />
-                  <p className={theme.textMuted}>No equipment equipped</p>
-                  <p className={`${theme.textSubtle} text-sm`}>
-                    Equip items to see your total stats!
-                  </p>
-                </div>
-              );
-            }
+            // Use totalStats from backend (equippedStats contains the combined total)
+            const displayStats: Record<string, number> = {};
+            statKeys.forEach((k) => {
+              displayStats[k] = Number((equippedStats as any)?.[k] ?? 0);
+            });
 
             const formatStatValue = (key: string, value: number): string => {
               if (key === 'critChance' || key === 'critDamage' || key === 'goldBonus' || key === 'xpBonus') {
@@ -691,7 +726,8 @@ export default function StatsPage() {
 
             return (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                {statEntries.map(([key, value]) => {
+                {statKeys.map((key) => {
+                  const value = displayStats[key] || 0;
                   const color = statColors[key] || accentColor;
                   return (
                     <div

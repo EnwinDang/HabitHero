@@ -110,8 +110,8 @@ export default function AutoBattlePage() {
                 setWorldId(battleWorldId);
                 setStage(initialStage);
 
-                // 2. Get player stats from API
-                const playerStats = await apiFetch<{
+                // 2. Get player stats (includes equipped items via total stats)
+                const baseStats = await apiFetch<{
                     level: number;
                     attack: number;
                     defense: number;
@@ -120,14 +120,36 @@ export default function AutoBattlePage() {
                     magicResist: number;
                 }>(`/combat/player-stats/${user.stats?.level || 1}`);
 
+                let totalStats: Record<string, number> = {};
+                try {
+                    totalStats = await apiFetch<Record<string, number>>(`/combat/player-stats-total/${user.uid}`);
+                } catch (err) {
+                    console.warn("/combat/player-stats-total missing, using base stats", err);
+                }
+
+                const finalStats = (totalStats && Object.keys(totalStats).length > 0)
+                    ? totalStats
+                    : {
+                        hp: baseStats.health,
+                        attack: baseStats.attack,
+                        defense: baseStats.defense,
+                        magicAttack: baseStats.magic,
+                        magicResist: baseStats.magicResist,
+                        speed: 50 + (baseStats.level ?? 1) * 3,
+                        critChance: 0,
+                        critDamage: 0,
+                        goldBonus: 0,
+                        xpBonus: 0,
+                    };
+
                 const newPlayer: BattlePlayer = {
                     name: user.displayName || "Hero",
-                    level: playerStats.level,
-                    hp: playerStats.health,
-                    maxHP: playerStats.health,
-                    attack: playerStats.attack,
-                    defense: playerStats.defense,
-                    speed: 50 + playerStats.level * 3,
+                    level: baseStats.level,
+                    hp: finalStats.hp || baseStats.health,
+                    maxHP: finalStats.hp || baseStats.health,
+                    attack: finalStats.attack || baseStats.attack,
+                    defense: finalStats.defense || baseStats.defense,
+                    speed: finalStats.speed || (50 + baseStats.level * 3),
                     emoji: "⚔️",
                 };
                 setPlayer(newPlayer);
