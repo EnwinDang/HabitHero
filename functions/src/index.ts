@@ -300,6 +300,7 @@ app.get("/auth/me", requireAuth, async (req, res) => {
         },
         stats: {
           ...(defaultPlayer.stats || {}),
+          gold: 400, // New accounts start with 400 gold
           loginStreak: 1,
           maxLoginStreak: 1,
           lastLoginDate: todayDateString, // Same format for consistency
@@ -4244,77 +4245,132 @@ app.get("/combat/:combatId", requireAuth, async (req, res) => {
 
 /**
  * GET /combat/monster-stats/:worldId/:stage/:userLevel
- * Calculate monster stats based on worldConfig, stage, user level, and equipped items
+ * Calculate monster stats based on monster's baseStats, tier, stage, user level, and equipped items
+ * Applies: monster tier multiplier × stage multiplier × user level × items × stage difficulty
  */
 app.get("/combat/monster-stats/:worldId/:stage/:userLevel", async (req, res) => {
   try {
     const { worldId, stage, userLevel } = req.params;
-    const { equippedItemsCount } = req.query;
+    const { monsterId, equippedItemsCount } = req.query;
     const stageNum = parseInt(stage);
     const userLvl = parseInt(userLevel);
     const itemsCount = equippedItemsCount ? parseInt(equippedItemsCount as string) : 0;
 
-    // Get worldConfig
+    // Get worldConfig for stage multipliers and tier multipliers
     const configSnap = await db.collection("worldConfig").doc("monsterScaling").get();
     if (!configSnap.exists) {
       return res.status(404).json({ error: "Monster scaling config not found" });
     }
 
     const config = configSnap.data() || {};
-    const baseStats = config.basePerWorld?.[worldId];
     const multipliers = config.perStageMultiplier || [];
-
-    if (!baseStats) {
-      return res.status(404).json({ error: `No base stats found for ${worldId}` });
-    }
 
     // Get stage multiplier (array is 0-indexed, stage 1 = index 1)
     const stageMultiplier = multipliers[stageNum] || 1;
     
-    // User level scaling: exponential growth for challenge
-    // Level 1: 1.0x, Level 10: 1.5x, Level 20: 2.28x, Level 50: 7.39x
-    const userLevelMultiplier = Math.pow(1.04, userLvl - 1);
+    // User level scaling: exponential growth (harder)
+    // Level 1: 1.0x, Level 10: 1.79x, Level 20: 3.21x, Level 50: 18.68x
+    const userLevelMultiplier = Math.pow(1.06, Math.max(0, userLvl - 1));
 
-    // Item scaling: each equipped item makes monster 15% stronger
-    // 0 items: 1.0x, 1 item: 1.15x, 3 items: 1.52x, 5 items: 2.01x
-    const itemScalingMultiplier = Math.pow(1.15, itemsCount);
+    // Item scaling: each equipped item makes monster 22% stronger (harder)
+    // 0 items: 1.0x, 1 item: 1.22x, 3 items: 1.82x, 5 items: 2.93x
+    const itemScalingMultiplier = Math.pow(1.22, Math.max(0, itemsCount));
     
-    // Stage difficulty bonus: later stages get extra multiplier
-    // Stage 1-5: 1.0x, Stage 6-10: 1.2x, Stage 11+: 1.5x
-    const stageDifficultyBonus = stageNum <= 5 ? 1.0 : stageNum <= 10 ? 1.2 : 1.5;
+    // Stage difficulty bonus: later stages get extra multiplier (harder)
+    // Stage 1-5: 1.2x, Stage 6-10: 1.5x, Stage 11+: 2.0x
+    const stageDifficultyBonus = stageNum <= 5 ? 1.2 : stageNum <= 10 ? 1.5 : 2.0;
 
-    // Calculate final stats with all multipliers
-    const baseAttack = baseStats.attack;
-    const baseHp = baseStats.hp;
+    // Get monster template from database to use its baseStats and tier
+    let monsterData: any = null;
+    let monsterTier: string = "normal";
     
-    const finalAttack = Math.round(baseAttack * stageMultiplier * userLevelMultiplier * itemScalingMultiplier * stageDifficultyBonus);
-    const finalHp = Math.round(baseHp * stageMultiplier * userLevelMultiplier * itemScalingMultiplier * stageDifficultyBonus);
+    // Try to find monster in world-specific collection or general monsters collection
+    const worldMonstersSnap = await db.collection(`worlds/${worldId}/monsters`).doc(monsterId as string).get();
+    if (worldMonstersSnap.exists) {
+      monsterData = worldMonstersSnap.data();
+    } else {
+      // Fallback: try general monsters collection
+      const generalMonsterSnap = await db.collection("monsters").doc(monsterId as string).get();
+      if (generalMonsterSnap.exists) {
+        monsterData = generalMonsterSnap.data();
+      }
+    }
+
+    // Extract tier and baseStats
+    if (monsterData) {
+      monsterTier = monsterData.tier || "normal";
+    }
+
+    const monsterBaseStats = monsterData?.baseStats || {
+      attack: 10,
+      defense: 6,
+      hp: 100,
+      magic: 8,
+      magicResist: 5,
+      speed: 5,
+    };
+
+    // Get tier multipliers from stageTypes config
+    const stageTypesSnap = await db.collection("worldConfig").doc("stageTypes").get();
+    const tierData = stageTypesSnap.exists ? stageTypesSnap.data()?.[monsterTier] : null;
+    
+    const tierDamageMultiplier = tierData?.enemy?.damageMultiplier || 1.0;
+    const tierHpMultiplier = tierData?.enemy?.hpMultiplier || 1.0;
+    const tierGoldMultiplier = tierData?.rewards?.goldMultiplier || 1.0;
+    const tierXpMultiplier = tierData?.rewards?.xpMultiplier || 1.0;
+
+    // Combined multiplier applied to all stats (excludes tier-specific multipliers for now, applied separately)
+    const baseMultiplier = stageMultiplier * userLevelMultiplier * itemScalingMultiplier * stageDifficultyBonus;
+
+    // Apply tier multipliers to damage stats and HP separately
+    const damageMultiplier = baseMultiplier * tierDamageMultiplier;
+    const hpMultiplier = baseMultiplier * tierHpMultiplier;
+
+    // Scale all monster stats
+    const scaledStats = {
+      attack: Math.round((monsterBaseStats.attack || 10) * damageMultiplier),
+      defense: Math.round((monsterBaseStats.defense || 6) * damageMultiplier),
+      hp: Math.round((monsterBaseStats.hp || 100) * hpMultiplier),
+      magic: Math.round((monsterBaseStats.magic || 8) * damageMultiplier),
+      magicResist: Math.round((monsterBaseStats.magicResist || 5) * damageMultiplier),
+      speed: Math.round((monsterBaseStats.speed || 5) * baseMultiplier), // Speed uses base multiplier
+    };
 
     const monsterStats = {
+      monsterId: monsterId || "unknown",
       worldId,
       stage: stageNum,
       userLevel: userLvl,
       equippedItemsCount: itemsCount,
-      baseAttack: baseAttack,
-      baseHp: baseHp,
+      monsterTier: monsterTier,
+      // Base stats from monster document
+      baseStats: monsterBaseStats,
+      // Scaling multipliers
       stageMultiplier: stageMultiplier,
       userLevelMultiplier: userLevelMultiplier,
       itemScalingMultiplier: itemScalingMultiplier,
       stageDifficultyBonus: stageDifficultyBonus,
-      attack: finalAttack,
-      hp: finalHp,
+      baseMultiplier: baseMultiplier,
+      tierDamageMultiplier: tierDamageMultiplier,
+      tierHpMultiplier: tierHpMultiplier,
+      tierGoldMultiplier: tierGoldMultiplier,
+      tierXpMultiplier: tierXpMultiplier,
+      // Scaled stats
+      ...scaledStats,
     };
 
-    console.log(`⚔️ Monster Stats [${worldId}:${stageNum}] Level=${userLvl}, Items=${itemsCount}:`, {
-      base: { attack: baseAttack, hp: baseHp },
+    console.log(`⚔️ Monster Stats [${worldId}:${stageNum} - ${monsterId}] Tier=${monsterTier} Level=${userLvl}, Items=${itemsCount}:`, {
+      baseStats: monsterBaseStats,
       multipliers: {
-        stage: stageMultiplier.toFixed(2),
-        userLevel: userLevelMultiplier.toFixed(2),
-        items: itemScalingMultiplier.toFixed(2),
-        difficulty: stageDifficultyBonus.toFixed(2),
-        total: (stageMultiplier * userLevelMultiplier * itemScalingMultiplier * stageDifficultyBonus).toFixed(2),
+        stage: stageMultiplier.toFixed(3),
+        userLevel: userLevelMultiplier.toFixed(3),
+        items: itemScalingMultiplier.toFixed(3),
+        difficulty: stageDifficultyBonus.toFixed(3),
+        base: baseMultiplier.toFixed(3),
+        tierDamage: tierDamageMultiplier.toFixed(3),
+        tierHp: tierHpMultiplier.toFixed(3),
       },
-      final: { attack: finalAttack, hp: finalHp },
+      scaledStats: scaledStats,
     });
 
     return res.status(200).json(monsterStats);
@@ -5768,6 +5824,83 @@ app.delete("/items/:collection/:id", requireAuth, async (req, res) => {
     return res.status(200).json({ message: "Deleted successfully" });
   } catch (e: any) {
     return res.status(500).json({ error: e.message });
+  }
+});
+
+// ============ POMODORO ============
+
+/**
+ * POST /pomodoro/session-completed
+ * Record a completed pomodoro session in the database
+ * Auto-resets daily stats if needed
+ */
+app.post("/pomodoro/session-completed", requireAuth, async (req, res) => {
+  try {
+    const uid = (req as any).user.uid;
+    const { sessionsCount = 1, focusSeconds = 0 } = req.body;
+
+    if (sessionsCount < 1 || focusSeconds < 0) {
+      return res.status(400).json({ error: "Invalid session data" });
+    }
+
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userSnap.data() || {};
+    const stats = user.stats || {};
+
+    // Get today's date in "YYYY-MM-DD" format
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const todayDateString = `${year}-${month}-${day}`;
+
+    // Check if we need to reset daily stats (new day)
+    const lastPomodoroDayKey = stats.lastPomodoroDayKey || "";
+    const needsReset = lastPomodoroDayKey !== todayDateString;
+
+    // Calculate new totals
+    let todaysSessions = 0;
+    let todaysFocusSeconds = 0;
+
+    if (needsReset) {
+      // New day: start fresh
+      todaysSessions = sessionsCount;
+      todaysFocusSeconds = focusSeconds;
+    } else {
+      // Same day: add to existing
+      todaysSessions = (stats.todaysSessions || 0) + sessionsCount;
+      todaysFocusSeconds = (stats.todaysFocusSeconds || 0) + focusSeconds;
+    }
+
+    // Update user stats with today's data
+    await userRef.update({
+      "stats.todaysSessions": todaysSessions,
+      "stats.todaysFocusSeconds": todaysFocusSeconds,
+      "stats.lastPomodoroDayKey": todayDateString,
+      updatedAt: Date.now(),
+    });
+
+    console.log(`✅ [Pomodoro] User ${uid} completed session. Today: ${todaysSessions} sessions, ${todaysFocusSeconds}s focus`);
+
+    return res.status(200).json({
+      success: true,
+      userId: uid,
+      today: {
+        sessions: todaysSessions,
+        focusSeconds: todaysFocusSeconds,
+        date: todayDateString,
+      },
+      wasReset: needsReset,
+    });
+  } catch (e: any) {
+    console.error("Error in POST /pomodoro/session-completed:", e);
+    return res.status(500).json({ error: e?.message });
   }
 });
 

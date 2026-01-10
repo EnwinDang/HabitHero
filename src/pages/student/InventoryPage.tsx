@@ -261,9 +261,11 @@ export default function InventoryPage() {
                 } as InventoryItem;
             });
 
-            const flaggedItems = markEquippedInstances(inventoryItems, equippedData);
+            const flaggedItems = markEquippedInstances(inventoryItems, equippedData?.equipped || {});
             console.log("📦 Loaded inventory items:", inventoryItems.length, inventoryItems);
             console.log("📦 Items with bonus:", inventoryItems.filter((it: any) => it.bonus));
+            console.log("📦 Equipped data:", equippedData?.equipped);
+            console.log("📦 Flagged items (with isEquipped):", flaggedItems.filter((it) => it.isEquipped));
             setItems(flaggedItems);
             setRerollSelection([]);
             // Cache details so equipped items stay visible even when removed from inventory list
@@ -348,23 +350,25 @@ export default function InventoryPage() {
     armorEntries.forEach(([slot, id]) => {
         if (!id) return;
         const label = slot.charAt(0).toUpperCase() + slot.slice(1);
-        equippedSlots.push({ slot: label, item: resolveItem(id) });
+        equippedSlots.push({ slot: label, item: resolveItem(typeof id === "string" ? id : String(id)) });
     });
     const petEntries = Object.entries(equipped?.pets || {});
     petEntries.forEach(([slot, id]) => {
         if (!id) return;
         const label = slot.toLowerCase().includes("pet") ? slot : `Pet ${slot}`;
-        equippedSlots.push({ slot: label, item: resolveItem(id) });
+        equippedSlots.push({ slot: label, item: resolveItem(typeof id === "string" ? id : String(id)) });
     });
     const accEntries = Object.entries(equipped?.accessoiries || {});
     accEntries.forEach(([slot, id]) => {
         if (!id) return;
         const label = slot.toLowerCase().includes("accessory") ? slot : `Accessory ${slot}`;
-        equippedSlots.push({ slot: label, item: resolveItem(id) });
+        equippedSlots.push({ slot: label, item: resolveItem(typeof id === "string" ? id : String(id)) });
     });
+    // Filter out equipped items from inventory display
+    const unequippedItems = items.filter(item => !item.isEquipped);
     const filteredByType = selectedCategory === "all"
-        ? items
-        : items.filter(item => item.type === selectedCategory);
+        ? unequippedItems
+        : unequippedItems.filter(item => item.type === selectedCategory);
     const filteredItems = rarityFilter === 'all' 
         ? filteredByType 
         : filteredByType.filter(item => item.rarity === rarityFilter);
@@ -436,16 +440,8 @@ export default function InventoryPage() {
             }
 
             await InventoryAPI.equip(item.itemId, slot);
-            // Optimistic: only one copy marked equipped, others stay in inventory
-            setEquipped((prev: any) => {
-                const next = { ...prev, armor: { ...(prev?.armor || {}) }, pets: { ...(prev?.pets || {}) }, accessoiries: { ...(prev?.accessoiries || {}) } };
-                if (slot === "weapon") next.weapon = item.itemId;
-                else if (["helmet","chestplate","pants","boots"].includes(slot)) next.armor[slot] = item.itemId;
-                else if (["pet1","pet2"].includes(slot)) next.pets[slot] = item.itemId;
-                else if (["accessory1","accessory2"].includes(slot)) next.accessoiries[slot] = item.itemId;
-                setItems((current) => markEquippedInstances(current, next));
-                return next;
-            });
+            // Immediately reload inventory to update all items view
+            await loadInventory();
             setMergeMessage({ type: 'success', text: `Equipped ${item.name}!` });
             setTimeout(() => setMergeMessage(null), 3000);
         } catch (error: any) {
@@ -474,16 +470,8 @@ export default function InventoryPage() {
             }
 
             await InventoryAPI.unequip(slot);
-            // Optimistic local update; realtime listener will sync
-            setEquipped((prev: any) => {
-                const next = { ...prev, armor: { ...(prev?.armor || {}) }, pets: { ...(prev?.pets || {}) }, accessoiries: { ...(prev?.accessoiries || {}) } };
-                if (slot === "weapon") next.weapon = "";
-                else if (["helmet","chestplate","pants","boots"].includes(slot)) delete next.armor[slot];
-                else if (["pet1","pet2"].includes(slot)) delete next.pets[slot];
-                else if (["accessory1","accessory2"].includes(slot)) delete next.accessoiries[slot];
-                setItems((current) => markEquippedInstances(current, next));
-                return next;
-            });
+            // Immediately reload inventory to update all items view
+            await loadInventory();
             setMergeMessage({ type: 'success', text: `Unequipped ${item.name}` });
             setTimeout(() => setMergeMessage(null), 3000);
         } catch (error: any) {
@@ -797,7 +785,6 @@ export default function InventoryPage() {
                                                 key={`${item.id}_${idx}`}
                                                 item={item}
                                                 darkMode={darkMode}
-                                                theme={theme}
                                                 getTypeIcon={getTypeIcon}
                                                 totalCopies={displayCount}
                                                 instanceIndex={instanceIndex}
@@ -981,7 +968,7 @@ export default function InventoryPage() {
                                         <div className="text-3xl">{rerollResult.icon || '🎲'}</div>
                                         <div>
                                             <p className="text-sm text-gray-500">Nieuw item</p>
-                                            <p className="text-lg font-bold" style={{ color: rarityColors[rerollResult.rarity || 'common']?.text || '#6b7280' }}>{rerollResult.name || rerollResult.itemId}</p>
+                                            <p className="text-lg font-bold" style={{ color: rarityColors[(rerollResult.rarity || 'common') as keyof typeof rarityColors]?.text || '#6b7280' }}>{rerollResult.name || rerollResult.itemId}</p>
                                             <p className="text-xs text-gray-500 capitalize">{rerollResult.rarity}</p>
                                         </div>
                                     </div>
@@ -1327,7 +1314,6 @@ function EquippedItemCard({
 function ItemCard({
     item,
     darkMode,
-    theme,
     getTypeIcon,
     totalCopies,
     instanceIndex,
@@ -1390,8 +1376,8 @@ function ItemCard({
                     {/* Level Badge removed (no levels) */}
                 </div>
 
-                <h4 className={`font-medium ${theme.text} text-sm truncate`}>{item.name}</h4>
-                <p className={`text-xs ${theme.textMuted} capitalize`}>{item.rarity}</p>
+                <h4 className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'} text-sm truncate`}>{item.name}</h4>
+                <p className={`text-xs ${darkMode ? 'text-gray-300' : 'text-gray-600'} capitalize`}>{item.rarity}</p>
                 {hasBoost && (
                     <div className="mt-1 flex justify-center">
                         <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ backgroundColor: 'rgba(250, 204, 21, 0.2)', color: '#ca8a04', border: '1px solid rgba(250, 204, 21, 0.5)' }}>

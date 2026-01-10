@@ -190,7 +190,7 @@ export default function StudentHomePage() {
               <span className={`font-medium ${theme.text}`}>Pomodoro Streak</span>
             </div>
             <p className="text-3xl font-bold" style={theme.accentText}>
-              {user.stats.streak}
+              {user.stats.pomodoroStreak || 0}
             </p>
           </div>
 
@@ -331,7 +331,7 @@ export default function StudentHomePage() {
                 <div className="flex justify-between items-center">
                   <span className={theme.textMuted}>Max Pomodoro Streak</span>
                   <span className="font-semibold" style={theme.accentText}>
-                    {user.stats.maxStreak || user.stats.streak}
+                    {user.stats.maxPomodoroStreak || 0}
                   </span>
                 </div>
               </div>

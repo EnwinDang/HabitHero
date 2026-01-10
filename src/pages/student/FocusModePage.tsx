@@ -189,13 +189,13 @@ export default function FocusModePage() {
                 <div className="flex justify-between items-center py-2" style={{ ...theme.borderStyle, borderBottomWidth: '1px', borderBottomStyle: 'solid' }}>
                   <span className={theme.textMuted}>Sessions</span>
                   <span className={`font-bold ${theme.text}`}>
-                    {sessionsCompleted}
+                    {user?.stats?.todaysSessions ?? sessionsCompleted}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2">
                   <span className={theme.textMuted}>Focus Time</span>
                   <span className="font-bold" style={{ color: accentColor }}>
-                    {Math.floor(totalFocusSeconds / 60)} min
+                    {Math.floor((user?.stats?.todaysFocusSeconds ?? totalFocusSeconds) / 60)} min
                   </span>
                 </div>
               </div>

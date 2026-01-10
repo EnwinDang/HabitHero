@@ -174,13 +174,6 @@ export default function AutoBattlePage() {
                 if (equippedItems.pets && Object.keys(equippedItems.pets).length > 0) equippedItemsCount += Object.keys(equippedItems.pets).length;
                 if (equippedItems.accessoiries && Object.keys(equippedItems.accessoiries).length > 0) equippedItemsCount += Object.keys(equippedItems.accessoiries).length;
                 
-                const monsterStats = await apiFetch<{
-                    worldId: string;
-                    stage: number;
-                    attack: number;
-                    hp: number;
-                }>(`/combat/monster-stats/${battleWorldId}/${initialStage}/${userLevel}?equippedItemsCount=${equippedItemsCount}`);
-
                 // 5. Fetch the specific monster that was clicked
                 let selectedMonster;
                 try {
@@ -198,6 +191,17 @@ export default function AutoBattlePage() {
                     return;
                 }
 
+                const monsterStats = await apiFetch<{
+                    worldId: string;
+                    stage: number;
+                    attack: number;
+                    hp: number;
+                    defense: number;
+                    speed: number;
+                    magic: number;
+                    magicResist: number;
+                }>(`/combat/monster-stats/${battleWorldId}/${initialStage}/${userLevel}?monsterId=${selectedMonster.monsterId}&equippedItemsCount=${equippedItemsCount}`);
+
                 // Use monster's tier for animation
                 const monsterTierForAnimation = selectedMonster.tier || 'normal';
                 setMonsterTier(monsterTierForAnimation as 'normal' | 'elite' | 'miniBoss' | 'boss');
@@ -210,8 +214,8 @@ export default function AutoBattlePage() {
                     hp: monsterStats.hp,
                     maxHP: monsterStats.hp,
                     attack: monsterStats.attack,
-                    defense: selectedMonster.baseStats?.defense || 5,
-                    speed: selectedMonster.baseStats?.speed || 10,
+                    defense: monsterStats.defense, // Use scaled defense
+                    speed: monsterStats.speed, // Use scaled speed
                     emoji: "👾", // Default emoji, will be replaced by image
                     realmId: battleWorldId,
                     levelId: initialStage,

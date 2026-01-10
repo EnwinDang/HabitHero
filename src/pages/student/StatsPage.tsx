@@ -81,7 +81,7 @@ export default function StatsPage() {
 
         // Primary: /equipped for totals (now includes totalStats = userBaseStats + equippedStats)
         const statsData = await apiFetch(`/users/${user.uid}/stats`);
-        const totals = statsData?.totalStats || {};
+        const totals = (statsData as any)?.totalStats || {};
 
         if (totals && Object.keys(totals).length > 0) {
           setEquippedStats(totals);

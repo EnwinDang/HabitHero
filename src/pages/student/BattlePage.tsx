@@ -85,7 +85,11 @@ export default function BattlePage() {
                     const monsterStats = await apiFetch<{
                         attack: number;
                         hp: number;
-                    }>(`/combat/monster-stats/${worldId}/${levelId}/${userLevel}?equippedItemsCount=${equippedItemsCount}`);
+                        defense: number;
+                        speed: number;
+                        magic: number;
+                        magicResist: number;
+                    }>(`/combat/monster-stats/${worldId}/${levelId}/${userLevel}?monsterId=${monsterData.monsterId}&equippedItemsCount=${equippedItemsCount}`);
 
                     // Map generic Monster to BattleEnemy
                     const newEnemy: BattleEnemy = {
@@ -96,8 +100,8 @@ export default function BattlePage() {
                         hp: monsterStats.hp,
                         maxHP: monsterStats.hp,
                         attack: monsterStats.attack, // Use scaled stats from endpoint
-                        defense: (monsterData.baseStats?.defense || 5) + (Number(levelId) * 1),
-                        speed: (monsterData.baseStats?.speed || 10) + (Number(levelId) * 1),
+                        defense: monsterStats.defense, // Use scaled defense
+                        speed: monsterStats.speed, // Use scaled speed
                         emoji: "👾", // Default emoji, could be mapped from type
                         realmId: worldId,
                         levelId: Number(levelId)
