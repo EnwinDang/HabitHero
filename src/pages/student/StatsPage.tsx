@@ -132,10 +132,10 @@ export default function StatsPage() {
     (t) => !t.isActive && t.difficulty === "extreme"
   ).length;
 
-  // Combat stats (if tracked in user.stats)
+  // Combat stats (if tracked in user.stats or user.progression)
   const battlesWon = user.stats?.battlesWon || 0;
   const battlesPlayed = user.stats?.battlesPlayed || 0;
-  const monstersDefeated = user.stats?.monstersDefeated || 0;
+  const monstersDefeated = user.progression?.monstersDefeated || user.stats?.monstersDefeated || 0;
   const winRate = battlesPlayed > 0 ? Math.round((battlesWon / battlesPlayed) * 100) : 0;
 
   // Collection stats

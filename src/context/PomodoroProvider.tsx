@@ -225,22 +225,27 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
         const newPomodoroDaily = prevPomodoroDaily + 1;
         const newPomodoroDailyBest = Math.max(prevPomodoroBest, newPomodoroDaily);
 
-        // Update Firestore counters and streak (session totals handled by backend API to avoid double increments)
+        // Get current total focus sessions and increment it
+        const currentFocusSessions = typeof stats.focusSessionsCompleted === "number" ? stats.focusSessionsCompleted : 0;
+        const newFocusSessions = currentFocusSessions + 1;
+
+        // Update Firestore counters and streak
         await updateDoc(userRef, {
           "stats.lastFocusDate": todayKey,
           "stats.streak": newStreak,
           "stats.maxStreak": newMaxStreak,
+          "stats.focusSessionsCompleted": newFocusSessions, // Update total focus sessions
           "streaks.daily.current": newStreak,
           "streaks.daily.best": streakDailyBest,
           "pomodoro.daily.current": newPomodoroDaily,
           "pomodoro.daily.best": newPomodoroDailyBest,
         });
 
-        // Update streak + focus achievements
+        // Update streak + focus achievements with the new total
         onStreakUpdated(newStreak).catch((error) => {
           console.error("Failed to update streak achievements:", error);
         });
-        onFocusSessionCompleted(newSessionCount).catch((error) => {
+        onFocusSessionCompleted(newFocusSessions).catch((error) => {
           console.error("Failed to update focus achievements:", error);
         });
 

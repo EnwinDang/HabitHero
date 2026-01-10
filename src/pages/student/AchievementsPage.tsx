@@ -10,6 +10,7 @@ import {
   onLevelUp,
   onTaskCompleted,
   onFocusSessionCompleted,
+  onMonsterDefeated,
 } from "@/services/achievement.service";
 import { AchievementsAPI } from "@/api/achievements.api";
 import { Trophy, Star, TrendingUp, Coins, Lock, Check, Gift } from "lucide-react";
@@ -35,6 +36,7 @@ export default function AchievementsPage() {
   const prevStreakRef = useRef<number>(0);
   const prevFocusSessionsRef = useRef<number>(0);
   const prevCompletedTasksRef = useRef<number>(0);
+  const prevMonstersDefeatedRef = useRef<number>(0);
 
   // Handle claim achievement (API-based)
   const handleClaim = async (achievementId: string) => {
@@ -104,14 +106,37 @@ export default function AchievementsPage() {
       }
 
       // Update focus session achievements only if count changed
+      // Same pattern as monster achievements
       const focusSessions = user.stats.focusSessionsCompleted || 0;
-      if (focusSessions > 0 && focusSessions !== prevFocusSessionsRef.current) {
+      if (focusSessions !== prevFocusSessionsRef.current) {
         prevFocusSessionsRef.current = focusSessions;
         console.log(`🔄 Syncing focus achievements with ${focusSessions} sessions`);
-        onFocusSessionCompleted(focusSessions);
+        onFocusSessionCompleted(focusSessions).catch(err => {
+          console.error("Failed to update focus achievements:", err);
+        });
+      }
+
+      // Update monster defeat achievements only if count changed
+      // Check both progression.monstersDefeated (primary) and stats.monstersDefeated (fallback)
+      const monstersDefeated = user.progression?.monstersDefeated || user.stats.monstersDefeated || 0;
+      if (monstersDefeated !== prevMonstersDefeatedRef.current) {
+        prevMonstersDefeatedRef.current = monstersDefeated;
+        console.log(`🔄 Syncing monster defeat achievements with ${monstersDefeated} monsters`);
+        onMonsterDefeated(monstersDefeated).catch(err => {
+          console.error("Failed to update monster achievements:", err);
+        });
       }
     }
-  }, [user, userLoading]);
+    // Use specific values instead of the entire user object to avoid re-renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    user?.stats?.streak,
+    user?.stats?.level,
+    user?.stats?.focusSessionsCompleted,
+    user?.progression?.monstersDefeated,
+    user?.stats?.monstersDefeated,
+    userLoading
+  ]);
 
   // Sync task achievements when tasks change
   useEffect(() => {
@@ -276,6 +301,7 @@ function AchievementCard({
     achievementId: string;
     title: string;
     description?: string | null;
+    category?: string | null;
     icon?: string;
     progress: number;
     target: number;
@@ -291,10 +317,18 @@ function AchievementCard({
   isClaiming: boolean;
   isClaimed: boolean;
 }) {
+  // Calculate progress percentage, ensuring we don't divide by zero
+  const target = achievement.target || 1;
+  const progress = achievement.progress || 0;
   const progressPercent = Math.min(
     100,
-    Math.round((achievement.progress / achievement.target) * 100)
+    Math.max(0, Math.round((progress / target) * 100))
   );
+
+  // Debug logging for achievements with progress or focus achievements
+  if (progress > 0 || achievement.isUnlocked || achievement.category === "Focus" || achievement.title?.toLowerCase().includes("focus")) {
+    console.log(`📊 Achievement ${achievement.achievementId}: progress=${progress}, target=${target}, percent=${progressPercent}%, unlocked=${achievement.isUnlocked}, category=${achievement.category || "N/A"}`);
+  }
 
   // Use claimed status from Firestore data, fallback to prop for local state
   const isAlreadyClaimed = achievement.claimed || isClaimed;
@@ -359,22 +393,34 @@ function AchievementCard({
                 : { color: darkMode ? "#9ca3af" : "#6b7280" }
             }
           >
-            {achievement.progress}/{achievement.target}
+            {progress}/{target}
           </span>
         </div>
+        {/* Progress bar container */}
         <div
-          className={`h-2 rounded-full overflow-hidden ${darkMode ? "bg-gray-700" : "bg-gray-200"
-            }`}
+          style={{
+            height: '8px',
+            backgroundColor: darkMode ? "rgba(55, 65, 81, 1)" : "rgba(229, 231, 235, 1)",
+            width: '100%',
+            borderRadius: '9999px',
+            overflow: 'hidden',
+            position: 'relative',
+          }}
         >
+          {/* Progress bar fill */}
           <div
-            className="h-full rounded-full transition-all"
             style={{
               width: `${progressPercent}%`,
-              background: achievement.isUnlocked
-                ? accentColor
-                : darkMode
-                  ? "#4b5563"
-                  : "#9ca3af",
+              height: '100%',
+              minWidth: progressPercent > 0 ? '2px' : '0px',
+              backgroundColor: achievement.isUnlocked
+                ? "#10b981" // Green when completed/unlocked
+                : "#f97316", // Orange when in progress
+              borderRadius: '9999px',
+              transition: 'width 0.3s ease',
+              position: 'absolute',
+              left: 0,
+              top: 0,
             }}
           />
         </div>

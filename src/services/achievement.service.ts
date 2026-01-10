@@ -1,5 +1,6 @@
-import { auth } from "@/firebase";
+import { auth, db } from "@/firebase";
 import { AchievementsAPI } from "@/api/achievements.api";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 
 /**
  * Achievement Progress Service
@@ -11,7 +12,8 @@ export type AchievementId =
     | "first_task" | "task_master_10" | "task_master_50" | "task_master_100"
     | "focus_first" | "focus_10"
     | "streak_3" | "streak_7" | "streak_30"
-    | "level_5" | "level_10" | "level_25";
+    | "level_5" | "level_10" | "level_25"
+    | "monster_first" | "monster_10" | "monster_50" | "monster_100";
 
 // Achievement targets (fallback if not available from API)
 const ACHIEVEMENT_TARGETS: Record<AchievementId, number> = {
@@ -27,6 +29,10 @@ const ACHIEVEMENT_TARGETS: Record<AchievementId, number> = {
     level_5: 5,
     level_10: 10,
     level_25: 25,
+    monster_first: 1,
+    monster_10: 10,
+    monster_50: 50,
+    monster_100: 100,
 };
 
 /**
@@ -118,20 +124,74 @@ export async function onTaskCompleted(totalCompletedTasks: number) {
 /**
  * Check and update focus-related achievements
  * Call this when a focus session is completed
+ * Writes directly to Firestore (same as monster achievements)
  */
 export async function onFocusSessionCompleted(totalFocusSessions: number) {
+    const user = auth.currentUser;
+    if (!user) {
+        console.error("No authenticated user for focus achievement update");
+        return;
+    }
+
     console.log(`📊 onFocusSessionCompleted called with count: ${totalFocusSessions}`);
 
-    if (totalFocusSessions >= 1) {
-        console.log(`  → Updating focus_first with progress: ${totalFocusSessions}`);
-        await updateAchievementProgress("focus_first", totalFocusSessions);
-    }
-    if (totalFocusSessions >= 1) {
-        console.log(`  → Updating focus_10 with progress: ${totalFocusSessions}`);
-        await updateAchievementProgress("focus_10", totalFocusSessions);
-    }
+    try {
+        // Update both focus achievements directly in Firestore
+        await Promise.all([
+            updateFocusAchievementDirect(user.uid, "focus_first", totalFocusSessions, 1),
+            updateFocusAchievementDirect(user.uid, "focus_10", totalFocusSessions, 10),
+        ]);
 
-    console.log(`✅ Focus achievements updated successfully`);
+        console.log(`✅ Focus achievements updated successfully in Firestore`);
+    } catch (error) {
+        console.error("❌ Failed to update focus achievements:", error);
+    }
+}
+
+/**
+ * Update focus achievement progress directly in Firestore
+ */
+async function updateFocusAchievementDirect(
+    uid: string,
+    achievementId: string,
+    newProgress: number,
+    target: number
+): Promise<void> {
+    try {
+        const isUnlocked = newProgress >= target;
+        const achievementRef = doc(db, "users", uid, "achievements", achievementId);
+        
+        // Check if document exists
+        const existingDoc = await getDoc(achievementRef);
+        const existingData = existingDoc.exists() ? existingDoc.data() : {};
+        
+        // Don't decrease progress or lock an already unlocked achievement
+        const currentProgress = existingData.progress || 0;
+        const currentUnlocked = existingData.isUnlocked || false;
+        
+        const updateData: any = {
+            achievementId,
+            progress: Math.max(newProgress, currentProgress), // Never decrease progress
+            isUnlocked: currentUnlocked || isUnlocked, // Once unlocked, stay unlocked
+            updatedAt: Date.now(),
+        };
+        
+        // Set unlockedAt if just unlocked
+        if (isUnlocked && !currentUnlocked) {
+            updateData.unlockedAt = Date.now();
+        } else if (existingData.unlockedAt) {
+            updateData.unlockedAt = existingData.unlockedAt; // Preserve existing unlockedAt
+        }
+
+        await setDoc(achievementRef, updateData, { merge: true });
+        
+        if (isUnlocked && !currentUnlocked) {
+            console.log(`🏆 Focus achievement unlocked: ${uid} - ${achievementId}!`);
+        }
+    } catch (error) {
+        console.error(`❌ Failed to update focus achievement ${achievementId} for user ${uid}:`, error);
+        throw error;
+    }
 }
 
 /**
@@ -152,4 +212,15 @@ export async function onLevelUp(currentLevel: number) {
     await updateAchievementProgress("level_5", currentLevel);
     await updateAchievementProgress("level_10", currentLevel);
     await updateAchievementProgress("level_25", currentLevel);
+}
+
+/**
+ * Check and update monster defeat achievements
+ * Call this when a monster is defeated
+ */
+export async function onMonsterDefeated(totalMonstersDefeated: number) {
+    await updateAchievementProgress("monster_first", totalMonstersDefeated);
+    await updateAchievementProgress("monster_10", totalMonstersDefeated);
+    await updateAchievementProgress("monster_50", totalMonstersDefeated);
+    await updateAchievementProgress("monster_100", totalMonstersDefeated);
 }

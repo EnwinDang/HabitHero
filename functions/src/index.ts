@@ -140,6 +140,99 @@ async function getUserRole(uid: string): Promise<string> {
   }
 }
 
+/**
+ * Helper: Achievement targets (fallback if not available from achievement catalog)
+ */
+const ACHIEVEMENT_TARGETS: Record<string, number> = {
+  first_task: 1,
+  task_master_10: 10,
+  task_master_50: 50,
+  task_master_100: 100,
+  focus_first: 1,
+  focus_10: 10,
+  streak_3: 3,
+  streak_7: 7,
+  streak_30: 30,
+  level_5: 5,
+  level_10: 10,
+  level_25: 25,
+  monster_first: 1,
+  monster_10: 10,
+  monster_50: 50,
+  monster_100: 100,
+};
+
+/**
+ * Helper: Update achievement progress for a user
+ */
+async function updateAchievementProgress(
+  uid: string,
+  achievementId: string,
+  newProgress: number
+): Promise<void> {
+  try {
+    // Get target from hardcoded list (fallback)
+    const target = ACHIEVEMENT_TARGETS[achievementId] || 1;
+    const isUnlocked = newProgress >= target;
+
+    const achievementRef = db.collection("users").doc(uid).collection("achievements").doc(achievementId);
+    
+    // Check if document exists
+    const existingDoc = await achievementRef.get();
+    const existingData = existingDoc.exists ? existingDoc.data() : {};
+    
+    // Don't decrease progress or lock an already unlocked achievement
+    const currentProgress = existingData.progress || 0;
+    const currentUnlocked = existingData.isUnlocked || false;
+    
+    const updateData: any = {
+      achievementId,
+      progress: Math.max(newProgress, currentProgress), // Never decrease progress
+      isUnlocked: currentUnlocked || isUnlocked, // Once unlocked, stay unlocked
+      updatedAt: Date.now(),
+    };
+    
+    // Set unlockedAt if just unlocked
+    if (isUnlocked && !currentUnlocked) {
+      updateData.unlockedAt = Date.now();
+    } else if (existingData.unlockedAt) {
+      updateData.unlockedAt = existingData.unlockedAt; // Preserve existing unlockedAt
+    }
+
+    await achievementRef.set(updateData, { merge: true });
+    
+    if (isUnlocked && !currentUnlocked) {
+      console.log(`🏆 Achievement unlocked: ${uid} - ${achievementId}!`);
+    }
+  } catch (error) {
+    console.error(`❌ Failed to update achievement ${achievementId} for user ${uid}:`, error);
+    // Don't throw - achievement updates shouldn't break main flow
+  }
+}
+
+/**
+ * Helper: Update level-related achievements
+ */
+async function updateLevelAchievements(uid: string, currentLevel: number): Promise<void> {
+  await Promise.all([
+    updateAchievementProgress(uid, "level_5", currentLevel),
+    updateAchievementProgress(uid, "level_10", currentLevel),
+    updateAchievementProgress(uid, "level_25", currentLevel),
+  ]);
+}
+
+/**
+ * Helper: Update monster defeat achievements
+ */
+async function updateMonsterDefeatAchievements(uid: string, totalMonstersDefeated: number): Promise<void> {
+  await Promise.all([
+    updateAchievementProgress(uid, "monster_first", totalMonstersDefeated),
+    updateAchievementProgress(uid, "monster_10", totalMonstersDefeated),
+    updateAchievementProgress(uid, "monster_50", totalMonstersDefeated),
+    updateAchievementProgress(uid, "monster_100", totalMonstersDefeated),
+  ]);
+}
+
 // ============ AUTH ============
 
 /**
@@ -1201,15 +1294,36 @@ app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
     console.log(`🎮 Battle Reward: ${uid} earned ${scaledXp} XP and ${scaledGold} gold`);
     console.log(`📊 Level Check: Current=${currentLevel}, New=${levelData.level}, LeveledUp=${leveledUp}`);
 
-    // Update user stats
+    // Increment monstersDefeated counter (check both progression and stats for backwards compatibility)
+    const fullUserData = userDoc.data() || {};
+    const currentMonstersDefeated = fullUserData.progression?.monstersDefeated || currentStats.monstersDefeated || 0;
+    const newMonstersDefeated = currentMonstersDefeated + 1;
+
+    // Update user stats and progression
     await userRef.update({
       "stats.level": levelData.level,
       "stats.xp": levelData.currentXP,
       "stats.nextLevelXP": levelData.nextLevelXP,
       "stats.totalXP": newTotalXP,
       "stats.gold": newGold,
+      "progression.monstersDefeated": newMonstersDefeated, // Update progression.monstersDefeated (primary)
+      "stats.monstersDefeated": newMonstersDefeated, // Also update stats.monstersDefeated for backwards compatibility
       updatedAt: Date.now(),
     });
+
+    // Update achievements
+    try {
+      // Update level achievements if leveled up
+      if (leveledUp) {
+        await updateLevelAchievements(uid, levelData.level);
+      }
+      
+      // Update monster defeat achievements
+      await updateMonsterDefeatAchievements(uid, newMonstersDefeated);
+    } catch (achievementError) {
+      console.error("Error updating achievements after battle reward:", achievementError);
+      // Don't fail the request if achievement update fails
+    }
 
     // Log battle in user's battle history if needed
     if (worldId && stage && monsterName) {

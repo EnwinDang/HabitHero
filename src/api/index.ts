@@ -15,3 +15,4 @@ export * from "./lootboxes.api";
 export * from "./worlds.api";
 export * from "./monsters.api";
 export * from "./notifications.api";
+export * from "./gameRules.api";

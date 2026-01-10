@@ -13,6 +13,12 @@ export interface User {
   stats: UserStats;
   settings?: UserSettings;
   worldMapProgress?: WorldMapProgress;
+  progression?: {
+    monstersDefeated?: number;
+    bossesDefeated?: number;
+    currentStage?: number;
+    currentWorldId?: string;
+  };
   inventory?: {
     inventory?: {
       items?: any[];
@@ -38,6 +44,7 @@ export interface UserStats {
   loginStreak?: number;
   maxLoginStreak?: number;
   lastLoginDate?: string; // stored as YYYY-MM-DD string
+  monstersDefeated?: number; // Total number of monsters defeated
 }
 
 export interface UserSettings {
