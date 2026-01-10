@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Trash2, GraduationCap, Loader2, Mail, Shield, Coins, UserPlus, X, Trophy, Flame, Swords } from 'lucide-react';
+import { Search, Trash2, GraduationCap, Loader2, Mail, Shield, Coins, UserPlus, X, Trophy, Flame, Diamond } from 'lucide-react';
 import { UsersAPI } from '../../api/users.api';
 import { db } from '../../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -8,16 +8,18 @@ import type { User } from '../../models/user.model';
 const StudentManagement: React.FC = () => {
   const [students, setStudents] = useState<User[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadingDetails, setLoadingDetails] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newStudent, setNewStudent] = useState({ displayName: '', email: '' });
-  const [selectedStudent, setSelectedStudent] = useState<any>(null);
+  const [selectedStudent, setSelectedStudent] = useState<User | null>(null);
 
   const loadStudents = async (): Promise<void> => {
     setLoading(true);
     setError(null);
     try {
+      // UsersAPI.list geeft { pagination: ..., data: User[] }
       const response = await UsersAPI.list({ role: 'student' });
       setStudents(response.data || []);
     } catch (error: any) {
@@ -31,14 +33,46 @@ const StudentManagement: React.FC = () => {
     loadStudents();
   }, []);
 
+  const handleStudentClick = async (student: User) => {
+    setSelectedStudent(student);
+    setLoadingDetails(true);
+
+    try {
+      if (student.uid) {
+        // UsersAPI.get geeft direct User terug
+        const freshStudentData = await UsersAPI.get(student.uid);
+        setSelectedStudent(freshStudentData);
+      }
+    } catch (err) {
+      console.error("Error fetching fresh student data:", err);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await UsersAPI.create({
+      // We bouwen een object dat voldoet aan de User interface
+      // Let op: uid wordt vaak door de backend/firebase gegenereerd, 
+      // dus we casten hier even naar 'any' voor de create payload als de API dat toestaat.
+      const newUserPayload = {
         displayName: newStudent.displayName,
         email: newStudent.email,
-        role: 'student'
-      } as any);
+        role: 'student',
+        status: 'active',
+        stats: {
+          level: 1,
+          xp: 0,
+          gold: 0,
+          hp: 100,
+          streak: 0,
+          gems: 0,
+          focusSessionsCompleted: 0
+        }
+      };
+
+      await UsersAPI.create(newUserPayload as any);
 
       await addDoc(collection(db, 'logs'), {
         action: `New Student Created: ${newStudent.displayName}`,
@@ -60,6 +94,9 @@ const StudentManagement: React.FC = () => {
       try {
         await UsersAPI.delete(uid);
         setStudents(prev => prev.filter(s => s.uid !== uid));
+        if (selectedStudent?.uid === uid) {
+          setSelectedStudent(null);
+        }
       } catch (error) {
         console.error(error);
       }
@@ -70,6 +107,9 @@ const StudentManagement: React.FC = () => {
     s.displayName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     s.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Helper om max XP te berekenen (voorbeeld logica, pas aan naar jouw game regels)
+  const calculateMaxXP = (level: number) => level * 500;
 
   return (
     <div className="min-h-screen bg-violet-50 p-8 text-slate-900 font-sans">
@@ -106,10 +146,10 @@ const StudentManagement: React.FC = () => {
         </div>
       ) : (
         <div className="flex flex-col gap-4">
-          {filteredStudents.map((student: any) => (
+          {filteredStudents.map((student) => (
             <div
               key={student.uid}
-              onClick={() => setSelectedStudent(student)}
+              onClick={() => handleStudentClick(student)}
               className="bg-white border border-violet-100 p-5 rounded-[2rem] flex items-center justify-between hover:border-violet-300 hover:shadow-md transition-all group cursor-pointer"
             >
               <div className="flex items-center gap-6">
@@ -127,12 +167,14 @@ const StudentManagement: React.FC = () => {
                     <div className="flex items-center gap-1.5 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100">
                       <Shield size={12} className="text-emerald-500" />
                       <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">
-                        {student.stats?.health ?? 100} HP
+                        {/* AANGEPAST: stats.hp ipv stats.health */}
+                        {student.stats?.hp ?? 100} HP
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 bg-amber-50 px-3 py-1 rounded-lg border border-amber-100">
                       <Coins size={12} className="text-amber-500" />
                       <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider">
+                        {/* AANGEPAST: stats.gold */}
                         {student.stats?.gold ?? 0} GOLD
                       </span>
                     </div>
@@ -152,7 +194,14 @@ const StudentManagement: React.FC = () => {
 
       {selectedStudent && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl animate-in zoom-in duration-200">
+          <div className="bg-white rounded-[3rem] p-10 max-w-md w-full shadow-2xl animate-in zoom-in duration-200 relative">
+            
+            {loadingDetails && (
+              <div className="absolute top-4 right-14 text-violet-500 animate-pulse flex items-center gap-2 text-xs font-bold uppercase tracking-widest">
+                <Loader2 className="animate-spin" size={16} /> Updating...
+              </div>
+            )}
+
             <div className="flex justify-between items-start mb-8">
               <div className="w-20 h-20 bg-violet-100 rounded-3xl flex items-center justify-center text-violet-600 font-black text-2xl">
                 {selectedStudent.displayName?.substring(0,2).toUpperCase()}
@@ -162,18 +211,22 @@ const StudentManagement: React.FC = () => {
               </button>
             </div>
             <h2 className="text-2xl font-black text-slate-900 mb-1">{selectedStudent.displayName}</h2>
+            
+            {/* AANGEPAST: stats.level */}
             <div className="inline-flex items-center gap-2 bg-violet-600 text-white px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest mb-8">
-              <Trophy size={14} /> Level {selectedStudent.level || 1} Hero
+              <Trophy size={14} /> Level {selectedStudent.stats?.level ?? 1} Hero
             </div>
+
             <div className="mb-8">
               <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
                 <span>Experience</span>
-                <span>{selectedStudent.xp || 0} / {selectedStudent.totalXP || 500} XP</span>
+                {/* AANGEPAST: stats.xp en berekening maxXP */}
+                <span>{selectedStudent.stats?.xp || 0} / {calculateMaxXP(selectedStudent.stats?.level || 1)} XP</span>
               </div>
               <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-violet-500 rounded-full transition-all duration-1000" 
-                  style={{ width: `${Math.min(((selectedStudent.xp || 0) / (selectedStudent.totalXP || 500)) * 100, 100)}%` }}
+                  style={{ width: `${Math.min(((selectedStudent.stats?.xp || 0) / calculateMaxXP(selectedStudent.stats?.level || 1)) * 100, 100)}%` }}
                 ></div>
               </div>
             </div>
@@ -181,22 +234,26 @@ const StudentManagement: React.FC = () => {
               <div className="bg-emerald-50 p-5 rounded-[2rem] border border-emerald-100">
                 <Shield className="text-emerald-500 mb-2" size={20} />
                 <p className="text-[10px] font-bold text-emerald-600/60 uppercase tracking-widest leading-tight">Health</p>
-                <p className="text-xl font-black text-emerald-700">{selectedStudent.stats?.health || 100} / {selectedStudent.stats?.maxHealth || 100}</p>
+                {/* AANGEPAST: stats.hp */}
+                <p className="text-xl font-black text-emerald-700">{selectedStudent.stats?.hp || 100}</p>
               </div>
               <div className="bg-amber-50 p-5 rounded-[2rem] border border-amber-100">
                 <Coins className="text-amber-500 mb-2" size={20} />
                 <p className="text-[10px] font-bold text-amber-600/60 uppercase tracking-widest leading-tight">Gold</p>
+                {/* AANGEPAST: stats.gold */}
                 <p className="text-xl font-black text-amber-700">{selectedStudent.stats?.gold || 0}</p>
               </div>
               <div className="bg-blue-50 p-5 rounded-[2rem] border border-blue-100">
-                <Swords className="text-blue-500 mb-2" size={20} />
-                <p className="text-[10px] font-bold text-blue-600/60 uppercase tracking-widest leading-tight">Defense</p>
-                <p className="text-xl font-black text-blue-700">{selectedStudent.stats?.defense || 0}</p>
+                {/* AANGEPAST: Defense bestond niet in model, vervangen door Gems */}
+                <Diamond className="text-blue-500 mb-2" size={20} />
+                <p className="text-[10px] font-bold text-blue-600/60 uppercase tracking-widest leading-tight">Gems</p>
+                <p className="text-xl font-black text-blue-700">{selectedStudent.stats?.gems || 0}</p>
               </div>
               <div className="bg-orange-50 p-5 rounded-[2rem] border border-orange-100">
                 <Flame className="text-orange-500 mb-2" size={20} />
-                <p className="text-[10px] font-bold text-orange-600/60 uppercase tracking-widest leading-tight">Daily Streak</p>
-                <p className="text-xl font-black text-orange-700">{selectedStudent.streaks?.daily?.current || 0}</p>
+                <p className="text-[10px] font-bold text-orange-600/60 uppercase tracking-widest leading-tight">Streak</p>
+                {/* AANGEPAST: stats.streak */}
+                <p className="text-xl font-black text-orange-700">{selectedStudent.stats?.streak || 0}</p>
               </div>
             </div>
           </div>
@@ -223,3 +280,4 @@ const StudentManagement: React.FC = () => {
 };
 
 export default StudentManagement;
+
