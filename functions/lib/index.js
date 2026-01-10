@@ -1304,6 +1304,9 @@ app.get("/users/:uid/inventory", requireAuth, async (req, res) => {
                 isEquipped: forceEquipped ? true : (item?.isEquipped || false),
                 description: item?.description || item?.desc || null,
                 stats: item?.stats || {},
+                buffs: item?.buffs || undefined,
+                sellValue: item?.sellValue || item?.price?.sellValue || item?.sell || 0,
+                element: item?.element || item?.elemental || undefined,
                 bonus: item?.bonus || null,
             };
             const colMap = base.collection ? itemMaps[base.collection] || {} : {};
@@ -1325,8 +1328,11 @@ app.get("/users/:uid/inventory", requireAuth, async (req, res) => {
                 }
             }
             const merged = { ...base, ...(detail || {}) };
-            // Preserve bonus from base (instance-level data) - don't let item definition overwrite it
+            // Preserve instance-level fields
             merged.bonus = base.bonus;
+            merged.sellValue = merged.sellValue || base.sellValue || 0;
+            merged.element = merged.element || base.element;
+            merged.buffs = merged.buffs || base.buffs;
             return merged;
         };
         // Build detailed items using the maps (with safe fallbacks)
@@ -1589,6 +1595,61 @@ app.post("/users/:uid/unequip", requireAuth, async (req, res) => {
     catch (e) {
         console.error("Error in POST /users/:uid/unequip:", e);
         return res.status(500).json({ error: e?.message });
+    }
+});
+// Sell an item (remove one instance and grant gold)
+app.post("/users/:uid/inventory/sell", requireAuth, async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const { itemId, bonus } = req.body || {};
+        if (!itemId)
+            return res.status(400).json({ error: "itemId is required" });
+        const userRef = db.collection("users").doc(uid);
+        const snap = await userRef.get();
+        if (!snap.exists)
+            return res.status(404).json({ error: "User not found" });
+        const user = snap.data() || {};
+        const items = user.inventory?.inventory?.items || [];
+        const eqBonus = (a, b) => JSON.stringify(a || {}) === JSON.stringify(b || {});
+        const idx = items.findIndex((it) => (it?.itemId === itemId) && eqBonus(it?.bonus, bonus));
+        if (idx < 0)
+            return res.status(404).json({ error: "Item not found" });
+        const removed = items.splice(idx, 1)[0] || {};
+        // Determine sell value
+        let sellValue = removed.sellValue || removed.price?.sellValue || removed.sell || 0;
+        // Try to load detail for fallback sellValue
+        if (!sellValue) {
+            const collection = removed.collection || "items_pets";
+            try {
+                const doc = await db.collection(collection).doc(itemId).get();
+                if (doc.exists) {
+                    const data = doc.data() || {};
+                    sellValue = data.sellValue || data.price?.sellValue || data.sell || sellValue;
+                }
+            }
+            catch (err) {
+                // ignore
+            }
+        }
+        const currentGold = user.stats?.gold || user.inventory?.gold || 0;
+        const newGold = currentGold + (sellValue || 0);
+        const newInventory = {
+            ...(user.inventory || {}),
+            inventory: {
+                ...(user.inventory?.inventory || {}),
+                items,
+            },
+        };
+        const updates = {
+            inventory: newInventory,
+            "stats.gold": newGold,
+        };
+        await userRef.update(updates);
+        return res.status(200).json({ success: true, gold: newGold, sold: itemId, sellValue: sellValue || 0 });
+    }
+    catch (e) {
+        console.error("Error in sell:", e);
+        return res.status(500).json({ error: e?.message || "Failed to sell item" });
     }
 });
 /**

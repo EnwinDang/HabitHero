@@ -23,10 +23,18 @@ export default function StudentHomePage() {
   const theme = getThemeClasses(darkMode, accentColor);
 
   // Calculate level and XP progress
-  const level = user ? getLevelFromXP(user.stats.xp) : 1;
-  const levelProgress = user
-    ? getCurrentLevelProgress(user.stats.xp, level)
-    : { percentage: 0, current: 0, required: 100 };
+  const level = user?.stats?.level || 1;
+  const currentXP = user?.stats?.xp || 0;
+  const nextLevelXP = user?.stats?.nextLevelXP || 100;
+  const totalXP = user?.stats?.totalXP || currentXP;
+  
+  const levelProgress = {
+    percentage: nextLevelXP > 0 ? Math.round((currentXP / nextLevelXP) * 100) : 0,
+    current: currentXP,
+    required: nextLevelXP
+  };
+  
+  const xpToNextLevel = Math.max(0, nextLevelXP - currentXP);
 
   // Mark task as done
   const handleMarkAsDone = async (taskId: string) => {
@@ -142,7 +150,7 @@ export default function StudentHomePage() {
               <span className={`font-medium ${theme.text}`}>Experience</span>
             </div>
             <p className="text-3xl font-bold" style={theme.accentText}>
-              {user.stats.xp}
+              {currentXP}
             </p>
             <div
               className={`w-full rounded-full h-2 overflow-hidden mt-3 ${
@@ -159,7 +167,7 @@ export default function StudentHomePage() {
             </div>
             <p className={`text-xs ${theme.textMuted} mt-2`}>
               Nog <span className="font-semibold" style={theme.accentText}>
-                {formatXP(getXPToNextLevel(user.stats.xp, level))} XP
+                {formatXP(xpToNextLevel)} XP
               </span> tot level {level + 1}
             </p>
           </div>

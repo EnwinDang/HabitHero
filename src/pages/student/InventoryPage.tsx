@@ -8,6 +8,7 @@ import { Modal } from "@/components/Modal";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/firebase";
 import type { StatBlock } from "@/models/item.model";
+import "./lootbox-animation.css";
 import {
     Package,
     Sword,
@@ -18,7 +19,9 @@ import {
     ArrowUpCircle,
     Gift,
     Loader2,
-    PawPrint
+    PawPrint,
+    Coins,
+    Sparkles
 } from "lucide-react";
 
 // Item types
@@ -84,23 +87,96 @@ export default function InventoryPage() {
     const [statsItem, setStatsItem] = useState<InventoryItem | null>(null);
     const [openingLootbox, setOpeningLootbox] = useState<string | null>(null);
     const [mergeMessage, setMergeMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [sellConfirm, setSellConfirm] = useState<InventoryItem | null>(null);
+    const [rerollSelection, setRerollSelection] = useState<InventoryItem[]>([]);
+    const [rerollLoading, setRerollLoading] = useState(false);
+    const [rerollResult, setRerollResult] = useState<any | null>(null);
+    const [rerollMode, setRerollMode] = useState(false);
+    const [rerollConfirm, setRerollConfirm] = useState(false);
+    const [sortRarity, setSortRarity] = useState<'none' | 'asc' | 'desc'>('none');
+    const [rarityFilter, setRarityFilter] = useState<ItemRarity | 'all'>('all');
+    const [showChestOpening, setShowChestOpening] = useState(false);
+    const [openingLootboxData, setOpeningLootboxData] = useState<any | null>(null);
+    const [revealedItems, setRevealedItems] = useState<any[]>([]);
+    const [showRewards, setShowRewards] = useState(false);
 
-    const handleSell = async (item: InventoryItem) => {
+    const handleSellConfirm = async (item: InventoryItem) => {
+        if (!user) return;
+        try {
+            const res = await InventoryAPI.sell(item.itemId, item.bonus || null);
+            const goldAmount = res.sellValue || item.sellValue || 0;
+            setMergeMessage({ type: 'success', text: `Sold ${item.name} for ${goldAmount} gold.` });
+            setTimeout(() => setMergeMessage(null), 2500);
+            setSellConfirm(null);
+            await loadInventory();
+        } catch (err: any) {
+            console.error('Sell failed', err);
+            setMergeMessage({ type: 'error', text: err?.message || 'Failed to sell item.' });
+            setTimeout(() => setMergeMessage(null), 2500);
+        }
+    };
+
+    const handleSell = (item: InventoryItem) => {
         if (!user) return;
         if (item.isEquipped) {
             setMergeMessage({ type: 'error', text: 'Unequip this item before selling.' });
             setTimeout(() => setMergeMessage(null), 2500);
             return;
         }
-        try {
-            const res = await InventoryAPI.sell(item.itemId, item.bonus || null);
-            setMergeMessage({ type: 'success', text: `Sold ${item.name} for ${res.sellValue || item.sellValue || 0} gold.` });
+        setSellConfirm(item);
+    };
+
+    const toggleRerollSelect = (item: InventoryItem) => {
+        if (item.isEquipped) {
+            setMergeMessage({ type: 'error', text: 'Unequip item before rerolling.' });
             setTimeout(() => setMergeMessage(null), 2500);
+            return;
+        }
+
+        const already = rerollSelection.find((sel) => sel.id === item.id);
+        if (already) {
+            setRerollSelection((prev) => prev.filter((sel) => sel.id !== item.id));
+            return;
+        }
+
+        if (rerollSelection.length > 0 && rerollSelection[0].rarity !== item.rarity) {
+            setMergeMessage({ type: 'error', text: 'Select 3 items of the same rarity to reroll.' });
+            setTimeout(() => setMergeMessage(null), 2500);
+            return;
+        }
+
+        if (rerollSelection.length >= 3) {
+            setMergeMessage({ type: 'error', text: 'You can only reroll 3 items at a time.' });
+            setTimeout(() => setMergeMessage(null), 2500);
+            return;
+        }
+
+        setRerollSelection((prev) => [...prev, item]);
+    };
+
+    const handleReroll = async () => {
+        if (!user) return;
+        if (rerollSelection.length !== 3) {
+            setMergeMessage({ type: 'error', text: 'Select exactly 3 items to reroll.' });
+            setTimeout(() => setMergeMessage(null), 2500);
+            return;
+        }
+
+        setRerollLoading(true);
+        setRerollResult(null);
+        try {
+            const res = await InventoryAPI.reroll(rerollSelection.map((i) => i.itemId));
+            setMergeMessage({ type: 'success', text: `Rerolled ${rerollSelection[0].rarity} items!` });
+            setTimeout(() => setMergeMessage(null), 2500);
+            setRerollResult(res?.result || null);
+            setRerollSelection([]);
             await loadInventory();
         } catch (err: any) {
-            console.error('Sell failed', err);
-            setMergeMessage({ type: 'error', text: err?.message || 'Failed to sell item.' });
+            console.error('Reroll failed', err);
+            setMergeMessage({ type: 'error', text: err?.message || 'Failed to reroll items.' });
             setTimeout(() => setMergeMessage(null), 2500);
+        } finally {
+            setRerollLoading(false);
         }
     };
 
@@ -189,6 +265,7 @@ export default function InventoryPage() {
             console.log("📦 Loaded inventory items:", inventoryItems.length, inventoryItems);
             console.log("📦 Items with bonus:", inventoryItems.filter((it: any) => it.bonus));
             setItems(flaggedItems);
+            setRerollSelection([]);
             // Cache details so equipped items stay visible even when removed from inventory list
             setItemDetailCache((prev) => {
                 const next = { ...prev } as Record<string, InventoryItem>;
@@ -285,9 +362,12 @@ export default function InventoryPage() {
         const label = slot.toLowerCase().includes("accessory") ? slot : `Accessory ${slot}`;
         equippedSlots.push({ slot: label, item: resolveItem(id) });
     });
-    const filteredItems = selectedCategory === "all"
+    const filteredByType = selectedCategory === "all"
         ? items
         : items.filter(item => item.type === selectedCategory);
+    const filteredItems = rarityFilter === 'all' 
+        ? filteredByType 
+        : filteredByType.filter(item => item.rarity === rarityFilter);
 
     const getTypeIcon = (type: ItemType) => {
         switch (type) {
@@ -297,6 +377,26 @@ export default function InventoryPage() {
             case "pet": return <PawPrint size={20} />;
             default: return <Package size={20} />;
         }
+    };
+
+    const selectedRarity = rerollSelection[0]?.rarity;
+    const rerollReady = rerollSelection.length === 3;
+    const rerollCostEstimateMap: Record<string, number> = {
+        common: 100,
+        uncommon: 250,
+        rare: 500,
+        epic: 750,
+        legendary: 1000,
+    };
+    const estimatedCost = selectedRarity ? (rerollCostEstimateMap[selectedRarity] ?? 500) : 0;
+
+    // Rarity sort helpers
+    const rarityRank: Record<ItemRarity, number> = {
+        common: 0,
+        uncommon: 1,
+        rare: 2,
+        epic: 3,
+        legendary: 4,
     };
 
     // MERGE LOGIC REMOVED per request
@@ -401,12 +501,41 @@ export default function InventoryPage() {
         }
 
         try {
+            // Find lootbox data
+            const lootboxData = lootboxes.find(lb => lb.lootboxId === lootboxId);
+            if (lootboxData) {
+                setOpeningLootboxData(lootboxData);
+            }
+            
             setOpeningLootbox(lootboxId);
+            setShowChestOpening(true);
+            
+            // Shake animation
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
             const result = await LootboxesAPI.open(lootboxId, 1);
             
-            const itemNames = result.results?.map((r: any) => r.name || "Unknown").join(", ") || "Unknown items";
-            setMergeMessage({ type: 'success', text: `Opened lootbox! Got: ${itemNames}` });
-            setTimeout(() => setMergeMessage(null), 3000);
+            // Chest opening animation
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            // Map backend result to display items
+            const items = result.results.map((r: any) => ({
+                name: r.name || "Unknown Item",
+                type: r.type || "weapon",
+                rarity: r.rarity || "common",
+                icon: r.icon || getDefaultIcon(r.type || "weapon"),
+                isEquipped: false,
+                level: 1,
+                ...(r.stats ? { stats: r.stats } : {}),
+                bonus: r.bonus || null
+            }));
+            
+            // Hide chest opening modal and show rewards
+            setShowChestOpening(false);
+            setOpeningLootbox(null);
+            setOpeningLootboxData(null);
+            setRevealedItems(items);
+            setShowRewards(true);
             
             // Reload inventory
             await loadInventory();
@@ -414,9 +543,20 @@ export default function InventoryPage() {
             console.error("Open lootbox failed:", error);
             setMergeMessage({ type: 'error', text: error.message || "Failed to open lootbox." });
             setTimeout(() => setMergeMessage(null), 3000);
-        } finally {
+            setShowChestOpening(false);
             setOpeningLootbox(null);
+            setOpeningLootboxData(null);
         }
+    };
+
+    const getDefaultIcon = (type: string): string => {
+        const iconMap: Record<string, string> = {
+            weapon: "⚔️",
+            armor: "🛡️",
+            accessory: "📿",
+            pet: "🐾",
+        };
+        return iconMap[type] || "📦";
     };
 
     return (
@@ -429,14 +569,38 @@ export default function InventoryPage() {
                         <p className={theme.textMuted}>Manage your equipment and items</p>
                     </div>
 
-                    {/* Feedback Message */}
-                    {mergeMessage && (
-                        <div className={`px-4 py-2 rounded-xl text-sm font-bold animate-pulse ${mergeMessage.type === 'success' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'
-                            }`}>
-                            {mergeMessage.text}
-                        </div>
-                    )}
+                    <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: darkMode ? 'rgba(251, 191, 36, 0.1)' : 'rgba(254, 243, 199, 1)' }}>
+                        <Coins className="text-yellow-500" size={24} />
+                        <span className="text-xl font-bold text-yellow-500">{user?.stats?.gold ?? 0}</span>
+                    </div>
                 </div>
+
+                {/* Feedback Message */}
+                {mergeMessage && (
+                    <div className={`mb-4 px-4 py-2 rounded-xl text-sm font-bold animate-pulse ${mergeMessage.type === 'success' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'
+                        }`}>
+                        {mergeMessage.text}
+                    </div>
+                )}
+
+                {/* Reroll Selection Pills */}
+                {rerollMode && rerollSelection.length > 0 && (
+                    <div className={`${theme.card} rounded-2xl p-4 mb-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
+                        <p className={`${theme.textMuted} text-sm mb-2`}>Geselecteerde items voor reroll:</p>
+                        <div className="flex flex-wrap gap-2">
+                            {rerollSelection.map((sel) => (
+                                <span
+                                    key={sel.id}
+                                    className="flex items-center gap-2 px-3 py-1 rounded-full text-sm border"
+                                    style={{ borderColor: rarityColors[sel.rarity].border, backgroundColor: rarityColors[sel.rarity].bg, color: rarityColors[sel.rarity].text }}
+                                >
+                                    {sel.name}
+                                    <button onClick={() => toggleRerollSelect(sel)} className="text-xs font-bold opacity-80 hover:opacity-100">×</button>
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Equipped Items Section - Fixed Slots */}
                 <div className={`${theme.card} rounded-2xl p-6 mb-6 transition-colors duration-300`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
@@ -484,48 +648,118 @@ export default function InventoryPage() {
                     </div>
                 </div>
 
-                {/* Category Filters */}
-                <div className="flex gap-2 mb-6 flex-wrap">
-                    <CategoryButton
-                        label="All"
-                        isSelected={selectedCategory === "all"}
-                        onClick={() => setSelectedCategory("all")}
-                        count={items.length}
-                        darkMode={darkMode}
-                        accentColor={accentColor}
-                    />
-                    <CategoryButton
-                        label="Weapon"
-                        isSelected={selectedCategory === "weapon"}
-                        onClick={() => setSelectedCategory("weapon")}
-                        count={items.filter(i => i.type === "weapon").length}
-                        darkMode={darkMode}
-                        accentColor={accentColor}
-                    />
-                    <CategoryButton
-                        label="Armor"
-                        isSelected={selectedCategory === "armor"}
-                        onClick={() => setSelectedCategory("armor")}
-                        count={items.filter(i => i.type === "armor").length}
-                        darkMode={darkMode}
-                        accentColor={accentColor}
-                    />
-                    <CategoryButton
-                        label="Accessory"
-                        isSelected={selectedCategory === "accessory"}
-                        onClick={() => setSelectedCategory("accessory")}
-                        count={items.filter(i => i.type === "accessory").length}
-                        darkMode={darkMode}
-                        accentColor={accentColor}
-                    />
-                    <CategoryButton
-                        label="Pet"
-                        isSelected={selectedCategory === "pet"}
-                        onClick={() => setSelectedCategory("pet")}
-                        count={items.filter(i => i.type === "pet").length}
-                        darkMode={darkMode}
-                        accentColor={accentColor}
-                    />
+                {/* Category Filters + Reroll toggle + Sort */}
+                <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center md:justify-between">
+                    <div className="flex gap-2 flex-wrap">
+                        <CategoryButton
+                            label="All"
+                            isSelected={selectedCategory === "all"}
+                            onClick={() => setSelectedCategory("all")}
+                            count={items.length}
+                            darkMode={darkMode}
+                            accentColor={accentColor}
+                        />
+                        <CategoryButton
+                            label="Weapon"
+                            isSelected={selectedCategory === "weapon"}
+                            onClick={() => setSelectedCategory("weapon")}
+                            count={items.filter(i => i.type === "weapon").length}
+                            darkMode={darkMode}
+                            accentColor={accentColor}
+                        />
+                        <CategoryButton
+                            label="Armor"
+                            isSelected={selectedCategory === "armor"}
+                            onClick={() => setSelectedCategory("armor")}
+                            count={items.filter(i => i.type === "armor").length}
+                            darkMode={darkMode}
+                            accentColor={accentColor}
+                        />
+                        <CategoryButton
+                            label="Accessory"
+                            isSelected={selectedCategory === "accessory"}
+                            onClick={() => setSelectedCategory("accessory")}
+                            count={items.filter(i => i.type === "accessory").length}
+                            darkMode={darkMode}
+                            accentColor={accentColor}
+                        />
+                        <CategoryButton
+                            label="Pet"
+                            isSelected={selectedCategory === "pet"}
+                            onClick={() => setSelectedCategory("pet")}
+                            count={items.filter(i => i.type === "pet").length}
+                            darkMode={darkMode}
+                            accentColor={accentColor}
+                        />
+                    </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <button
+                            onClick={() => {
+                                setRerollMode((v) => !v);
+                                setRerollSelection([]);
+                                setRerollResult(null);
+                            }}
+                            className={`px-4 py-2 rounded-lg font-bold transition-colors ${rerollMode ? 'bg-purple-500/20 text-purple-800 hover:bg-purple-500/30' : 'bg-purple-500/10 text-purple-700 hover:bg-purple-500/20'}`}
+                        >
+                            {rerollMode ? 'Stop reroll' : 'Start reroll'}
+                        </button>
+                        {rerollMode && (
+                            <button
+                                onClick={() => {
+                                    if (rerollSelection.length !== 3) {
+                                        setMergeMessage({ type: 'error', text: 'Select exactly 3 items to reroll.' });
+                                        setTimeout(() => setMergeMessage(null), 2500);
+                                        return;
+                                    }
+                                    setRerollConfirm(true);
+                                }}
+                                disabled={!rerollReady}
+                                className={`px-4 py-2 rounded-lg font-bold transition-colors ${!rerollReady ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-green-500/20 text-green-700 hover:bg-green-500/30'}`}
+                            >
+                                Confirm reroll
+                            </button>
+                        )}
+                        <div className={`text-sm font-semibold ${theme.text}`}>
+                            {rerollSelection.length}/3 {selectedRarity ? `(${selectedRarity})` : ''}
+                        </div>
+                        {/* Sort by rarity */}
+                        <div className="flex items-center gap-2">
+                            <span className={`${theme.textMuted} text-sm`}>Sort:</span>
+                            <select
+                                value={sortRarity}
+                                onChange={(e) => {
+                                    const value = e.target.value as 'none' | 'asc' | 'desc';
+                                    setSortRarity(value);
+                                    // Ensure rarity filter resets to 'all' when sorting is applied
+                                    if (value !== 'none') {
+                                        setRarityFilter('all');
+                                    }
+                                }}
+                                className={`text-sm px-2 py-1 rounded-lg border ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-700'}`}
+                            >
+                                <option value="none">Default</option>
+                                <option value="asc">Rarity Low → High</option>
+                                <option value="desc">Rarity High → Low</option>
+                            </select>
+                        </div>
+                        {/* Rarity filter */}
+                        <div className="flex items-center gap-2">
+                            <span className={`${theme.textMuted} text-sm`}>Rarity:</span>
+                            <select
+                                value={rarityFilter}
+                                disabled={sortRarity !== 'none'}
+                                onChange={(e) => setRarityFilter(e.target.value as any)}
+                                className={`text-sm px-2 py-1 rounded-lg border ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-700'}`}
+                            >
+                                <option value="all">All</option>
+                                <option value="common">Common</option>
+                                <option value="uncommon">Uncommon</option>
+                                <option value="rare">Rare</option>
+                                <option value="epic">Epic</option>
+                                <option value="legendary">Legendary</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
 
                 {/* All Items Grid */}
@@ -540,9 +774,16 @@ export default function InventoryPage() {
                     ) : (
                         (() => {
                             const instanceIndexMap: Record<string, number> = {};
+                            // Apply rarity sort if selected
+                            const displayItems = [...filteredItems].sort((a, b) => {
+                                if (sortRarity === 'none') return 0;
+                                const ra = rarityRank[a.rarity];
+                                const rb = rarityRank[b.rarity];
+                                return sortRarity === 'asc' ? ra - rb : rb - ra;
+                            });
                             return (
                                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                    {filteredItems.map((item, idx) => {
+                                    {displayItems.map((item, idx) => {
                                         const totalCopies = Math.max(itemCounts[item.itemId] || 0, 1);
                                         // For items with bonus, show as individual card (not aggregated)
                                         // For items without bonus, count all copies of that itemId
@@ -563,6 +804,8 @@ export default function InventoryPage() {
                                                 onEquip={() => handleEquip(item)}
                                                 onShowStats={() => setStatsItem(item)}
                                                 onSell={() => handleSell(item)}
+                                                rerollSelected={rerollSelection.some((sel) => sel.id === item.id)}
+                                                onToggleReroll={rerollMode ? () => toggleRerollSelect(item) : undefined}
                                             />
                                         );
                                     })}
@@ -582,14 +825,71 @@ export default function InventoryPage() {
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {lootboxes.map(lb => {
+                            {[...lootboxes].sort((a, b) => {
+                                const order = ['basic', 'common', 'advanced', 'rare', 'epic', 'legendary', 'premium'];
+                                const aName = a.name.toLowerCase();
+                                const bName = b.name.toLowerCase();
+                                const aIndex = order.findIndex(o => aName.includes(o));
+                                const bIndex = order.findIndex(o => bName.includes(o));
+                                return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+                            }).map(lb => {
                                 const count = userLootboxes[lb.lootboxId] || 0;
+                                const isOpening = openingLootbox === lb.lootboxId;
+                                const getLootboxColor = () => {
+                                    const name = lb.name.toLowerCase();
+                                    if (name.includes('basic') || name.includes('common')) return '#3B82F6';
+                                    if (name.includes('advanced') || name.includes('rare')) return '#8B5CF6';
+                                    if (name.includes('epic')) return '#F59E0B';
+                                    if (name.includes('legendary') || name.includes('premium')) return '#EF4444';
+                                    return accentColor;
+                                };
+                                const lootboxColor = getLootboxColor();
                                 return (
                                     <div
                                         key={lb.lootboxId}
-                                        className={`${theme.card} rounded-xl p-4 border transition-all ${count > 0 ? 'hover:shadow-lg' : 'opacity-50'}`}
-                                        style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}
+                                        className={`${theme.card} rounded-xl p-4 border transition-all ${count > 0 ? 'hover:shadow-lg' : 'opacity-50'} ${isOpening ? 'lootbox-opening' : ''}`}
+                                        style={{ ...theme.borderStyle, borderWidth: '2px', borderStyle: 'solid', borderColor: lootboxColor }}
                                     >
+                                        {/* Burst Effect */}
+                                        {isOpening && <div className="lootbox-burst-effect" style={{ background: `${lootboxColor}40` }}></div>}
+                                        
+                                        {/* Sparkles */}
+                                        {isOpening && (
+                                            <>
+                                                <div className="sparkle-particle" style={{ top: '20%', left: '20%', animationDelay: '0s' }}></div>
+                                                <div className="sparkle-particle" style={{ top: '30%', left: '80%', animationDelay: '0.2s' }}></div>
+                                                <div className="sparkle-particle" style={{ top: '70%', left: '30%', animationDelay: '0.4s' }}></div>
+                                                <div className="sparkle-particle" style={{ top: '60%', left: '75%', animationDelay: '0.6s' }}></div>
+                                                <div className="sparkle-particle" style={{ top: '40%', left: '50%', animationDelay: '0.3s' }}></div>
+                                            </>
+                                        )}
+
+                                        {/* Chest Icon */}
+                                        <div className="text-center mb-3">
+                                            <div className={`inline-flex items-center justify-center p-4 rounded-xl relative ${isOpening ? 'lootbox-opening-icon' : ''}`} style={{ background: `${lootboxColor}dd` }}>
+                                                {isOpening ? (
+                                                    <>
+                                                        {/* Chest body (stays) */}
+                                                        <div className="chest-body">
+                                                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                <path d="M3 10h18v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z"/>
+                                                                <path d="M12 10v4"/>
+                                                            </svg>
+                                                        </div>
+                                                        {/* Chest lid (opens) */}
+                                                        <div className="chest-lid absolute">
+                                                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                <path d="M21 10H3"/>
+                                                                <path d="M21 10l-1.5-5A2 2 0 0 0 17.6 3H6.4a2 2 0 0 0-1.9 2L3 10"/>
+                                                            </svg>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <Gift size={40} className="text-white" />
+                                                )}
+                                            </div>
+                                        </div>
+
                                         <div className="flex items-start justify-between mb-3">
                                             <div className="flex-1">
                                                 <h4 className={`font-bold ${theme.text}`}>{lb.name}</h4>
@@ -597,7 +897,7 @@ export default function InventoryPage() {
                                                     <p className={`text-xs ${theme.textMuted} mt-1`}>{lb.description}</p>
                                                 )}
                                             </div>
-                                            <div className={`text-lg font-bold ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg px-3 py-1 ml-2`} style={{ color: accentColor }}>
+                                            <div className={`text-lg font-bold ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} rounded-lg px-3 py-1 ml-2`} style={{ color: lootboxColor }}>
                                                 {count}x
                                             </div>
                                         </div>
@@ -628,6 +928,156 @@ export default function InventoryPage() {
                             })}
                         </div>
                     )}
+
+                {/* Reroll Confirmation Modal */}
+                {rerollConfirm && (
+                    <Modal
+                        title={rerollResult ? "Reroll Result" : "Confirm Reroll"}
+                        label="Reroll Items"
+                        showClose
+                        onClose={() => setRerollConfirm(false)}
+                        maxWidth={500}
+                    >
+                        <div className="space-y-4">
+                            {!rerollLoading && !rerollResult && (
+                                <>
+                                    <div>
+                                        <p className="text-sm text-gray-600 mb-2">Je gaat de volgende items rerollen:</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {rerollSelection.map((item) => (
+                                                <div key={item.id} className="flex items-center gap-2 px-3 py-1 rounded-lg border" style={{ borderColor: rarityColors[item.rarity].border, backgroundColor: rarityColors[item.rarity].bg }}>
+                                                    <span className="text-lg">{item.icon}</span>
+                                                    <span className="text-sm font-semibold" style={{ color: rarityColors[item.rarity].text }}>{item.name}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                            {!rerollLoading && !rerollResult && (
+                                <div className={`p-3 rounded-lg ${darkMode ? 'bg-purple-900/20' : 'bg-purple-100'}`}>
+                                    <p className="text-sm text-gray-600">Cost</p>
+                                    <p className="text-2xl font-bold text-purple-600">{estimatedCost} Gold</p>
+                                </div>
+                            )}
+                            {rerollLoading ? (
+                                <div className="p-6 rounded-xl border" style={{ borderColor: darkMode ? '#4b5563' : '#e5e7eb', backgroundColor: darkMode ? 'rgba(139, 92, 246, 0.05)' : 'rgba(139, 92, 246, 0.1)' }}>
+                                    <div className="flex flex-col items-center gap-4">
+                                        <div className="text-6xl animate-bounce" style={{ animation: 'bounce 0.6s infinite' }}>🎲</div>
+                                        <div className="text-center">
+                                            <p className="text-lg font-bold text-purple-600 animate-pulse">Rerolling...</p>
+                                            <p className="text-sm text-gray-500 mt-1">Het nieuwe item wordt gegenereerd</p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+                                            <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                                            <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : rerollResult ? (
+                                <div className={`p-4 rounded-xl border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className="text-3xl">{rerollResult.icon || '🎲'}</div>
+                                        <div>
+                                            <p className="text-sm text-gray-500">Nieuw item</p>
+                                            <p className="text-lg font-bold" style={{ color: rarityColors[rerollResult.rarity || 'common']?.text || '#6b7280' }}>{rerollResult.name || rerollResult.itemId}</p>
+                                            <p className="text-xs text-gray-500 capitalize">{rerollResult.rarity}</p>
+                                        </div>
+                                    </div>
+                                    {rerollResult.bonus && Object.keys(rerollResult.bonus).length > 0 && (
+                                        <div className="mt-2 text-sm text-gray-600">Bonus: {Object.entries(rerollResult.bonus).map(([k,v]) => `${k}: ${v}`).join(', ')}</div>
+                                    )}
+                                    <button
+                                        onClick={() => {
+                                            setRerollConfirm(false);
+                                            setRerollMode(false);
+                                            setRerollSelection([]);
+                                            setRerollResult(null);
+                                        }}
+                                        className="mt-3 w-full py-2 rounded-lg font-bold bg-green-500/20 text-green-700 hover:bg-green-500/30 transition-colors"
+                                    >
+                                        Sluiten
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setRerollConfirm(false)}
+                                        className={`flex-1 py-2 rounded-lg font-bold transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'}`}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            if (!user) return;
+                                            setRerollLoading(true);
+                                            setRerollResult(null);
+                                            try {
+                                                const res = await InventoryAPI.reroll(rerollSelection.map((i) => i.itemId));
+                                                setMergeMessage({ type: 'success', text: `Rerolled ${rerollSelection[0].rarity} items!` });
+                                                setTimeout(() => setMergeMessage(null), 2500);
+                                                setRerollResult(res?.result || null);
+                                                setRerollSelection([]);
+                                                await loadInventory();
+                                            } catch (err: any) {
+                                                console.error('Reroll failed', err);
+                                                setMergeMessage({ type: 'error', text: err?.message || 'Failed to reroll items.' });
+                                                setTimeout(() => setMergeMessage(null), 2500);
+                                                setRerollConfirm(false);
+                                            } finally {
+                                                setRerollLoading(false);
+                                            }
+                                        }}
+                                        className="flex-1 py-2 rounded-lg font-bold bg-purple-500/30 text-purple-700 hover:bg-purple-500/40 transition-colors"
+                                    >
+                                        Reroll
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </Modal>
+                )}
+
+                {/* Sell Confirmation Modal */}
+                {sellConfirm && (
+                    <Modal
+                        title="Confirm Sale"
+                        label="Sell Item"
+                        showClose
+                        onClose={() => setSellConfirm(null)}
+                        maxWidth={400}
+                    >
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-3">
+                                <div className="text-4xl">{sellConfirm.icon}</div>
+                                <div>
+                                    <p className="font-bold">{sellConfirm.name}</p>
+                                    <p className="text-sm text-gray-500 capitalize">{sellConfirm.rarity}</p>
+                                </div>
+                            </div>
+                            <div className={`p-3 rounded-lg ${darkMode ? 'bg-yellow-900/20' : 'bg-yellow-100'}`}>
+                                <p className="text-sm text-gray-600">Sell for</p>
+                                <p className="text-2xl font-bold text-yellow-600">{sellConfirm.sellValue ?? 0} Gold</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setSellConfirm(null)}
+                                    className={`flex-1 py-2 rounded-lg font-bold transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'}`}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => handleSellConfirm(sellConfirm)}
+                                    className="flex-1 py-2 rounded-lg font-bold bg-yellow-500/30 text-yellow-700 hover:bg-yellow-500/40 transition-colors"
+                                >
+                                    Sell
+                                </button>
+                            </div>
+                        </div>
+                    </Modal>
+                )}
+
                 {/* Stats Modal */}
                 {statsItem && (
                     <Modal
@@ -674,6 +1124,124 @@ export default function InventoryPage() {
 
                 </div>
             </main>
+
+            {/* Chest Opening Animation Modal */}
+            {showChestOpening && openingLootboxData && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+                    <div className="text-center">
+                        {/* Animated Chest */}
+                        <div className={`inline-block p-12 rounded-3xl ${openingLootbox ? 'lootbox-opening' : ''}`} style={{ backgroundColor: `${accentColor}20` }}>
+                            <div className="relative inline-flex items-center justify-center w-48 h-48 rounded-3xl text-white lootbox-opening-icon" style={{ background: `${accentColor}dd` }}>
+                                {/* Sparkles */}
+                                {openingLootbox && (
+                                    <>
+                                        <div className="sparkle-particle" style={{ top: '10%', left: '10%', animationDelay: '0s' }}></div>
+                                        <div className="sparkle-particle" style={{ top: '20%', left: '85%', animationDelay: '0.15s' }}></div>
+                                        <div className="sparkle-particle" style={{ top: '80%', left: '15%', animationDelay: '0.3s' }}></div>
+                                        <div className="sparkle-particle" style={{ top: '75%', left: '80%', animationDelay: '0.45s' }}></div>
+                                        <div className="sparkle-particle" style={{ top: '50%', left: '50%', animationDelay: '0.2s' }}></div>
+                                        <div className="sparkle-particle" style={{ top: '35%', left: '90%', animationDelay: '0.35s' }}></div>
+                                    </>
+                                )}
+                                
+                                {/* Burst Effect */}
+                                {openingLootbox && <div className="lootbox-burst-effect" style={{ background: `${accentColor}80` }}></div>}
+                                
+                                {/* Chest body (stays) */}
+                                <div className="chest-body">
+                                    <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M3 10h18v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z"/>
+                                        <path d="M12 10v4"/>
+                                    </svg>
+                                </div>
+                                
+                                {/* Chest lid (opens) */}
+                                <div className="chest-lid absolute">
+                                    <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M21 10H3"/>
+                                        <path d="M21 10l-1.5-5A2 2 0 0 0 17.6 3H6.4a2 2 0 0 0-1.9 2L3 10"/>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Opening text */}
+                        <h2 className="text-3xl font-bold text-white mt-8 animate-pulse">Opening {openingLootboxData.name || 'Lootbox'}...</h2>
+                    </div>
+                </div>
+            )}
+
+            {/* Rewards Modal */}
+            {showRewards && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowRewards(false)}>
+                    <div className={`${theme.card} rounded-2xl p-8 max-w-2xl w-full flex flex-col`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid', maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
+                        <div className="text-center mb-6 flex-shrink-0">
+                            <Sparkles size={48} style={{ color: accentColor }} className="mx-auto mb-2" />
+                            <h3 className={`text-2xl font-bold ${theme.text}`}>Rewards!</h3>
+                            <p className={`text-sm ${theme.textMuted} mt-2`}>{revealedItems.length} item{revealedItems.length !== 1 ? 's' : ''}</p>
+                        </div>
+                        
+                        {revealedItems.length > 0 ? (
+                            <div className="space-y-3 overflow-y-auto flex-1 pr-2" style={{ minHeight: 0, paddingBottom: '1rem' }}>
+                                {revealedItems.map((item, index) => {
+                                    const hasBonus = item.bonus && Object.keys(item.bonus).length > 0;
+                                    return (
+                                        <div 
+                                            key={index} 
+                                            className={`p-4 rounded-xl ${theme.inputBg} border-l-4 ${hasBonus ? 'stat-boost-glow' : ''}`} 
+                                            style={{ 
+                                                borderColor: hasBonus ? '#FFD700' : accentColor,
+                                                ...(hasBonus ? {
+                                                    boxShadow: '0 0 20px rgba(255, 215, 0, 0.3), inset 0 0 20px rgba(255, 215, 0, 0.1)',
+                                                    background: darkMode ? 'rgba(255, 215, 0, 0.05)' : 'rgba(255, 215, 0, 0.1)'
+                                                } : {})
+                                            }}
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <span className="text-3xl">{item.icon || getDefaultIcon(normalizeItemType(item))}</span>
+                                                <div className="flex-1">
+                                                    <p className={`text-base font-bold ${theme.text} ${hasBonus ? 'flex items-center gap-2' : ''}`}>
+                                                        {item.name}
+                                                        {hasBonus && <Sparkles size={16} className="text-yellow-500" />}
+                                                    </p>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <span className={`text-xs px-2 py-0.5 rounded ${theme.inputBg}`} style={{ color: accentColor }}>
+                                                            {item.rarity}
+                                                        </span>
+                                                        <span className={`text-xs ${theme.textMuted}`}>
+                                                            {item.type}
+                                                        </span>
+                                                    </div>
+                                                    {hasBonus && (
+                                                        <div className="mt-2 p-2 rounded" style={{ backgroundColor: 'rgba(255, 215, 0, 0.1)' }}>
+                                                            <p className="text-xs font-bold text-yellow-500 mb-1">✨ Bonus Stats:</p>
+                                                            <div className="text-xs text-yellow-600 dark:text-yellow-400">
+                                                                {Object.entries(item.bonus).map(([k, v]) => (
+                                                                    <span key={k} className="mr-2">+{formatStatValue(k, Number(v))} {formatStatKey(k)}</span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <p className={`text-center ${theme.textMuted}`}>No items received</p>
+                        )}
+                        
+                        <button
+                            onClick={() => setShowRewards(false)}
+                            className="mt-6 w-full py-3 rounded-xl font-medium text-white transition-all hover:scale-105 flex-shrink-0"
+                            style={{ backgroundColor: accentColor }}
+                        >
+                            Awesome!
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -765,7 +1333,9 @@ function ItemCard({
     instanceIndex,
     onEquip,
     onShowStats,
-    onSell
+    onSell,
+    rerollSelected,
+    onToggleReroll
 }: {
     item: InventoryItem;
     darkMode: boolean;
@@ -775,6 +1345,8 @@ function ItemCard({
     onEquip?: () => void;
     onShowStats?: () => void;
     onSell?: () => void;
+    rerollSelected?: boolean;
+    onToggleReroll?: () => void;
 }) {
     const colors = rarityColors[item.rarity];
     const statsTooltip = buildStatsTooltip(item);
@@ -792,7 +1364,7 @@ function ItemCard({
                 background: `linear-gradient(135deg, ${elementTint}, ${baseCardBg})`,
                 borderWidth: '2px',
                 borderStyle: 'solid',
-                borderColor: hasBoost ? '#facc15' : colors.border,
+                borderColor: rerollSelected ? '#a855f7' : (hasBoost ? '#facc15' : colors.border),
                 boxShadow: hasBoost ? '0 0 12px rgba(250, 204, 21, 0.35)' : `0 0 6px ${elementColor}33`
             }}
             title={statsTooltip}
@@ -830,6 +1402,19 @@ function ItemCard({
                 {/* Stat badges removed; stats shown via tooltip only */}
 
                 {/* Merge Button removed */}
+
+                {/* Reroll selection */}
+                {onToggleReroll && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleReroll?.();
+                        }}
+                        className={`mt-2 text-xs w-full py-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-colors hover:scale-105 ${rerollSelected ? 'bg-purple-500/30 text-purple-800' : (darkMode ? 'bg-purple-500/10 text-purple-400' : 'bg-purple-500/10 text-purple-600')}`}
+                    >
+                        {rerollSelected ? 'Selected for reroll' : 'Select for reroll'}
+                    </button>
+                )}
 
                 {/* Equip Button (if not equipped) */}
                 {!item.isEquipped && (
@@ -916,7 +1501,7 @@ function renderStatBadges(stats: StatBlock = {}, darkMode: boolean) {
             key={key}
             className={`px-2 py-1 rounded-lg border text-[11px] ${darkMode ? 'border-gray-600 text-gray-200' : 'border-gray-200 text-gray-700'}`}
         >
-            {formatStatKey(key)} {value}
+            {formatStatKey(key)} {formatStatValue(key, Number(value))}
         </span>
     ));
 }
@@ -938,6 +1523,16 @@ function formatStatKey(key: string) {
     }
 }
 
+function formatStatValue(key: string, value: number): string {
+    // Treat crit stats as percentages; handle both fraction (0.15) and percent (15)
+    if (key === 'critChance' || key === 'critDamage' || key === 'goldBonus' || key === 'xpBonus') {
+        const scaled = value <= 1 ? value * 100 : value; // scale fractions to percent
+        const rounded = Math.round(scaled * 10) / 10; // 1 decimal
+        return `${rounded}%`;
+    }
+    return `${value}`;
+}
+
 function renderFullStats(item: InventoryItem) {
     const stats = item.type === "pet" ? (item.buffs || {}) : (item.stats || {});
     const keysOrder = [
@@ -955,7 +1550,7 @@ function renderFullStats(item: InventoryItem) {
     return keysOrder.map((k) => (
         <div key={k} className="flex items-center justify-between border rounded-md px-2 py-1">
             <span className="text-gray-600">{formatStatKey(k)}</span>
-            <span className="font-semibold">{Number((stats as any)[k] ?? 0)}</span>
+            <span className="font-semibold">{formatStatValue(k, Number((stats as any)[k] ?? 0))}</span>
         </div>
     ));
 }
@@ -968,7 +1563,7 @@ function buildStatsTooltip(item: InventoryItem): string {
     const primary = item.type === "pet" ? (item.buffs || {}) : (item.stats || {});
     const primaryEntries = Object.entries(primary).filter(([, v]) => v !== undefined && v !== null && Number(v) !== 0);
     if (primaryEntries.length > 0) {
-        const text = primaryEntries.map(([k, v]) => `${formatStatKey(k)} ${v}`).join(" • ");
+        const text = primaryEntries.map(([k, v]) => `${formatStatKey(k)} ${formatStatValue(k, Number(v))}`).join(" • ");
         parts.push(text);
     }
 
