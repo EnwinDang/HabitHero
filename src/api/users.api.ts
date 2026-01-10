@@ -150,6 +150,17 @@ export const UsersAPI = {
     });
   },
 
+  addLootboxToInventory(
+    uid: string,
+    lootboxId: string,
+    quantity = 1
+  ): Promise<{ success: boolean; lootboxId: string; quantity: number; totalLootboxes: number }> {
+    return apiFetch(`/users/${uid}/inventory/add-lootbox`, {
+      method: "POST",
+      body: JSON.stringify({ lootboxId, quantity }),
+    });
+  },
+
   removePet(uid: string, petId: string): Promise<void> {
     return apiFetch<void>(`/users/${uid}/pets`, {
       method: "DELETE",

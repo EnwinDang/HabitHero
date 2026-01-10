@@ -762,7 +762,7 @@ app.post("/tasks/:taskId/claim", requireAuth, async (req, res) => {
         const baseRewards = difficultyRewards[difficulty] || difficultyRewards.medium;
         const baseXP = baseRewards.xp || 100;
         const baseGold = baseRewards.gold || 25;
-        console.log(`🎯 [Claim Reward] Task: ${taskData.name}, difficulty: ${difficulty}, baseXP: ${baseXP}, baseGold: ${baseGold}, from gameRules`);
+        console.log(`🎯 [Claim Reward] Task: ${taskData.name}, difficulty: ${difficulty}, baseXP: ${baseXP}, baseGold: ${baseGold}`);
         const xpGained = baseXP;
         const goldGained = baseGold;
         console.log(`💰 [Claim Reward] XP/Gold gained - xpGained: ${xpGained}, goldGained: ${goldGained}`);
@@ -1215,28 +1215,184 @@ app.post("/achievements", requireAuth, async (req, res) => {
 // ============ INVENTORY ============
 /**
  * GET /users/{uid}/inventory
+ * Get user's inventory including items and lootboxes from inventory.inventory arrays
+ * Fetches full item details from their respective collections
  */
 app.get("/users/:uid/inventory", requireAuth, async (req, res) => {
     try {
         const { uid } = req.params;
-        // Get user document for gold and other data
+        // Get user document
         const userSnap = await db.collection("users").doc(uid).get();
+        if (!userSnap.exists) {
+            return res.status(404).json({ error: "User not found" });
+        }
         const user = userSnap.data() || {};
-        // Get inventory subcollection
-        const inventorySnapshot = await db.collection("users").doc(uid).collection("inventory").get();
-        const items = inventorySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        // Normalize the inventory structure
+        const rawItems = user.inventory?.inventory?.items || [];
+        // Build a map of collections to unique itemIds
+        const colToItemIds = {};
+        for (const it of rawItems) {
+            const col = (it?.collection || "").toString();
+            const id = (it?.itemId || "").toString();
+            if (!col || !id)
+                continue;
+            if (!colToItemIds[col])
+                colToItemIds[col] = new Set();
+            colToItemIds[col].add(id);
+        }
+        // Fetch only referenced item docs per collection
+        const itemMaps = {};
+        const fetchCollectionDocs = async (col, ids) => {
+            const map = {};
+            if (ids && ids.length > 0) {
+                for (const id of ids) {
+                    try {
+                        const docSnap = await db.collection(col).doc(id).get();
+                        if (docSnap.exists) {
+                            const data = docSnap.data() || {};
+                            map[id] = { itemId: id, ...data };
+                        }
+                    }
+                    catch (err) {
+                        console.warn(`Failed to load ${col}/${id}:`, err);
+                    }
+                }
+            }
+            else {
+                // load full collection as fallback for equipped items missing collection metadata
+                try {
+                    const snap = await db.collection(col).get();
+                    snap.docs.forEach(docSnap => {
+                        const data = docSnap.data() || {};
+                        map[docSnap.id] = { itemId: docSnap.id, ...data };
+                    });
+                }
+                catch (err) {
+                    console.warn(`Failed to load full collection ${col}:`, err);
+                }
+            }
+            itemMaps[col] = map;
+        };
+        for (const [col, idSet] of Object.entries(colToItemIds)) {
+            await fetchCollectionDocs(col, Array.from(idSet));
+        }
+        // Ensure default collections are loaded so equipped items without collection info can be resolved
+        const defaultCollections = ["items_weapons", "items_armor", "items_pets", "items_accessories", "items_arcane", "items_misc"];
+        for (const col of defaultCollections) {
+            if (!itemMaps[col]) {
+                await fetchCollectionDocs(col);
+            }
+        }
+        const findDetailById = (itemId) => {
+            for (const map of Object.values(itemMaps)) {
+                if (map[itemId])
+                    return map[itemId];
+            }
+            // Last resort: try per-collection fetch if still missing
+            return null;
+        };
+        const resolveDetail = async (item, idx, forceEquipped = false) => {
+            const base = {
+                id: item?.id || `item_${idx}`,
+                itemId: item?.itemId || "",
+                name: item?.name || item?.title || item?.displayName || item?.itemId || "Unknown Item",
+                type: (item?.type || item?.itemType || "misc").toLowerCase(),
+                rarity: (item?.rarity || "common").toLowerCase(),
+                icon: item?.icon || "📦",
+                level: item?.level || 1,
+                collection: item?.collection || "",
+                addedAt: item?.addedAt || Date.now(),
+                isEquipped: forceEquipped ? true : (item?.isEquipped || false),
+                description: item?.description || item?.desc || null,
+                stats: item?.stats || {},
+                bonus: item?.bonus || null,
+            };
+            const colMap = base.collection ? itemMaps[base.collection] || {} : {};
+            let detail = (base.itemId && colMap[base.itemId]) || findDetailById(base.itemId) || {};
+            if ((!detail || Object.keys(detail).length === 0) && base.itemId) {
+                // fallback: attempt direct doc load across default collections
+                const fallbackCols = ["items_weapons", "items_armor", "items_pets", "items_accessories", "items_arcane", "items_misc"];
+                for (const col of fallbackCols) {
+                    try {
+                        const snap = await db.collection(col).doc(base.itemId).get();
+                        if (snap.exists) {
+                            detail = { itemId: base.itemId, ...snap.data() };
+                            break;
+                        }
+                    }
+                    catch (err) {
+                        // ignore
+                    }
+                }
+            }
+            const merged = { ...base, ...(detail || {}) };
+            // Preserve bonus from base (instance-level data) - don't let item definition overwrite it
+            merged.bonus = base.bonus;
+            return merged;
+        };
+        // Build detailed items using the maps (with safe fallbacks)
+        const itemsWithDetails = [];
+        for (let i = 0; i < rawItems.length; i++) {
+            itemsWithDetails.push(await resolveDetail(rawItems[i], i, false));
+        }
+        // Also include equipped items (so UI can render details even when removed from inventory)
+        const equippedObj = user.inventory?.equiped || { armor: {}, pets: {}, accessoiries: {}, weapon: "" };
+        const equippedIds = [];
+        if (equippedObj.weapon)
+            equippedIds.push({ id: equippedObj.weapon, slot: "weapon" });
+        Object.entries(equippedObj.armor || {}).forEach(([slot, id]) => id && equippedIds.push({ id: id, slot }));
+        Object.entries(equippedObj.pets || {}).forEach(([slot, id]) => id && equippedIds.push({ id: id, slot }));
+        Object.entries(equippedObj.accessoiries || {}).forEach(([slot, id]) => id && equippedIds.push({ id: id, slot }));
+        for (let i = 0; i < equippedIds.length; i++) {
+            const eq = equippedIds[i];
+            const already = itemsWithDetails.find((it) => it.itemId === eq.id);
+            if (already) {
+                already.isEquipped = true;
+                continue;
+            }
+            // Try to find the original item data in user inventory store (if present elsewhere)
+            const original = rawItems.find((it) => it.itemId === eq.id) || { itemId: eq.id, collection: undefined, type: eq.slot };
+            const resolved = await resolveDetail(original, 10000 + i, true);
+            resolved.slot = eq.slot;
+            itemsWithDetails.push(resolved);
+        }
+        // Lootboxes
+        const lootboxArray = user.inventory?.inventory?.lootboxes || [];
+        const lootboxCount = {};
+        lootboxArray.forEach((lb) => {
+            const lootboxId = lb.lootboxId || lb;
+            lootboxCount[lootboxId] = (lootboxCount[lootboxId] || 0) + 1;
+        });
         const normalizedInventory = {
             gold: user.stats?.gold || user.inventory?.gold || 0,
-            items: items,
+            items: itemsWithDetails,
             materials: user.inventory?.materials || {},
+            lootboxes: lootboxCount,
             lastUpdatedAt: user.inventory?.lastUpdatedAt || Date.now()
         };
+        console.log(`📦 [GET /users/${uid}/inventory] ${itemsWithDetails.length} items with details, lootboxes:`, Object.entries(lootboxCount).map(([id, count]) => `${id}:${count}`).join(", "));
         return res.status(200).json(normalizedInventory);
     }
     catch (e) {
         console.error("Error in GET /users/:uid/inventory:", e);
-        return res.status(500).json({ error: e?.message });
+        try {
+            // Return a safe fallback to avoid breaking the UI
+            const { uid } = req.params;
+            const userSnap = await db.collection("users").doc(uid).get();
+            const user = userSnap.data() || {};
+            const fallback = {
+                gold: user.stats?.gold || user.inventory?.gold || 0,
+                items: [],
+                materials: user.inventory?.materials || {},
+                lootboxes: {},
+                lastUpdatedAt: user.inventory?.lastUpdatedAt || Date.now(),
+                error: String(e?.message || e),
+            };
+            return res.status(200).json(fallback);
+        }
+        catch (inner) {
+            console.error("Fallback failed in /users/:uid/inventory:", inner);
+            return res.status(500).json({ error: inner?.message || String(inner) });
+        }
     }
 });
 /**
@@ -1283,21 +1439,32 @@ app.post("/users/:uid/equip", requireAuth, async (req, res) => {
         if (!itemInInventory) {
             return res.status(404).json({ error: "Item not found in inventory" });
         }
-        // Validate slot based on item type
-        const itemType = itemInInventory.type || itemInInventory.itemType;
+        // Validate slot based on normalized item type
+        const rawType = (itemInInventory.type || itemInInventory.itemType || "").toLowerCase();
+        const collectionName = (itemInInventory.collection || "").toLowerCase();
+        let normalizedType = "unknown";
+        if (collectionName.includes("items_weapons") || ["weapon", "sword", "dagger", "bow", "staff"].some(t => rawType.includes(t))) {
+            normalizedType = "weapon";
+        }
+        else if (collectionName.includes("items_armor") || ["armor", "helm", "helmet", "chest", "plate", "leggings", "pants", "boots"].some(t => rawType.includes(t))) {
+            normalizedType = "armor";
+        }
+        else if (collectionName.includes("items_pets") || rawType.includes("pet")) {
+            normalizedType = "pet";
+        }
+        else if (collectionName.includes("items_accessories") || rawType.includes("accessory")) {
+            normalizedType = "accessory";
+        }
         const validSlots = {
             weapon: ["weapon"],
-            helmet: ["helmet"],
-            chestplate: ["chestplate"],
-            pants: ["pants"],
-            boots: ["boots"],
+            armor: ["helmet", "chestplate", "pants", "boots"],
             pet: ["pet1", "pet2"],
             accessory: ["accessory1", "accessory2"],
         };
-        const allowedSlots = validSlots[itemType] || [];
+        const allowedSlots = validSlots[normalizedType] || [];
         if (!allowedSlots.includes(slot)) {
             return res.status(400).json({
-                error: `Item type '${itemType}' cannot be equipped in slot '${slot}'`,
+                error: `Item type '${normalizedType}' cannot be equipped in slot '${slot}'`,
                 allowedSlots
             });
         }
@@ -3853,9 +4020,13 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
         // Get bonus system config
         const bonusSystemSnap = await db.collection("rerollRules").doc("bonusSystem").get();
         const bonusSystem = bonusSystemSnap.exists ? bonusSystemSnap.data() : null;
-        const bonusEnabled = bonusSystem?.enabled || false;
-        const bonusChance = bonusSystem?.bonusChance || 0;
-        const possibleBonuses = bonusSystem?.possibleBonuses || {};
+        const bonusEnabled = bonusSystem?.enabled !== false; // Default true if not explicitly disabled
+        const bonusChance = bonusSystem?.bonusChance ?? 0.3; // Default 30% chance if not set
+        const possibleBonuses = bonusSystem?.possibleBonuses || {
+            damage: { min: 1, max: 5 },
+            critDamage: { min: 0.5, max: 2 },
+            speed: { min: 1, max: 3 }
+        }; // Default bonuses if not configured
         // Get arcane tweaks config
         const arcaneTweaksSnap = await db.collection("lootboxesArcaneTweaks").doc("arcaneBonus").get();
         const arcaneTweaks = arcaneTweaksSnap.exists ? arcaneTweaksSnap.data() : null;

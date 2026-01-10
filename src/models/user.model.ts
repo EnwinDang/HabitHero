@@ -13,11 +13,19 @@ export interface User {
   stats: UserStats;
   settings?: UserSettings;
   worldMapProgress?: WorldMapProgress;
+  inventory?: {
+    inventory?: {
+      items?: any[];
+      lootboxes?: any[];
+    };
+  };
 }
 
 export interface UserStats {
   level: number;
   xp: number;  // Changed back to 'xp' to match Firebase
+  totalXP?: number; // Total XP accumulated across all levels
+  nextLevelXP?: number; // XP needed to reach next level
   gold: number;
   hp: number;
   streak: number;

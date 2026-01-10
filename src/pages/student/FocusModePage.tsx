@@ -275,11 +275,13 @@ function SidebarItem({
   label,
   active = false,
   onClick,
+  darkMode,
 }: {
   icon: React.ReactNode;
   label: string;
   active?: boolean;
   onClick: () => void;
+  darkMode: boolean;
 }) {
   return (
     <li>
