@@ -2540,7 +2540,8 @@ app.get("/leaderboards/global", async (req, res) => {
 /**
  * GET /courses
  * Teachers can only see their own courses (createdBy = uid)
- * Students and admins can see all courses
+ * Students can only see their enrolled courses
+ * Admins can see all courses
  */
 app.get("/courses", requireAuth, async (req, res) => {
   try {
@@ -2552,23 +2553,65 @@ app.get("/courses", requireAuth, async (req, res) => {
     const userData = userSnap.data();
     const userRole = userData?.role || "student";
     
-    const coursesRef = db.collection("courses");
-    let query: any = coursesRef;
+    let courses: any[] = [];
     
-    // Teachers can only see their own courses
     if (userRole === "teacher") {
-      query = query.where("createdBy", "==", uid);
-    }
-    
-    if (activeOnly) {
-      query = query.where("isActive", "==", true);
-    }
+      // Teachers can only see their own courses
+      const coursesRef = db.collection("courses");
+      let query: any = coursesRef.where("createdBy", "==", uid);
+      
+      if (activeOnly) {
+        query = query.where("isActive", "==", true);
+      }
 
-    const snap = await query.get();
-    const courses = snap.docs.map((doc) => ({
-      courseId: doc.id,
-      ...doc.data(),
-    }));
+      const snap = await query.get();
+      courses = snap.docs.map((doc) => ({
+        courseId: doc.id,
+        ...doc.data(),
+      }));
+    } else if (userRole === "student") {
+      // Students can only see their enrolled courses
+      const coursesRef = db.collection("courses");
+      const allCoursesSnap = await coursesRef.get();
+      
+      for (const courseDoc of allCoursesSnap.docs) {
+        const courseData = courseDoc.data();
+        
+        // Skip inactive courses if activeOnly is true
+        if (activeOnly && !courseData.isActive) {
+          continue;
+        }
+        
+        // Check if student is enrolled in this course
+        const enrollmentSnap = await db
+          .collection("courses")
+          .doc(courseDoc.id)
+          .collection("students")
+          .doc(uid)
+          .get();
+        
+        if (enrollmentSnap.exists) {
+          courses.push({
+            courseId: courseDoc.id,
+            ...courseData,
+          });
+        }
+      }
+    } else if (userRole === "admin") {
+      // Admins can see all courses
+      const coursesRef = db.collection("courses");
+      let query: any = coursesRef;
+      
+      if (activeOnly) {
+        query = query.where("isActive", "==", true);
+      }
+
+      const snap = await query.get();
+      courses = snap.docs.map((doc) => ({
+        courseId: doc.id,
+        ...doc.data(),
+      }));
+    }
 
     return res.status(200).json(courses);
   } catch (e: any) {
