@@ -748,22 +748,24 @@ app.post("/tasks/:taskId/claim", requireAuth, async (req, res) => {
         const userRef = db.collection("users").doc(uid);
         const userSnap = await userRef.get();
         const user = userSnap.data() || {};
-        // Calculate rewards based on difficulty
+        // Calculate rewards based on difficulty from gameRules
         const difficulty = taskData.difficulty || "medium";
         const rulesSnap = await db.collection("gameRules").doc("main").get();
         const rules = rulesSnap.data() || {};
-        const difficultyMultipliers = rules.difficultyMultipliers || {
-            easy: { xp: 1, gold: 1 },
-            medium: { xp: 2, gold: 2 },
-            hard: { xp: 3, gold: 3 },
-            extreme: { xp: 5, gold: 5 }
+        // Get base rewards from gameRules for this difficulty
+        const difficultyRewards = rules.difficultyRewards || {
+            easy: { xp: 50, gold: 10 },
+            medium: { xp: 100, gold: 25 },
+            hard: { xp: 200, gold: 50 },
+            extreme: { xp: 500, gold: 125 }
         };
-        // Use base XP/gold from task or defaults, then apply multiplier
-        const baseXP = taskData.xp || 50;
-        const baseGold = taskData.gold || 10;
-        const multiplier = difficultyMultipliers[difficulty] || difficultyMultipliers.medium;
-        const xpGained = Math.floor(baseXP * (multiplier.xp || 1));
-        const goldGained = Math.floor(baseGold * (multiplier.gold || 1));
+        const baseRewards = difficultyRewards[difficulty] || difficultyRewards.medium;
+        const baseXP = baseRewards.xp || 100;
+        const baseGold = baseRewards.gold || 25;
+        console.log(`🎯 [Claim Reward] Task: ${taskData.name}, difficulty: ${difficulty}, baseXP: ${baseXP}, baseGold: ${baseGold}, from gameRules`);
+        const xpGained = baseXP;
+        const goldGained = baseGold;
+        console.log(`💰 [Claim Reward] XP/Gold gained - xpGained: ${xpGained}, goldGained: ${goldGained}`);
         const oldLevel = user.stats?.level || 1;
         const newTotalXP = (user.stats?.totalXP || 0) + xpGained;
         let newGold = (user.stats?.gold || 0) + goldGained;
@@ -2249,7 +2251,8 @@ app.get("/leaderboards/global", async (req, res) => {
 /**
  * GET /courses
  * Teachers can only see their own courses (createdBy = uid)
- * Students and admins can see all courses
+ * Students can only see their enrolled courses
+ * Admins can see all courses
  */
 app.get("/courses", requireAuth, async (req, res) => {
     try {
@@ -2259,20 +2262,58 @@ app.get("/courses", requireAuth, async (req, res) => {
         const userSnap = await db.collection("users").doc(uid).get();
         const userData = userSnap.data();
         const userRole = userData?.role || "student";
-        const coursesRef = db.collection("courses");
-        let query = coursesRef;
-        // Teachers can only see their own courses
+        let courses = [];
         if (userRole === "teacher") {
-            query = query.where("createdBy", "==", uid);
+            // Teachers can only see their own courses
+            const coursesRef = db.collection("courses");
+            let query = coursesRef.where("createdBy", "==", uid);
+            if (activeOnly) {
+                query = query.where("isActive", "==", true);
+            }
+            const snap = await query.get();
+            courses = snap.docs.map((doc) => ({
+                courseId: doc.id,
+                ...doc.data(),
+            }));
         }
-        if (activeOnly) {
-            query = query.where("isActive", "==", true);
+        else if (userRole === "student") {
+            // Students can only see their enrolled courses
+            const coursesRef = db.collection("courses");
+            const allCoursesSnap = await coursesRef.get();
+            for (const courseDoc of allCoursesSnap.docs) {
+                const courseData = courseDoc.data();
+                // Skip inactive courses if activeOnly is true
+                if (activeOnly && !courseData.isActive) {
+                    continue;
+                }
+                // Check if student is enrolled in this course
+                const enrollmentSnap = await db
+                    .collection("courses")
+                    .doc(courseDoc.id)
+                    .collection("students")
+                    .doc(uid)
+                    .get();
+                if (enrollmentSnap.exists) {
+                    courses.push({
+                        courseId: courseDoc.id,
+                        ...courseData,
+                    });
+                }
+            }
         }
-        const snap = await query.get();
-        const courses = snap.docs.map((doc) => ({
-            courseId: doc.id,
-            ...doc.data(),
-        }));
+        else if (userRole === "admin") {
+            // Admins can see all courses
+            const coursesRef = db.collection("courses");
+            let query = coursesRef;
+            if (activeOnly) {
+                query = query.where("isActive", "==", true);
+            }
+            const snap = await query.get();
+            courses = snap.docs.map((doc) => ({
+                courseId: doc.id,
+                ...doc.data(),
+            }));
+        }
         return res.status(200).json(courses);
     }
     catch (e) {

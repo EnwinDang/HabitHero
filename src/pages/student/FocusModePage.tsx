@@ -286,8 +286,8 @@ function SidebarItem({
       <button
         onClick={onClick}
         className={`flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-all ${active
-          ? "bg-purple-50 text-purple-600 border border-purple-200"
-          : "text-gray-600 hover:bg-gray-50"
+          ? darkMode ? "bg-purple-900/30 text-purple-300 border border-purple-700/50" : "bg-purple-50 text-purple-600 border border-purple-200"
+          : darkMode ? "text-gray-400 hover:bg-gray-800" : "text-gray-600 hover:bg-gray-50"
           }`}
       >
         {icon}

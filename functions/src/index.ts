@@ -831,24 +831,29 @@ app.post("/tasks/:taskId/claim", requireAuth, async (req, res) => {
     const userSnap = await userRef.get();
     const user = userSnap.data() || {};
 
-    // Calculate rewards based on difficulty
+    // Calculate rewards based on difficulty from gameRules
     const difficulty = taskData.difficulty || "medium";
     const rulesSnap = await db.collection("gameRules").doc("main").get();
     const rules = rulesSnap.data() || {};
-    const difficultyMultipliers = rules.difficultyMultipliers || {
-      easy: { xp: 1, gold: 1 },
-      medium: { xp: 2, gold: 2 },
-      hard: { xp: 3, gold: 3 },
-      extreme: { xp: 5, gold: 5 }
-    };
-
-    // Use base XP/gold from task or defaults, then apply multiplier
-    const baseXP = taskData.xp || 50;
-    const baseGold = taskData.gold || 10;
-    const multiplier = difficultyMultipliers[difficulty] || difficultyMultipliers.medium;
     
-    const xpGained = Math.floor(baseXP * (multiplier.xp || 1));
-    const goldGained = Math.floor(baseGold * (multiplier.gold || 1));
+    // Get base rewards from gameRules for this difficulty
+    const difficultyRewards = rules.difficultyRewards || {
+      easy: { xp: 50, gold: 10 },
+      medium: { xp: 100, gold: 25 },
+      hard: { xp: 200, gold: 50 },
+      extreme: { xp: 500, gold: 125 }
+    };
+    
+    const baseRewards = difficultyRewards[difficulty] || difficultyRewards.medium;
+    const baseXP = baseRewards.xp || 100;
+    const baseGold = baseRewards.gold || 25;
+    
+    console.log(`🎯 [Claim Reward] Task: ${taskData.name}, difficulty: ${difficulty}, baseXP: ${baseXP}, baseGold: ${baseGold}, from gameRules`);
+    
+    const xpGained = baseXP;
+    const goldGained = baseGold;
+    
+    console.log(`💰 [Claim Reward] XP/Gold gained - xpGained: ${xpGained}, goldGained: ${goldGained}`);
 
     const oldLevel = user.stats?.level || 1;
     const newTotalXP = (user.stats?.totalXP || 0) + xpGained;
