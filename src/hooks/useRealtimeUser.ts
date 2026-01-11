@@ -54,12 +54,12 @@ export function useRealtimeUser() {
           }
 
           // Set default values for today's pomodoro stats if they don't exist
-          if (userData.stats.todaysSessions === undefined || userData.stats.todaysSessions === null) {
-            userData.stats.todaysSessions = 0;
-          }
-          if (userData.stats.todaysFocusSeconds === undefined || userData.stats.todaysFocusSeconds === null) {
-            userData.stats.todaysFocusSeconds = 0;
-          }
+         if (userData.stats.streak === undefined || userData.stats.streak === null) {
+  userData.stats.streak = 0;
+}
+if (userData.stats.maxStreak === undefined || userData.stats.maxStreak === null) {
+  userData.stats.maxStreak = 0;
+}
 
           setUser(userData);
           setLoading(false);

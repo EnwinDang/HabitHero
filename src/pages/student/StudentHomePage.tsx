@@ -5,14 +5,28 @@ import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { getLevelFromXP, getCurrentLevelProgress, getXPToNextLevel, formatXP } from "@/utils/xpCurve";
-import { TrendingUp, Coins, Flame, Star, Zap, BookOpen, Target } from "lucide-react";
+import { 
+  TrendingUp, 
+  Coins, 
+  Flame, 
+  Star, 
+  Zap, 
+  BookOpen, 
+  Target, 
+  User, 
+  AlertTriangle, 
+  Loader2, 
+  CheckCircle2,
+  ChevronRight,
+  History
+} from "lucide-react";
 import { db } from "@/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 import type { Task } from "@/models/task.model";
 
 export default function StudentHomePage() {
   const navigate = useNavigate();
-  const { logout, loading: authLoading } = useAuth();
+  const { logout, loading } = useAuth(); 
   const { user, loading: userLoading, error: userError } = useRealtimeUser();
   const { tasks, loading: tasksLoading, error: tasksError } = useRealtimeTasks();
   const { darkMode, accentColor } = useTheme();
@@ -47,7 +61,7 @@ export default function StudentHomePage() {
     try {
       const taskRef = doc(db, "users", firebaseUser.uid, "tasks", taskId);
       await updateDoc(taskRef, {
-        isActive: false, // Mark as completed
+        isActive: false, 
         completedAt: Date.now(),
       });
       setError(null);
@@ -65,7 +79,7 @@ export default function StudentHomePage() {
     today.setHours(0, 0, 0, 0);
 
     return tasks.filter((task) => {
-      if (task.completedAt) return false; // Don't show completed tasks
+      if (task.completedAt) return false; 
 
       if (task.dueAt) {
         const dueDate = new Date(task.dueAt);
@@ -83,218 +97,155 @@ export default function StudentHomePage() {
     });
   }, [tasks]);
 
-  if (authLoading || userLoading) {
+  if (loading || userLoading) {
     return (
-      <div
-        className={`min-h-screen ${theme.bg} flex items-center justify-center transition-colors duration-300`}
-      >
-        <div className="text-xl animate-pulse" style={theme.accentText}>
-          Dashboard laden...
+      <div className={`min-h-screen ${theme.bg} flex items-center justify-center transition-colors duration-300`}>
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="animate-spin" size={32} style={theme.accentText} />
+          <div className="text-xl font-medium" style={theme.accentText}>
+            Dashboard laden...
+          </div>
         </div>
       </div>
     );
   }
 
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
 
   return (
     <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
       <main className="p-8 overflow-y-auto">
         {/* Header */}
         <div className="mb-6">
-          <h2 className={`text-3xl font-bold ${theme.text}`}>
-            Welkom, {user.displayName}! 👋
-          </h2>
+          <div className="flex items-center gap-3">
+            <User size={32} style={theme.accentText} />
+            <h2 className={`text-3xl font-bold ${theme.text}`}>
+              Welkom, {user.displayName}
+            </h2>
+          </div>
           <p className={theme.textMuted}>Hier is je dagelijkse overzicht</p>
         </div>
 
         {/* ERROR MESSAGE */}
         {(error || userError || tasksError) && (
-          <div
-            className={`border-l-4 p-4 mb-6 rounded ${
-              darkMode ? "bg-yellow-900/30 border-yellow-600" : "bg-yellow-100 border-yellow-500"
-            }`}
-          >
-            <p
-              className={`font-semibold ${
-                darkMode ? "text-yellow-200" : "text-yellow-800"
-              }`}
-            >
-              ⚠️ Waarschuwing
-            </p>
-            <p className={darkMode ? "text-yellow-100" : "text-yellow-700"}>
-              {error || userError || tasksError}
-            </p>
+          <div className={`border-l-4 p-4 mb-6 rounded flex items-start gap-3 ${darkMode ? "bg-yellow-900/30 border-yellow-600" : "bg-yellow-100 border-yellow-500"}`}>
+            <AlertTriangle className={darkMode ? "text-yellow-200" : "text-yellow-800"} size={20} />
+            <div>
+              <p className={`font-semibold ${darkMode ? "text-yellow-200" : "text-yellow-800"}`}>
+                Waarschuwing
+              </p>
+              <p className={darkMode ? "text-yellow-100" : "text-yellow-700"}>
+                {error || userError || tasksError}
+              </p>
+            </div>
           </div>
         )}
 
         {/* STATS CARDS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          {/* Level Card */}
           <div className={`rounded-xl p-5 ${theme.card} border ${theme.border}`}>
             <div className="flex items-center gap-2 mb-2">
               <TrendingUp size={18} style={theme.accentText} />
               <span className={`font-medium ${theme.text}`}>Level</span>
             </div>
-            <p className="text-3xl font-bold" style={theme.accentText}>
-              {level}
-            </p>
+            <p className="text-3xl font-bold" style={theme.accentText}>{level}</p>
           </div>
 
-          {/* XP Card */}
           <div className={`rounded-xl p-5 ${theme.card} border ${theme.border}`}>
             <div className="flex items-center gap-2 mb-2">
               <Zap size={18} style={theme.accentText} />
               <span className={`font-medium ${theme.text}`}>Experience</span>
             </div>
-            <p className="text-3xl font-bold" style={theme.accentText}>
-              {currentXP}
-            </p>
-            <div
-              className={`w-full rounded-full h-2 overflow-hidden mt-3 ${
-                darkMode ? "bg-gray-700" : "bg-violet-200"
-              }`}
-            >
-              <div
-                className={`h-full transition-all duration-300`}
-                style={{
-                  width: `${levelProgress.percentage}%`,
-                  backgroundColor: accentColor,
-                }}
-              />
+            <p className="text-3xl font-bold" style={theme.accentText}>{currentXP}</p>
+            <div className={`w-full rounded-full h-2 overflow-hidden mt-3 ${darkMode ? "bg-gray-700" : "bg-violet-200"}`}>
+              <div className="h-full transition-all duration-300" style={{ width: `${levelProgress.percentage}%`, backgroundColor: accentColor }} />
             </div>
             <p className={`text-xs ${theme.textMuted} mt-2`}>
-              Nog <span className="font-semibold" style={theme.accentText}>
-                {formatXP(xpToNextLevel)} XP
-              </span> tot level {level + 1}
+              Nog <span className="font-semibold" style={theme.accentText}>{formatXP(xpToNextLevel)} XP</span> tot level {level + 1}
             </p>
           </div>
 
-          {/* Gold Card */}
           <div className={`rounded-xl p-5 ${theme.card} border ${theme.border}`}>
             <div className="flex items-center gap-2 mb-2">
               <Coins size={18} style={theme.accentText} />
               <span className={`font-medium ${theme.text}`}>Goud</span>
             </div>
-            <p className="text-3xl font-bold" style={theme.accentText}>
-              {user.stats.gold}
-            </p>
+            <p className="text-3xl font-bold" style={theme.accentText}>{user.stats.gold}</p>
           </div>
 
-          {/* Pomodoro Streak Card */}
           <div className={`rounded-xl p-5 ${theme.card} border ${theme.border}`}>
             <div className="flex items-center gap-2 mb-2">
               <Flame size={18} style={theme.accentText} />
-              <span className={`font-medium ${theme.text}`}>Pomodoro Streak</span>
+              <span className={`font-medium ${theme.text}`}>Focus Streak</span>
             </div>
-            <p className="text-3xl font-bold" style={theme.accentText}>
-              {user.stats.pomodoroStreak || 0}
-            </p>
+            <p className="text-3xl font-bold" style={theme.accentText}>{user.stats.streak || 0}</p>
+            <p className={`text-xs ${theme.textMuted} mt-1`}>Huidige streak</p>
           </div>
 
-          {/* Login Streak Card */}
           <div className={`rounded-xl p-5 ${theme.card} border ${theme.border}`}>
             <div className="flex items-center gap-2 mb-2">
               <Star size={18} style={theme.accentText} />
-              <span className={`font-medium ${theme.text}`}>Inlog streak</span>
+              <span className={`font-medium ${theme.text}`}>Login Streak</span>
             </div>
-            <p className="text-3xl font-bold" style={theme.accentText}>
-              {user.stats.loginStreak || 0}
-            </p>
+            <p className="text-3xl font-bold" style={theme.accentText}>{user.stats.loginStreak || 0}</p>
+            <p className={`text-xs ${theme.textMuted} mt-1`}>Record</p>
           </div>
         </div>
 
-        {/* MAIN CONTENT - Tasks and Sidebar */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* TODAY'S TASKS */}
           <div className="lg:col-span-2">
             <div className={`rounded-xl p-6 ${theme.card} border ${theme.border}`}>
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
                   <BookOpen size={24} style={theme.accentText} />
-                  <h2 className={`text-2xl font-bold ${theme.text}`}>
-                    Taken vandaag
-                  </h2>
-                  {tasksLoading && (
-                    <span className={`text-sm ${theme.textMuted}`}>🔄</span>
-                  )}
+                  <h2 className={`text-2xl font-bold ${theme.text}`}>Taken vandaag</h2>
                 </div>
-                <button
-                  onClick={() => navigate("/student/calendar")}
-                  className={`text-sm font-semibold px-4 py-2 rounded transition`}
+                <button 
+                  onClick={() => navigate("/student/calendar")} 
+                  className="text-sm font-semibold px-4 py-2 rounded flex items-center gap-1 transition" 
                   style={theme.accentText}
                 >
-                  Alles zien →
+                  Alles zien <ChevronRight size={16} />
                 </button>
               </div>
 
               {tasksLoading && todaysTasks.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="animate-spin mb-2 opacity-50" size={24} />
                   <p className={theme.textMuted}>Taken laden...</p>
-                  <div className="animate-spin text-2xl mt-2">⏳</div>
                 </div>
               ) : todaysTasks.length === 0 ? (
-                <div
-                  className={`flex flex-col items-center justify-center py-12 rounded-lg ${theme.hoverAccent}`}
-                >
-                  <p className="text-3xl mb-2">🎉</p>
-                  <p className={`font-semibold ${theme.text}`}>
-                    Geen taken voor vandaag
-                  </p>
-                  <p className={`text-sm ${theme.textMuted} mt-1`}>
-                    Je bent vrij om te genieten!
-                  </p>
+                <div className={`flex flex-col items-center justify-center py-12 rounded-lg ${theme.hoverAccent}`}>
+                  <CheckCircle2 size={48} className="mb-2 opacity-20" style={theme.accentText} />
+                  <p className={`font-semibold ${theme.text}`}>Geen taken voor vandaag</p>
+                  <p className={`text-sm ${theme.textMuted} mt-1`}>Je bent vrij om te genieten!</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {todaysTasks.map((task: Task) => (
-                    <div
-                      key={task.taskId}
-                      className={`rounded-lg p-4 border ${theme.border} ${theme.hoverAccent} transition`}
-                    >
+                    <div key={task.taskId} className={`rounded-lg p-4 border ${theme.border} ${theme.hoverAccent} transition`}>
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
-                          <h3 className={`font-semibold text-lg ${theme.text}`}>
-                            {task.title}
-                          </h3>
-                          {task.description && (
-                            <p className={`text-sm ${theme.textMuted} mt-1`}>
-                              {task.description}
-                            </p>
-                          )}
+                          <h3 className={`font-semibold text-lg ${theme.text}`}>{task.title}</h3>
+                          {task.description && <p className={`text-sm ${theme.textMuted} mt-1`}>{task.description}</p>}
                           <div className="flex items-center gap-3 mt-3 flex-wrap">
-                            {/* Only show difficulty and rewards for course tasks */}
                             {(task.courseId || task.moduleId) && (
                               <>
-                                <span
-                                  className={`text-xs px-2 py-1 rounded-full border`}
-                                  style={{
-                                    backgroundColor: `${accentColor}20`,
-                                    borderColor: `${accentColor}40`,
-                                    color: accentColor,
-                                  }}
-                                >
+                                <span className={`text-xs px-2 py-1 rounded-full border`} style={{ backgroundColor: `${accentColor}20`, borderColor: `${accentColor}40`, color: accentColor }}>
                                   {task.difficulty}
                                 </span>
-                                <span
-                                  className="text-xs font-semibold"
-                                  style={{ color: accentColor }}
-                                >
-                                  +{task.xp} XP
-                                </span>
-                                <span className={`text-xs font-semibold ${theme.textMuted}`}>
-                                  +{task.gold} 🪙
+                                <span className="text-xs font-semibold" style={{ color: accentColor }}>+{task.xp} XP</span>
+                                <span className={`text-xs font-semibold flex items-center gap-1 ${theme.textMuted}`}>
+                                  +{task.gold} <Coins size={12} />
                                 </span>
                               </>
                             )}
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleMarkAsDone(task.taskId)}
-                          disabled={completingTaskId === task.taskId}
-                          className="px-4 py-2 rounded-lg text-sm font-semibold transition whitespace-nowrap text-white disabled:opacity-50"
+                        <button 
+                          onClick={() => handleMarkAsDone(task.taskId)} 
+                          disabled={completingTaskId === task.taskId} 
+                          className="px-4 py-2 rounded-lg text-sm font-semibold transition whitespace-nowrap text-white disabled:opacity-50" 
                           style={{ backgroundColor: accentColor }}
                         >
                           {completingTaskId === task.taskId ? "Bezig..." : "Mark as Done"}
@@ -307,50 +258,49 @@ export default function StudentHomePage() {
             </div>
           </div>
 
-          {/* SIDEBAR */}
           <div className="space-y-6">
-            {/* Quick Stats */}
             <div className={`rounded-xl p-5 ${theme.card} border ${theme.border}`}>
               <div className="flex items-center gap-2 mb-4">
                 <Star size={20} style={theme.accentText} />
                 <p className={`font-semibold ${theme.text}`}>Statistieken</p>
               </div>
-              <div className={`space-y-3 text-sm`}>
+              <div className="space-y-3 text-sm">
                 <div className={`flex justify-between items-center pb-3 border-b ${theme.border}`}>
                   <span className={theme.textMuted}>Totale Taken</span>
-                  <span className={`font-semibold ${theme.text}`}>
-                    {tasks.length}
-                  </span>
+                  <span className={`font-semibold ${theme.text}`}>{tasks.length}</span>
                 </div>
                 <div className={`flex justify-between items-center pb-3 border-b ${theme.border}`}>
-                  <span className={theme.textMuted}>Vandaag Restant</span>
-                  <span className="font-semibold" style={theme.accentText}>
-                    {todaysTasks.length}
-                  </span>
+                  <span className={theme.textMuted}>Focus Vandaag</span>
+                  <div className="text-right">
+                    <span className="block font-semibold" style={theme.accentText}>
+                      {user.stats.todaysSessions || 0} sessies
+                    </span>
+                  </div>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className={theme.textMuted}>Max Pomodoro Streak</span>
-                  <span className="font-semibold" style={theme.accentText}>
-                    {user.stats.maxPomodoroStreak || 0}
-                  </span>
+                  <span className={theme.textMuted}>Beste Streak</span>
+                  <span className="font-semibold" style={theme.accentText}>{user.stats.maxStreak || 0} dagen</span>
                 </div>
               </div>
             </div>
 
-            {/* Focus Sessions */}
             <div className={`rounded-xl p-5 ${theme.card} border ${theme.border}`}>
               <div className="flex items-center gap-2 mb-3">
-                <Target size={20} style={theme.accentText} />
-                <p className={`font-semibold ${theme.text}`}>Focus Sessions</p>
+                <History size={20} style={theme.accentText} />
+                <p className={`font-semibold ${theme.text}`}>Totaal Focus</p>
               </div>
               <p className="text-3xl font-bold" style={theme.accentText}>
-                {user.stats.focusSessionsCompleted || 0}
+                {user.stats.totalSessions || 0} <span className="text-sm font-normal">sessies</span>
               </p>
               <p className={`text-xs ${theme.textMuted} mt-2`}>
-                Pomodoro sessies voltooid
+                Totaal {(() => {
+                  const totalSecs = user.stats.totalFocusSeconds || 0;
+                  const hours = Math.floor(totalSecs / 3600);
+                  const mins = Math.floor((totalSecs % 3600) / 60);
+                  return hours > 0 ? `${hours} uur en ${mins} min` : `${mins} minuten`;
+                })()} geconcentreerd
               </p>
             </div>
-
           </div>
         </div>
       </main>

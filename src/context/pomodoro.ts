@@ -15,8 +15,12 @@ export type PomodoroContextValue = PomodoroSettings & {
   phase: "focus" | "break";
 
   // Shared stats
-  sessionsCompleted: number;
+  totalSessions: number;
   totalFocusSeconds: number;
+  
+  // Deze velden zorgen voor de synchronisatie met de dashboard weergave
+  todaysSessions: number;
+  todaysFocusSeconds: number;
 
   // Controls
   start: () => void;
@@ -24,7 +28,7 @@ export type PomodoroContextValue = PomodoroSettings & {
   toggle: () => void;
   reset: () => void;
 
-  // Optional UI signal
+  // UI signal
   xpGained: number | null;
   levelUpReward: { oldLevel: number; newLevel: number; reward?: any } | null;
 };
