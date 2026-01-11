@@ -13,6 +13,8 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import type { Task } from "@/models/task.model";
 import type { Course } from "@/models/course.model";
 import type { Module } from "@/models/module.model";
+import { UsersAPI } from "@/api/users.api";
+import { StaminaBar } from "@/components/StaminaBar";
 import {
     ClipboardList,
     BookOpen,
@@ -48,6 +50,36 @@ export default function DailyTasksPage() {
     const [selectedModule, setSelectedModule] = useState<Module | null>(null);
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
+    
+    // Stamina state
+    const [staminaData, setStaminaData] = useState<{
+        currentStamina: number;
+        maxStamina: number;
+        nextRegenIn: number;
+    } | null>(null);
+
+    // Fetch stamina data
+    useEffect(() => {
+        const fetchStamina = async () => {
+            if (!user) return;
+            
+            try {
+                const data = await UsersAPI.getStamina(user.uid);
+                setStaminaData({
+                    currentStamina: data.currentStamina,
+                    maxStamina: data.maxStamina,
+                    nextRegenIn: data.nextRegenIn,
+                });
+            } catch (err) {
+                console.warn("Failed to fetch stamina:", err);
+            }
+        };
+
+        fetchStamina();
+        // Update stamina every 60 seconds
+        const interval = setInterval(fetchStamina, 60000);
+        return () => clearInterval(interval);
+    }, [user]);
     const [selectedDifficulty, setSelectedDifficulty] = useState<string>("all");
     const [showCourseDropdown, setShowCourseDropdown] = useState(false);
     const [enrollingCourse, setEnrollingCourse] = useState<string | null>(null);
@@ -492,10 +524,23 @@ export default function DailyTasksPage() {
         <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
             <main className="p-8 overflow-y-auto">
                 {/* Header */}
-                <div className="mb-6 flex items-center justify-between">
-                    <div>
-                        <h2 className={`text-3xl font-bold ${theme.text}`}>Courses Tasks</h2>
-                        <p className={theme.textMuted}>Complete exercises to earn XP and Gold</p>
+                <div className="mb-6">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h2 className={`text-3xl font-bold ${theme.text}`}>Courses Tasks</h2>
+                            <p className={theme.textMuted}>Complete exercises to earn XP and Gold</p>
+                        </div>
+                        {staminaData && (
+                            <div className="flex-shrink-0" style={{ minWidth: '300px' }}>
+                                <StaminaBar
+                                    currentStamina={staminaData.currentStamina}
+                                    maxStamina={staminaData.maxStamina}
+                                    nextRegenIn={staminaData.nextRegenIn}
+                                    showTimer={true}
+                                    size="medium"
+                                />
+                            </div>
+                        )}
                     </div>
                     <div className="flex gap-2">
                         {selectedCourse && (

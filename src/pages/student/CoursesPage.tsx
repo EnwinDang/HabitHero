@@ -15,12 +15,46 @@ import {
   Loader2,
   GraduationCap,
 } from "lucide-react";
+import { UsersAPI } from "@/api/users.api";
+import { StaminaBar } from "@/components/StaminaBar";
+import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 
 export default function CoursesPage() {
   const navigate = useNavigate();
   const { firebaseUser } = useAuth();
+  const { user } = useRealtimeUser();
   const { darkMode, accentColor } = useTheme();
   const theme = getThemeClasses(darkMode, accentColor);
+  
+  // Stamina state
+  const [staminaData, setStaminaData] = useState<{
+    currentStamina: number;
+    maxStamina: number;
+    nextRegenIn: number;
+  } | null>(null);
+
+  // Fetch stamina data
+  useEffect(() => {
+    const fetchStamina = async () => {
+      if (!user) return;
+      
+      try {
+        const data = await UsersAPI.getStamina(user.uid);
+        setStaminaData({
+          currentStamina: data.currentStamina,
+          maxStamina: data.maxStamina,
+          nextRegenIn: data.nextRegenIn,
+        });
+      } catch (err) {
+        console.warn("Failed to fetch stamina:", err);
+      }
+    };
+
+    fetchStamina();
+    // Update stamina every 60 seconds
+    const interval = setInterval(fetchStamina, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
@@ -196,15 +230,30 @@ export default function CoursesPage() {
         )}
         {/* Header */}
         <div className="mb-8">
-          <h2
-            className={`text-4xl font-bold ${theme.text} flex items-center gap-3`}
-          >
-            <GraduationCap size={40} style={{ color: accentColor }} />
-            My Courses
-          </h2>
-          <p style={theme.accentText} className="mt-2">
-            Only your enrolled courses are shown here
-          </p>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h2
+                className={`text-4xl font-bold ${theme.text} flex items-center gap-3`}
+              >
+                <GraduationCap size={40} style={{ color: accentColor }} />
+                My Courses
+              </h2>
+              <p style={theme.accentText} className="mt-2">
+                Only your enrolled courses are shown here
+              </p>
+            </div>
+            {staminaData && (
+              <div className="flex-shrink-0" style={{ minWidth: '300px' }}>
+                <StaminaBar
+                  currentStamina={staminaData.currentStamina}
+                  maxStamina={staminaData.maxStamina}
+                  nextRegenIn={staminaData.nextRegenIn}
+                  showTimer={true}
+                  size="medium"
+                />
+              </div>
+            )}
+          </div>
           <div className="mt-4">
             <button
               type="button"

@@ -24,6 +24,9 @@ export interface User {
       items?: any[];
       lootboxes?: any[];
     };
+    equiped?: Record<string, any>;
+    equippedBonuses?: Record<string, any>;
+    equippedStats?: Record<string, number>;
   };
 }
 
@@ -44,7 +47,17 @@ export interface UserStats {
   loginStreak?: number;
   maxLoginStreak?: number;
   lastLoginDate?: string; // stored as YYYY-MM-DD string
-  monstersDefeated?: number; // Total number of monsters defeated
+  todaysSessions?: number; // Sessions completed today
+  todaysFocusSeconds?: number; // Total focus seconds today
+  lastPomodoroDayKey?: string; // YYYY-MM-DD; last day pomodoro stats were recorded
+  totalStats?: Record<string, number>; // Calculated total stats (base + equipped)
+  battlesWon?: number; // Battles won
+  battlesPlayed?: number; // Total battles played
+  monstersDefeated?: number; // Monsters defeated
+  lootboxesOpened?: number; // Lootboxes opened
+  stamina?: number; // Current stamina (0 to maxStamina)
+  maxStamina?: number; // Maximum stamina (cached from config)
+  lastStaminaRegen?: number; // Timestamp (ms) of last regeneration calculation
 }
 
 export interface UserSettings {

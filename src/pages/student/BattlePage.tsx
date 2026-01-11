@@ -49,6 +49,33 @@ export default function BattlePage() {
     });
 
     const battleInterval = useRef<number | null>(null);
+    
+    // Game config for tier-based stamina costs
+    const [gameConfig, setGameConfig] = useState<{
+        stamina: {
+            battleCost: {
+                normal: number;
+                elite: number;
+                miniBoss: number;
+                boss: number;
+            };
+        };
+    } | null>(null);
+    
+    // Fetch game config for tier-based stamina costs
+    useEffect(() => {
+        const fetchGameConfig = async () => {
+            try {
+                const config = await apiFetch<{ main: { stamina: { battleCost: any } } }>('/game-config');
+                if (config.main?.stamina) {
+                    setGameConfig({ stamina: config.main.stamina });
+                }
+            } catch (err) {
+                console.warn("Failed to fetch game config:", err);
+            }
+        };
+        fetchGameConfig();
+    }, []);
 
     // Initial setup: Start combat session and fetch monster
     useEffect(() => {
@@ -60,15 +87,64 @@ export default function BattlePage() {
             }
 
             try {
-                // 1. Start Combat Session
-                const combat = await CombatAPI.start({
-                    worldId,
-                    stage: Number(levelId)
-                });
+                // 1. Check stamina before starting combat (tier-based cost)
+                // Note: We don't know the tier yet, so we'll use the maximum cost (boss: 20) for the check
+                // The backend will do the actual check with the correct tier
+                if (user) {
+                    try {
+                        const staminaData = await UsersAPI.getStamina(user.uid);
+                        
+                        // Use maximum cost (boss) for frontend check to be safe
+                        const getMaxStaminaCost = (): number => {
+                            if (!gameConfig?.stamina?.battleCost) return 20; // Fallback to max
+                            return gameConfig.stamina.battleCost.boss || 20;
+                        };
+                        
+                        const MAX_STAMINA_COST = getMaxStaminaCost();
+
+                        if (staminaData.currentStamina < MAX_STAMINA_COST) {
+                            setError(`You need at least ${MAX_STAMINA_COST} stamina to fight. Treat this like a test — review before retrying. You have ${staminaData.currentStamina} stamina.`);
+                            setLoading(false);
+                            return;
+                        }
+                    } catch (staminaErr: any) {
+                        console.warn("Could not check stamina, proceeding anyway:", staminaErr);
+                        // Continue if stamina check fails (backward compatibility)
+                    }
+                }
+
+                // 2. Start Combat Session (backend will also check and consume stamina)
+                let combat;
+                try {
+                    combat = await CombatAPI.start({
+                        worldId,
+                        stage: Number(levelId)
+                    });
+                    
+                    // Refresh stamina after successful battle start
+                    if (user) {
+                        try {
+                            await UsersAPI.getStamina(user.uid);
+                        } catch (err) {
+                            console.warn("Could not refresh stamina:", err);
+                        }
+                    }
+                } catch (combatErr: any) {
+                    // Handle stamina errors from backend
+                    if (combatErr.response?.status === 403 || combatErr.message?.includes('stamina')) {
+                        const errorData = combatErr.response?.data || {};
+                        const requiredStamina = errorData.required || 10;
+                        const monsterTier = errorData.monsterTier || 'normal';
+                        setError(`You need at least ${requiredStamina} stamina to fight this ${monsterTier} monster. Treat this like a test — review before retrying. ${errorData.deficit ? `You need ${errorData.deficit} more stamina.` : ''}`);
+                        setLoading(false);
+                        return;
+                    }
+                    throw combatErr; // Re-throw other errors
+                }
 
                 setCombatId(combat.combatId);
 
-                // 2. Fetch Monster Details
+                // 3. Fetch Monster Details
                 if (combat.monsterId) {
                     const monsterData = await MonstersAPI.get(combat.monsterId);
                     const userLevel = user?.stats?.level || 1;
@@ -85,7 +161,11 @@ export default function BattlePage() {
                     const monsterStats = await apiFetch<{
                         attack: number;
                         hp: number;
-                    }>(`/combat/monster-stats/${worldId}/${levelId}/${userLevel}?equippedItemsCount=${equippedItemsCount}`);
+                        defense: number;
+                        speed: number;
+                        magic: number;
+                        magicResist: number;
+                    }>(`/combat/monster-stats/${worldId}/${levelId}/${userLevel}?monsterId=${monsterData.monsterId}&equippedItemsCount=${equippedItemsCount}`);
 
                     // Map generic Monster to BattleEnemy
                     const newEnemy: BattleEnemy = {
@@ -96,8 +176,8 @@ export default function BattlePage() {
                         hp: monsterStats.hp,
                         maxHP: monsterStats.hp,
                         attack: monsterStats.attack, // Use scaled stats from endpoint
-                        defense: (monsterData.baseStats?.defense || 5) + (Number(levelId) * 1),
-                        speed: (monsterData.baseStats?.speed || 10) + (Number(levelId) * 1),
+                        defense: monsterStats.defense, // Use scaled defense
+                        speed: monsterStats.speed, // Use scaled speed
                         emoji: "👾", // Default emoji, could be mapped from type
                         realmId: worldId,
                         levelId: Number(levelId)

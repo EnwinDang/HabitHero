@@ -6,7 +6,10 @@ import { Map, Lock, ArrowLeft, Flame, Snowflake, Mountain, Zap, Trophy, Sparkles
 import { motion, AnimatePresence } from "framer-motion";
 import { WorldsAPI } from "@/api/worlds.api";
 import { MonstersAPI } from "@/api/monsters.api";
+import { UsersAPI } from "@/api/users.api";
+import { apiFetch } from "@/api/client";
 import { getWorldEndingQuote } from "@/data/worlds";
+import { StaminaBar } from "@/components/StaminaBar";
 import type { Realm, Level } from "@/models/worldMap.model";
 import type { World } from "@/models/world.model";
 import type { Monster } from "@/models/monster.model";
@@ -34,6 +37,63 @@ export default function WorldMapPage() {
     const previousCompletionCounts = useRef<Record<string, number>>({});
     const hasCheckedInitialState = useRef(false);
     const lastCheckedWorldProgress = useRef<Record<string, number>>({});
+    
+    // Stamina state
+    const [staminaData, setStaminaData] = useState<{
+        currentStamina: number;
+        maxStamina: number;
+        nextRegenIn: number;
+    } | null>(null);
+    
+    // Game config for tier-based stamina costs
+    const [gameConfig, setGameConfig] = useState<{
+        stamina: {
+            battleCost: {
+                normal: number;
+                elite: number;
+                miniBoss: number;
+                boss: number;
+            };
+        };
+    } | null>(null);
+
+    // Fetch stamina data
+    useEffect(() => {
+        const fetchStamina = async () => {
+            if (!user) return;
+            
+            try {
+                const data = await UsersAPI.getStamina(user.uid);
+                setStaminaData({
+                    currentStamina: data.currentStamina,
+                    maxStamina: data.maxStamina,
+                    nextRegenIn: data.nextRegenIn,
+                });
+            } catch (err) {
+                console.warn("Failed to fetch stamina:", err);
+            }
+        };
+
+        fetchStamina();
+        // Update stamina every 60 seconds
+        const interval = setInterval(fetchStamina, 60000);
+        return () => clearInterval(interval);
+    }, [user]);
+    
+    // Fetch game config for tier-based stamina costs
+    useEffect(() => {
+        const fetchGameConfig = async () => {
+            try {
+                const config = await apiFetch<{ main: { stamina: { battleCost: any } } }>('/game-config');
+                if (config.main?.stamina) {
+                    setGameConfig({ stamina: config.main.stamina });
+                }
+            } catch (err) {
+                console.warn("Failed to fetch game config:", err);
+            }
+        };
+        fetchGameConfig();
+    }, []);
 
     // Fetch worlds and monsters from API
     useEffect(() => {
@@ -381,13 +441,28 @@ export default function WorldMapPage() {
         <div>
             {/* Header */}
             <div className="mb-8">
-                <h2 className={`text-4xl font-bold ${theme.text} flex items-center gap-3`}>
-                    <Map size={40} style={{ color: accentColor }} />
-                    World Map
-                </h2>
-                <p className={`${theme.textSubtle} mt-2`}>
-                    Explore 4 elemental worlds and defeat their monsters
-                </p>
+                <div className="flex justify-between items-start mb-4">
+                    <div>
+                        <h2 className={`text-4xl font-bold ${theme.text} flex items-center gap-3`}>
+                            <Map size={40} style={{ color: accentColor }} />
+                            World Map
+                        </h2>
+                        <p className={`${theme.textSubtle} mt-2`}>
+                            Explore 4 elemental worlds and defeat their monsters
+                        </p>
+                    </div>
+                    {staminaData && (
+                        <div className="flex-shrink-0" style={{ minWidth: '300px' }}>
+                            <StaminaBar
+                                currentStamina={staminaData.currentStamina}
+                                maxStamina={staminaData.maxStamina}
+                                nextRegenIn={staminaData.nextRegenIn}
+                                showTimer={true}
+                                size="medium"
+                            />
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Progress Summary */}
@@ -557,8 +632,37 @@ export default function WorldMapPage() {
         }, 0);
 
         // Navigate to battle with monster data
-        const startBattle = (monster: Monster, isLocked: boolean) => {
+        const startBattle = async (monster: Monster, isLocked: boolean) => {
             if (isLocked) return;
+            
+            // Get tier-based stamina cost
+            const getStaminaCost = (tier: string): number => {
+                if (!gameConfig?.stamina?.battleCost) return 10; // Fallback
+                const costs = gameConfig.stamina.battleCost;
+                switch (tier) {
+                    case 'boss': return costs.boss || 20;
+                    case 'miniBoss': return costs.miniBoss || 12;
+                    case 'elite': return costs.elite || 8;
+                    case 'normal': return costs.normal || 5;
+                    default: return costs.normal || 5;
+                }
+            };
+            
+            const STAMINA_COST = getStaminaCost(monster.tier || 'normal');
+            
+            if (user) {
+                // Get fresh stamina data
+                try {
+                    const freshStaminaData = await UsersAPI.getStamina(user.uid);
+                    if (freshStaminaData.currentStamina < STAMINA_COST) {
+                        alert(`You need at least ${STAMINA_COST} stamina to fight this ${monster.tier || 'normal'} monster. Treat this like a test — review before retrying. You have ${freshStaminaData.currentStamina} stamina.`);
+                        return;
+                    }
+                } catch (err) {
+                    console.warn("Could not check stamina, proceeding anyway:", err);
+                    // Continue if stamina check fails (backend will also check)
+                }
+            }
 
             navigate('/dashboard/battle', {
                 state: {
@@ -611,7 +715,24 @@ export default function WorldMapPage() {
                             // First 2 are always unlocked, plus any completed monsters unlock the next one
                             const worldProgress = worldMapProgress[world.worldId];
                             const completedIndices = worldProgress?.completedLevels || [];
-                            const isUnlocked = index < 2 || completedIndices.includes(index - 1);
+                            const isProgressUnlocked = index < 2 || completedIndices.includes(index - 1);
+                            
+                            // Get tier-based stamina cost
+                            const getStaminaCost = (tier: string): number => {
+                                if (!gameConfig?.stamina?.battleCost) return 10; // Fallback
+                                const costs = gameConfig.stamina.battleCost;
+                                switch (tier) {
+                                    case 'boss': return costs.boss || 20;
+                                    case 'miniBoss': return costs.miniBoss || 12;
+                                    case 'elite': return costs.elite || 8;
+                                    case 'normal': return costs.normal || 5;
+                                    default: return costs.normal || 5;
+                                }
+                            };
+                            
+                            const STAMINA_COST = getStaminaCost(monster.tier || 'normal');
+                            const hasEnoughStamina = staminaData ? staminaData.currentStamina >= STAMINA_COST : true;
+                            const isUnlocked = isProgressUnlocked && hasEnoughStamina;
                             
                             // Debug logging for boss/miniboss
                             if (monster.tier === 'boss' || monster.tier === 'miniBoss') {
@@ -656,6 +777,13 @@ export default function WorldMapPage() {
                                             </div>
                                             <p className="text-sm text-white/80 font-medium">{monster.name}</p>
                                             <p className="text-xs text-white/50 mt-1 capitalize">{monster.tier}</p>
+                                            {!isProgressUnlocked ? (
+                                                <p className="text-xs text-white/40 mt-2">🔒 Locked</p>
+                                            ) : !hasEnoughStamina && staminaData ? (
+                                                <p className="text-xs text-white/40 mt-2">
+                                                    ⚡ Need {STAMINA_COST} stamina
+                                                </p>
+                                            ) : null}
                                         </>
                                     ) : (
                                         <>

@@ -13,7 +13,9 @@ import {
   onMonsterDefeated,
 } from "@/services/achievement.service";
 import { AchievementsAPI } from "@/api/achievements.api";
-import { Trophy, Star, TrendingUp, Coins, Lock, Check, Gift } from "lucide-react";
+import { Trophy, Star, TrendingUp, Coins, Lock, Check, Gift, Zap, X } from "lucide-react";
+import { Modal } from "@/components/Modal";
+import { StaminaBar } from "@/components/StaminaBar";
 
 export default function AchievementsPage() {
   const { user, loading: userLoading } = useRealtimeUser();
@@ -30,6 +32,14 @@ export default function AchievementsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [claimedAchievements, setClaimedAchievements] = useState<Set<string>>(new Set());
+  const [rewardModal, setRewardModal] = useState<{
+    xp: number;
+    gold: number;
+    leveledUp: boolean;
+    newLevel?: number;
+    achievementTitle: string;
+    error?: string;
+  } | null>(null);
 
   // Track previous values to avoid unnecessary syncs
   const prevLevelRef = useRef<number>(0);
@@ -37,6 +47,36 @@ export default function AchievementsPage() {
   const prevFocusSessionsRef = useRef<number>(0);
   const prevCompletedTasksRef = useRef<number>(0);
   const prevMonstersDefeatedRef = useRef<number>(0);
+  
+  // Stamina state
+  const [staminaData, setStaminaData] = useState<{
+    currentStamina: number;
+    maxStamina: number;
+    nextRegenIn: number;
+  } | null>(null);
+
+  // Fetch stamina data
+  useEffect(() => {
+    const fetchStamina = async () => {
+      if (!user) return;
+      
+      try {
+        const data = await UsersAPI.getStamina(user.uid);
+        setStaminaData({
+          currentStamina: data.currentStamina,
+          maxStamina: data.maxStamina,
+          nextRegenIn: data.nextRegenIn,
+        });
+      } catch (err) {
+        console.warn("Failed to fetch stamina:", err);
+      }
+    };
+
+    fetchStamina();
+    // Update stamina every 60 seconds
+    const interval = setInterval(fetchStamina, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   // Handle claim achievement (API-based)
   const handleClaim = async (achievementId: string) => {
@@ -54,37 +94,44 @@ export default function AchievementsPage() {
       // Claim achievement via API using the achievement ID
       const result = await UsersAPI.claimAchievement(firebaseUser.uid, achievementId);
 
-      // Show reward notification
-      const rewards = [];
-      if (result.rewards.xp > 0) rewards.push(`+${result.rewards.xp} XP`);
-      if (result.rewards.gold > 0) rewards.push(`+${result.rewards.gold} Gold`);
-      
-      if (result.leveledUp) {
-        rewards.push(`Level Up! Level ${result.newLevel}`);
-      }
-
-      if (rewards.length > 0) {
-        alert(`🎉 Claimed!\n${rewards.join(' • ')}`);
-      }
+      // Show reward modal
+      setRewardModal({
+        xp: result.rewards.xp || 0,
+        gold: result.rewards.gold || 0,
+        leveledUp: result.leveledUp || false,
+        newLevel: result.newLevel,
+        achievementTitle: achievement.title,
+      });
 
       // Mark as claimed locally
       setClaimedAchievements(prev => new Set([...prev, achievementId]));
 
-      // Refresh page to show updated stats
-      setTimeout(() => window.location.reload(), 1000);
+      // Refresh page to show updated stats after modal is closed
+      // (removed auto-reload, user will close modal manually)
     } catch (error: any) {
       console.error("Failed to claim achievement:", error);
       
       // Check if error is "already claimed"
       const errorMessage = error?.message || "";
       if (errorMessage.includes("already claimed") || errorMessage.includes("Achievement already claimed")) {
-        alert("This achievement has already been claimed!");
+        setRewardModal({
+          xp: 0,
+          gold: 0,
+          leveledUp: false,
+          achievementTitle: achievement.title,
+          error: "already_claimed",
+        });
         // Mark as claimed locally to prevent further attempts
         setClaimedAchievements(prev => new Set([...prev, achievementId]));
-        // Refresh to update UI
-        setTimeout(() => window.location.reload(), 500);
       } else {
-        alert("Failed to claim reward. Please try again.");
+        // Show error in modal
+        setRewardModal({
+          xp: 0,
+          gold: 0,
+          leveledUp: false,
+          achievementTitle: achievement.title,
+          error: "Failed to claim reward. Please try again.",
+        });
       }
     } finally {
       setClaimingId(null);
@@ -189,13 +236,117 @@ export default function AchievementsPage() {
 
   return (
     <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
+      {/* Reward Modal */}
+      {rewardModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+          <div 
+            className="rounded-2xl p-8 max-w-md w-full mx-4 relative"
+            style={{
+              backgroundColor: darkMode ? "rgba(31, 41, 55, 0.95)" : "rgba(255, 255, 255, 0.95)",
+              border: `2px solid ${accentColor}`,
+              boxShadow: `0 0 30px ${accentColor}40`,
+            }}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setRewardModal(null);
+                // Refresh page to show updated stats
+                setTimeout(() => window.location.reload(), 300);
+              }}
+              className="absolute top-4 right-4 p-2 rounded-lg hover:bg-opacity-20 transition-all"
+              style={{ color: darkMode ? "#9ca3af" : "#6b7280" }}
+            >
+              <X size={20} />
+            </button>
+
+            {/* Achievement Title */}
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: `${accentColor}20` }}>
+                <Trophy size={32} style={{ color: accentColor }} />
+              </div>
+              <h3 className={`text-2xl font-bold ${theme.text} mb-2`}>Achievement Claimed!</h3>
+              <p className={`text-lg ${theme.textMuted}`}>{rewardModal.achievementTitle}</p>
+            </div>
+
+            {/* Rewards */}
+            <div className="space-y-4 mb-6">
+              {rewardModal.xp > 0 && (
+                <div className="flex items-center justify-center gap-4 p-4 rounded-xl" style={{ backgroundColor: darkMode ? 'rgba(147, 51, 234, 0.1)' : 'rgba(147, 51, 234, 0.05)' }}>
+                  <Zap className="w-8 h-8" style={{ color: accentColor }} />
+                  <div>
+                    <div className={`text-sm ${theme.textMuted}`}>XP Gained</div>
+                    <div className="text-2xl font-bold" style={{ color: accentColor }}>+{rewardModal.xp}</div>
+                  </div>
+                </div>
+              )}
+              
+              {rewardModal.gold > 0 && (
+                <div className="flex items-center justify-center gap-4 p-4 rounded-xl" style={{ backgroundColor: darkMode ? 'rgba(234, 179, 8, 0.1)' : 'rgba(234, 179, 8, 0.05)' }}>
+                  <Coins className="w-8 h-8 text-yellow-500" />
+                  <div>
+                    <div className={`text-sm ${theme.textMuted}`}>Gold Earned</div>
+                    <div className="text-2xl font-bold text-yellow-500">+{rewardModal.gold}</div>
+                  </div>
+                </div>
+              )}
+
+              {rewardModal.leveledUp && rewardModal.newLevel && (
+                <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white text-center">
+                  <p className="text-lg font-bold">🎉 Level Up!</p>
+                  <p className="text-2xl font-bold">Level {rewardModal.newLevel}</p>
+                </div>
+              )}
+
+              {rewardModal.error && (
+                <div className="text-center py-4">
+                  <p className={`${theme.textMuted}`}>
+                    {rewardModal.error === "already_claimed" 
+                      ? "This achievement has already been claimed." 
+                      : rewardModal.error}
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <button
+              onClick={() => {
+                setRewardModal(null);
+                // Refresh page to show updated stats
+                setTimeout(() => window.location.reload(), 300);
+              }}
+              className="w-full py-3 px-6 rounded-xl text-white font-bold transition-all flex items-center justify-center gap-2"
+              style={{ backgroundColor: accentColor }}
+            >
+              <Check size={20} />
+              Awesome!
+            </button>
+          </div>
+        </div>
+      )}
+
       <main className="p-8 overflow-y-auto">
         {/* Header */}
         <div className="mb-6">
-          <h2 className={`text-3xl font-bold ${theme.text}`}>Achievements</h2>
-          <p className={theme.textMuted}>
-            Track your progress and unlock rewards
-          </p>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h2 className={`text-3xl font-bold ${theme.text}`}>Achievements</h2>
+              <p className={theme.textMuted}>
+                Track your progress and unlock rewards
+              </p>
+            </div>
+            {staminaData && (
+              <div className="flex-shrink-0" style={{ minWidth: '300px' }}>
+                <StaminaBar
+                  currentStamina={staminaData.currentStamina}
+                  maxStamina={staminaData.maxStamina}
+                  nextRegenIn={staminaData.nextRegenIn}
+                  showTimer={true}
+                  size="medium"
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Stats Cards */}

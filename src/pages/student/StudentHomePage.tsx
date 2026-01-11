@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
@@ -10,6 +10,8 @@ import { db } from "@/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 import type { Task } from "@/models/task.model";
 import { onTaskCompleted } from "@/services/achievement.service";
+import { UsersAPI } from "@/api/users.api";
+import { StaminaBar } from "@/components/StaminaBar";
 
 export default function StudentHomePage() {
   const navigate = useNavigate();
@@ -22,6 +24,36 @@ export default function StudentHomePage() {
   const [error, setError] = useState<string | null>(null);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
   const theme = getThemeClasses(darkMode, accentColor);
+  
+  // Stamina state
+  const [staminaData, setStaminaData] = useState<{
+    currentStamina: number;
+    maxStamina: number;
+    nextRegenIn: number;
+  } | null>(null);
+
+  // Fetch stamina data
+  useEffect(() => {
+    const fetchStamina = async () => {
+      if (!user) return;
+      
+      try {
+        const data = await UsersAPI.getStamina(user.uid);
+        setStaminaData({
+          currentStamina: data.currentStamina,
+          maxStamina: data.maxStamina,
+          nextRegenIn: data.nextRegenIn,
+        });
+      } catch (err) {
+        console.warn("Failed to fetch stamina:", err);
+      }
+    };
+
+    fetchStamina();
+    // Update stamina every 60 seconds
+    const interval = setInterval(fetchStamina, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   // Calculate level and XP progress
   const level = user?.stats?.level || 1;
@@ -111,10 +143,25 @@ export default function StudentHomePage() {
       <main className="p-8 overflow-y-auto">
         {/* Header */}
         <div className="mb-6">
-          <h2 className={`text-3xl font-bold ${theme.text}`}>
-            Welkom, {user.displayName}! 👋
-          </h2>
-          <p className={theme.textMuted}>Hier is je dagelijkse overzicht</p>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h2 className={`text-3xl font-bold ${theme.text}`}>
+                Welkom, {user.displayName}! 👋
+              </h2>
+              <p className={theme.textMuted}>Hier is je dagelijkse overzicht</p>
+            </div>
+            {staminaData && (
+              <div className="flex-shrink-0" style={{ minWidth: '300px' }}>
+                <StaminaBar
+                  currentStamina={staminaData.currentStamina}
+                  maxStamina={staminaData.maxStamina}
+                  nextRegenIn={staminaData.nextRegenIn}
+                  showTimer={true}
+                  size="medium"
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* ERROR MESSAGE */}
@@ -197,7 +244,7 @@ export default function StudentHomePage() {
               <span className={`font-medium ${theme.text}`}>Pomodoro Streak</span>
             </div>
             <p className="text-3xl font-bold" style={theme.accentText}>
-              {user.stats.streak}
+              {user.stats.pomodoroStreak || 0}
             </p>
           </div>
 
@@ -338,7 +385,7 @@ export default function StudentHomePage() {
                 <div className="flex justify-between items-center">
                   <span className={theme.textMuted}>Max Pomodoro Streak</span>
                   <span className="font-semibold" style={theme.accentText}>
-                    {user.stats.maxStreak || user.stats.streak}
+                    {user.stats.maxPomodoroStreak || 0}
                   </span>
                 </div>
               </div>

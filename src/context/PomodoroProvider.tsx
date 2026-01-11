@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { UsersAPI } from "@/api/users.api";
-import { db } from "@/firebase";
+import { db, auth } from "@/firebase";
 import { doc, updateDoc, getDoc, increment } from "firebase/firestore";
 import {
   clampInt,
@@ -17,7 +17,6 @@ import { getLevelFromXP } from "@/utils/xpCurve";
 
 const TIMER_STORAGE_KEY = "habithero:pomodoroTimer:v1";
 const MS_IN_DAY = 24 * 60 * 60 * 1000;
-
 type StoredTimerState = {
   status: "idle" | "running" | "paused";
   timeLeftSeconds: number;
@@ -184,6 +183,7 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(t);
   }, [xpGained]);
 
+
   const handleSessionCompleted = useMemo(() => {
     return async (newSessionCount: number) => {
       if (!authUser?.uid) return;
@@ -193,6 +193,34 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
       const yesterdayKey = getDayKey(Date.now() - MS_IN_DAY);
 
       try {
+        // Sync today's session data to database
+        const token = await auth.currentUser?.getIdToken();
+        if (token) {
+          const focusSecondsInThisSession = totalFocusSeconds;
+          await fetch("/api/pomodoro/session-completed", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              sessionsCount: 1,
+              focusSeconds: focusSecondsInThisSession,
+            }),
+          })
+            .then((res) => {
+              if (!res.ok) {
+                console.warn(`⚠️ [Pomodoro] Server sync returned ${res.status}, continuing with local update`);
+              }
+              return res.json();
+            })
+            .catch((err) => {
+              console.warn("⚠️ [Pomodoro] Failed to sync to server, will retry next session:", err);
+            });
+        } else {
+          console.warn("⚠️ [Pomodoro] No auth token available, skipping server sync");
+        }
+
         // Read streak state from Firestore
         const snap = await getDoc(userRef);
         const data = snap.data() || {};
@@ -254,7 +282,7 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
         console.error("❌ Failed to update pomodoro stats:", error);
       }
     };
-  }, [authUser?.uid, settings.focusDuration]);
+  }, [authUser?.uid, authUser, settings.focusDuration, totalFocusSeconds]);
 
   // Shared timer loop. Recreates the interval whenever status/phase or durations change to avoid stale closures.
   useEffect(() => {

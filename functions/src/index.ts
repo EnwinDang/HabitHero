@@ -12,6 +12,9 @@ const db = admin.firestore();
 // Enable ignoring undefined properties in Firestore writes
 db.settings({ ignoreUndefinedProperties: true });
 
+// Constants
+const ITEM_COLLECTIONS = ["items_weapons", "items_armor", "items_arcane", "items_pets", "items_accessories"];
+
 // Middleware
 app.use(
   cors({
@@ -108,6 +111,118 @@ async function calculateLevelFromXP(totalXP: number): Promise<{
 /**
  * Auth middleware
  */
+/**
+ * Helper: Calculate total stats (base + equipped)
+ */
+async function calculateTotalStatsForUser(user: any) {
+  const userLevel = user.stats?.level || 1;
+  const equipped = user.inventory?.equiped || { armor: {}, pets: {}, accessoiries: {}, weapon: "" };
+  const equippedBonuses = user.inventory?.equippedBonuses || {};
+  const items = user.inventory?.inventory?.items || [];
+
+  const configSnap = await db.collection("worldConfig").doc("playerScaling").get();
+  const configData = configSnap.exists ? (configSnap.data() || {}) : {};
+  
+  const configBaseStats = configData.baseStats || {};
+  const baseStats = { 
+    attack: configBaseStats.attack || 10, 
+    defense: configBaseStats.defense || 6, 
+    health: configBaseStats.health || 100,
+    magic: configBaseStats.magic || 8, 
+    magicResist: configBaseStats.magicResist || 5 
+  };
+  
+  const configPerLevel = configData.perLevel || {};
+  const perLevel = { 
+    attack: configPerLevel.attack ?? 2, 
+    defense: configPerLevel.defense ?? 1.5, 
+    health: configPerLevel.health ?? 12, 
+    magic: configPerLevel.magic ?? 2, 
+    magicResist: configPerLevel.magicResist ?? 1.5 
+  };
+  
+  const levelFactor = Math.max(0, userLevel - 1);
+  const userBaseStats: Record<string, number> = {
+    attack: Math.round((baseStats.attack) + (perLevel.attack) * levelFactor),
+    defense: Math.round((baseStats.defense) + (perLevel.defense) * levelFactor),
+    hp: Math.round((baseStats.health) + (perLevel.health) * levelFactor),
+    magicAttack: Math.round((baseStats.magic) + (perLevel.magic) * levelFactor),
+    magicResist: Math.round((baseStats.magicResist) + (perLevel.magicResist) * levelFactor),
+    speed: 0,
+    critChance: 0,
+    critDamage: 0,
+    goldBonus: 0,
+    xpBonus: 0,
+  };
+
+  const aggregateKeys = ["attack","magicAttack","hp","defense","magicResist","speed","critChance","critDamage","goldBonus","xpBonus"];
+  const equippedTotals: Record<string, number> = Object.fromEntries(aggregateKeys.map(k => [k, 0]));
+
+  const resolveVal = (key: string, statsObj: any, buffsObj: any) => {
+    const s = statsObj || {};
+    const b = buffsObj || {};
+    if (key === "critChance") return Number(s.crit ?? b.crit ?? s.critChance ?? b.critChance ?? 0);
+    if (key === "magicAttack") return Number(s.magic ?? b.magic ?? s.magicAttack ?? b.magicAttack ?? 0);
+    if (key === "magicResist") return Number(s.magicRes ?? b.magicRes ?? s.magicResist ?? b.magicResist ?? 0);
+    if (key === "goldBonus") return Number(s.gold ?? b.gold ?? s.goldBonus ?? b.goldBonus ?? 0);
+    if (key === "xpBonus") return Number(s.xp ?? b.xp ?? s.xpBonus ?? b.xpBonus ?? 0);
+    return Number(s[key] ?? b[key] ?? 0);
+  };
+
+  const resolveFromInventory = (eqId: string) => {
+    const match = items.find((i: any) => i.itemId === eqId || i.id === eqId || i.instanceId === eqId);
+    return match || null;
+  };
+
+  const equippedIds: string[] = [
+    ...(equipped.weapon ? [equipped.weapon] : []),
+    ...Object.values(equipped.armor || {}),
+    ...Object.values(equipped.pets || {}),
+    ...Object.values(equipped.accessoiries || {}),
+  ].filter(Boolean) as string[];
+
+  const collections = ["items_weapons","items_armor","items_arcane","items_pets","items_accessories"];
+
+  for (const eqId of equippedIds) {
+    let found: any = null;
+    for (const col of collections) {
+      try {
+        const snap = await db.collection(col).doc(eqId).get();
+        if (snap.exists) {
+          found = snap.data();
+          break;
+        }
+      } catch {}
+    }
+    if (!found) {
+      found = resolveFromInventory(eqId);
+    }
+    if (!found) continue;
+    const statsObj: any = found.stats || {};
+    const buffsObj: any = found.buffs || {};
+    for (const key of aggregateKeys) {
+      const val = resolveVal(key, statsObj, buffsObj);
+      if (!isNaN(val)) equippedTotals[key] += val;
+    }
+  }
+
+  for (const [bonusSlot, bonusData] of Object.entries(equippedBonuses)) {
+    if (bonusData && typeof bonusData === 'object') {
+      for (const key of aggregateKeys) {
+        const val = resolveVal(key, bonusData, {});
+        if (!isNaN(val)) equippedTotals[key] += val;
+      }
+    }
+  }
+
+  const totalStats: Record<string, number> = {};
+  for (const key of aggregateKeys) {
+    totalStats[key] = (userBaseStats[key] || 0) + (equippedTotals[key] || 0);
+  }
+
+  return totalStats;
+}
+
 async function requireAuth(
   req: express.Request,
   res: express.Response,
@@ -280,6 +395,128 @@ async function updateTaskAchievements(uid: string, totalCompletedTasks: number):
  * Helper: Update monster defeat achievements
  * Queries catalog for all monster/combat achievements and updates them
  */
+/**
+ * Calculate current stamina with regeneration
+ */
+/**
+ * Get stamina configuration from gameConfig/main
+ * Returns maxStamina, regenerationRate (in minutes), and battle costs by tier
+ */
+async function getStaminaConfig(): Promise<{ 
+  maxStamina: number; 
+  regenRateMinutes: number;
+  battleCosts: {
+    normal: number;
+    elite: number;
+    miniBoss: number;
+    boss: number;
+  };
+}> {
+  try {
+    const gameConfigSnap = await db.collection("gameConfig").doc("main").get();
+    const gameConfig = gameConfigSnap.exists ? (gameConfigSnap.data() || {}) : {};
+    
+    // Map gameConfig structure to our expected format
+    const staminaConfig = gameConfig.stamina || {};
+    const maxStamina = staminaConfig.max || 100;
+    const regenPerHour = staminaConfig.regenPerHour || 10;
+    
+    // Convert regenPerHour to regenRateMinutes (e.g., 10/hour = 6 minutes per point)
+    const regenRateMinutes = regenPerHour > 0 ? 60 / regenPerHour : 5;
+    
+    // Get battle costs by tier
+    const battleCost = staminaConfig.battleCost || {};
+    const battleCosts = {
+      normal: battleCost.normal || 5,
+      elite: battleCost.elite || 8,
+      miniBoss: battleCost.miniBoss || 12,
+      boss: battleCost.boss || 20,
+    };
+    
+    return { maxStamina, regenRateMinutes, battleCosts };
+  } catch (error) {
+    console.warn("Failed to get stamina config from gameConfig, using defaults:", error);
+    return { 
+      maxStamina: 100, 
+      regenRateMinutes: 5,
+      battleCosts: {
+        normal: 5,
+        elite: 8,
+        miniBoss: 12,
+        boss: 20,
+      }
+    };
+  }
+}
+
+/**
+ * Determine monster tier from stage number or monster data
+ */
+async function getMonsterTier(
+  worldId: string | undefined,
+  stage: number | undefined,
+  monsterId: string | undefined
+): Promise<'normal' | 'elite' | 'miniBoss' | 'boss'> {
+  // First, try to get tier from monster document if monsterId is provided
+  if (monsterId) {
+    try {
+      const monsterSnap = await db.collection("monsters").doc(monsterId).get();
+      if (monsterSnap.exists) {
+        const monsterData = monsterSnap.data();
+        const tier = monsterData?.tier;
+        if (tier === 'normal' || tier === 'elite' || tier === 'miniBoss' || tier === 'boss') {
+          return tier;
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to get monster tier from monster document:", error);
+    }
+  }
+  
+  // Fallback: determine tier from stage number using worldConfig
+  if (worldId && stage !== undefined) {
+    try {
+      const stageStructureSnap = await db.collection("worldConfig").doc("stageStructure").get();
+      if (stageStructureSnap.exists) {
+        const config = stageStructureSnap.data() || {};
+        const bossStage = config.bossStage || 10;
+        const miniBossStage = config.miniBossStage || 5;
+        const eliteStages = config.eliteStages || [];
+        
+        if (stage === bossStage) {
+          return 'boss';
+        } else if (stage === miniBossStage) {
+          return 'miniBoss';
+        } else if (eliteStages.includes(stage)) {
+          return 'elite';
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to get tier from stage structure:", error);
+    }
+  }
+  
+  // Default to normal
+  return 'normal';
+}
+
+async function calculateCurrentStamina(
+  currentStamina: number,
+  maxStamina: number,
+  lastRegen: number | undefined,
+  regenRateMinutes: number
+): Promise<{ stamina: number; lastRegen: number }> {
+  const now = Date.now();
+  const lastRegenTime = lastRegen || now;
+  const minutesPassed = (now - lastRegenTime) / 60000;
+  const pointsToAdd = Math.floor(minutesPassed / regenRateMinutes);
+  
+  const newStamina = Math.min(maxStamina, Math.max(0, currentStamina + pointsToAdd));
+  const newLastRegen = lastRegenTime + (pointsToAdd * regenRateMinutes * 60000);
+  
+  return { stamina: newStamina, lastRegen: newLastRegen };
+}
+
 async function updateMonsterDefeatAchievements(uid: string, totalMonstersDefeated: number): Promise<void> {
   try {
     // Query catalog for all monster/combat achievements
@@ -336,6 +573,10 @@ app.get("/auth/me", requireAuth, async (req, res) => {
       const templateSnap = await db.collection("templates").doc("defaultPlayer").get();
       const defaultPlayer = templateSnap.data()?.player || {};
 
+      // Get stamina config for new users
+      const { maxStamina } = await getStaminaConfig();
+      const now = Date.now();
+
       const newUser = {
         uid,
         email: decoded.email,
@@ -354,9 +595,13 @@ app.get("/auth/me", requireAuth, async (req, res) => {
         },
         stats: {
           ...(defaultPlayer.stats || {}),
+          gold: 400, // New accounts start with 400 gold
           loginStreak: 1,
           maxLoginStreak: 1,
           lastLoginDate: todayDateString, // Same format for consistency
+          stamina: maxStamina, // Start with full stamina
+          maxStamina: maxStamina,
+          lastStaminaRegen: now, // Initialize regeneration timestamp
         },
       };
       await userRef.set(newUser);
@@ -420,11 +665,49 @@ app.get("/auth/me", requireAuth, async (req, res) => {
     updates["stats.maxLoginStreak"] = maxLoginStreak;
     updates["stats.lastLoginDate"] = todayDateString;
 
+    // Initialize stamina if missing (for existing users)
+    if (user.stats?.stamina === undefined || user.stats?.maxStamina === undefined) {
+      const { maxStamina } = await getStaminaConfig();
+      const now = Date.now();
+      
+      updates["stats.stamina"] = maxStamina;
+      updates["stats.maxStamina"] = maxStamina;
+      updates["stats.lastStaminaRegen"] = now;
+      console.log(`🔧 [Auth Init] Initialized stamina for user ${uid}: ${maxStamina}/${maxStamina}`);
+    } else {
+      // Update stamina with regeneration on login
+      const { maxStamina, regenRateMinutes } = await getStaminaConfig();
+      const currentStamina = user.stats?.stamina ?? maxStamina;
+      const lastRegen = user.stats?.lastStaminaRegen;
+
+      const { stamina, lastRegen: newLastRegen } = await calculateCurrentStamina(
+        currentStamina,
+        maxStamina,
+        lastRegen,
+        regenRateMinutes
+      );
+
+      if (stamina !== currentStamina || !user.stats?.maxStamina) {
+        updates["stats.stamina"] = stamina;
+        updates["stats.lastStaminaRegen"] = newLastRegen;
+        updates["stats.maxStamina"] = maxStamina;
+      }
+    }
+
     await userRef.update(updates);
 
     // Return updated user data
     const updatedSnap = await userRef.get();
     const userData = updatedSnap.data() || {};
+
+    // Ensure total stats are calculated on login so clients always see base + equipped values
+    try {
+      const totalStats = await calculateTotalStatsForUser(userData);
+      await userRef.update({ "stats.totalStats": totalStats });
+      (userData as any).stats = { ...(userData as any).stats, totalStats };
+    } catch (calcErr) {
+      console.error("Error recalculating total stats on login", calcErr);
+    }
     
     return res.status(200).json(userData);
   } catch (e: any) {
@@ -1247,20 +1530,69 @@ app.post("/users/:uid/achievements/:achievementId/claim", requireAuth, async (re
       return res.status(404).json({ error: "User not found" });
     }
 
-    if (!achievementSnap.exists) {
-      return res.status(404).json({ error: "Achievement not found" });
-    }
-
-    const user = userSnap.data() || {};
-    const achievement = achievementSnap.data() || {};
-    
-    // Get catalog achievement for rewards
+    // Get catalog achievement for rewards (needed to get reward amounts)
     const catalogRef = db.collection("achievements").doc(achievementId);
     const catalogSnap = await catalogRef.get();
-    const catalogData = catalogSnap.exists ? catalogSnap.data() : {};
+    
+    if (!catalogSnap.exists) {
+      return res.status(404).json({ error: "Achievement catalog entry not found" });
+    }
+    
+    const catalogData = catalogSnap.data() || {};
+    const target = catalogData.condition?.value || 1;
+
+    const user = userSnap.data() || {};
+    
+    // If progress document doesn't exist, we need to check user stats to determine progress
+    let achievement = achievementSnap.exists ? achievementSnap.data() || {} : {};
+    let progress = achievement.progress || 0;
+    let isUnlocked = achievement.isUnlocked || false;
+    
+    // If document doesn't exist, try to determine progress from user stats based on achievement category/ID
+    if (!achievementSnap.exists) {
+      // Try to get progress from user stats based on achievement type
+      const achievementIdLower = achievementId.toLowerCase();
+      
+      if (achievementIdLower.includes('pomodoro') || achievementIdLower.includes('focus')) {
+        progress = user.stats?.focusSessionsCompleted || 0;
+      } else if (achievementIdLower.includes('monster')) {
+        progress = user.progression?.monstersDefeated || user.stats?.monstersDefeated || 0;
+      } else if (achievementIdLower.includes('streak')) {
+        progress = user.stats?.streak || 0;
+      } else if (achievementIdLower.includes('level')) {
+        progress = user.stats?.level || 1;
+      } else if (achievementIdLower.includes('task') || achievementIdLower.includes('easy') || 
+                 achievementIdLower.includes('medium') || achievementIdLower.includes('hard') || 
+                 achievementIdLower.includes('extreme')) {
+        // For task achievements, we'd need to count completed tasks
+        // For now, set to 0 and let the frontend handle it
+        progress = 0;
+      }
+      
+      isUnlocked = progress >= target;
+      
+      // Create the progress document
+      await achievementRef.set({
+        achievementId,
+        progress,
+        isUnlocked,
+        claimed: false,
+        updatedAt: Date.now(),
+      }, { merge: true });
+      achievement = { ...achievement, isUnlocked, progress };
+    } else {
+      // Document exists, but recalculate isUnlocked to ensure it's correct
+      isUnlocked = progress >= target;
+      if (achievement.isUnlocked !== isUnlocked) {
+        await achievementRef.update({
+          isUnlocked,
+          updatedAt: Date.now(),
+        });
+      }
+    }
 
     // Check if achievement is unlocked
-    if (!achievement.isUnlocked) {
+    if (!isUnlocked) {
       return res.status(400).json({ error: "Achievement is not unlocked yet" });
     }
 
@@ -1328,7 +1660,7 @@ app.post("/users/:uid/achievements/:achievementId/claim", requireAuth, async (re
 app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
   try {
     const { uid } = req.params;
-    const { xp, gold, worldId, stage, monsterName, battleLogs } = req.body;
+    const { xp, gold, worldId, stage, monsterName, battleLogs, monstersDefeated } = req.body;
 
     if (!uid) {
       return res.status(400).json({ error: "Missing uid" });
@@ -1421,9 +1753,11 @@ app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
     console.log(`📊 Level Check: Current=${currentLevel}, New=${levelData.level}, LeveledUp=${leveledUp}`);
 
     // Increment monstersDefeated counter (check both progression and stats for backwards compatibility)
+    // If monstersDefeated is provided in request (for multi-round battles), use it; otherwise default to 1
+    const monstersDefeatedCount = monstersDefeated || 1;
     const fullUserData = userDoc.data() || {};
     const currentMonstersDefeated = fullUserData.progression?.monstersDefeated || currentStats.monstersDefeated || 0;
-    const newMonstersDefeated = currentMonstersDefeated + 1;
+    const newMonstersDefeated = currentMonstersDefeated + monstersDefeatedCount;
 
     // Update user stats and progression
     await userRef.update({
@@ -1851,10 +2185,10 @@ app.patch("/users/:uid/inventory", requireAuth, async (req, res) => {
 app.post("/users/:uid/equip", requireAuth, async (req, res) => {
   try {
     const { uid } = req.params;
-    const { itemId, slot } = req.body; // slot: 'weapon', 'helmet', 'chestplate', 'pants', 'boots', 'pet1', 'pet2', 'accessory1', 'accessory2'
+    const { itemId, slot: slotParam } = req.body; // slot is optional; will be determined from item's slot field
 
-    if (!itemId || !slot) {
-      return res.status(400).json({ error: "itemId and slot are required" });
+    if (!itemId) {
+      return res.status(400).json({ error: "itemId is required" });
     }
 
     const userRef = db.collection("users").doc(uid);
@@ -1878,33 +2212,55 @@ app.post("/users/:uid/equip", requireAuth, async (req, res) => {
     // Preserve bonus stats if they exist
     const itemBonus = itemInInventory.bonus || null;
 
-    // Validate slot based on normalized item type
-    const rawType = (itemInInventory.type || itemInInventory.itemType || "").toLowerCase();
-    const collectionName = (itemInInventory.collection || "").toLowerCase();
-    let normalizedType: "weapon" | "armor" | "pet" | "accessory" | "unknown" = "unknown";
-    if (collectionName.includes("items_weapons") || ["weapon","sword","dagger","bow","staff"].some(t => rawType.includes(t))) {
-      normalizedType = "weapon";
-    } else if (collectionName.includes("items_armor") || ["armor","helm","helmet","chest","plate","leggings","pants","boots"].some(t => rawType.includes(t))) {
-      normalizedType = "armor";
-    } else if (collectionName.includes("items_pets") || rawType.includes("pet")) {
-      normalizedType = "pet";
-    } else if (collectionName.includes("items_accessories") || rawType.includes("accessory")) {
-      normalizedType = "accessory";
+    // Fetch item data from database to get its slot field
+    let itemData: any = null;
+    
+    for (const col of ITEM_COLLECTIONS) {
+      try {
+        const snap = await db.collection(col).doc(itemId).get();
+        if (snap.exists) {
+          itemData = snap.data();
+          break;
+        }
+      } catch {}
     }
 
-    const validSlots: Record<string, string[]> = {
-      weapon: ["weapon"],
-      armor: ["helmet", "chestplate", "pants", "boots"],
-      pet: ["pet1", "pet2"],
-      accessory: ["accessory1", "accessory2"],
-    } as any;
+    if (!itemData) {
+      return res.status(404).json({ error: "Item not found in database" });
+    }
 
-    const allowedSlots = validSlots[normalizedType] || [];
-    if (!allowedSlots.includes(slot)) {
-      return res.status(400).json({ 
-        error: `Item type '${normalizedType}' cannot be equipped in slot '${slot}'`,
-        allowedSlots
-      });
+    // Determine slot: use item's slot field (for armor/accessories), or derive from collection type
+    let slot = slotParam; // If provided, use it
+    
+    if (!slot) {
+      // Auto-determine slot from item data
+      const itemSlot = itemData.slot || "";
+      const collectionName = (itemInInventory.collection || "").toLowerCase();
+      
+      if (collectionName.includes("items_weapons")) {
+        slot = "weapon";
+      } else if (collectionName.includes("items_armor")) {
+        // Use the item's slot field (e.g., "chestplate", "helmet", "pants", "boots")
+        if (["helmet", "chestplate", "pants", "boots"].includes(itemSlot)) {
+          slot = itemSlot;
+        } else {
+          return res.status(400).json({ error: "Unknown armor slot: " + itemSlot });
+        }
+      } else if (collectionName.includes("items_pets")) {
+        // Find first available pet slot
+        slot = equipped.pets?.pet1 ? "pet2" : "pet1";
+      } else if (collectionName.includes("items_accessories")) {
+        // Find first available accessory slot
+        slot = equipped.accessoiries?.accessory1 ? "accessory2" : "accessory1";
+      } else {
+        return res.status(400).json({ error: "Cannot determine slot for item" });
+      }
+    }
+
+    // Validate slot is legal
+    const validSlots = ["weapon", "helmet", "chestplate", "pants", "boots", "pet1", "pet2", "accessory1", "accessory2"];
+    if (!validSlots.includes(slot)) {
+      return res.status(400).json({ error: `Invalid slot: ${slot}` });
     }
 
     // Initialize bonuses structure
@@ -1958,6 +2314,23 @@ app.post("/users/:uid/equip", requireAuth, async (req, res) => {
     const aggregateKeys = ["attack","magicAttack","hp","defense","magicResist","speed","critChance","critDamage","goldBonus","xpBonus"];
     const totals: Record<string, number> = Object.fromEntries(aggregateKeys.map(k => [k, 0]));
 
+    const resolveVal = (key: string, statsObj: any, buffsObj: any) => {
+      const s = statsObj || {};
+      const b = buffsObj || {};
+      if (key === "critChance") return Number(s.crit ?? b.crit ?? s.critChance ?? b.critChance ?? 0);
+      if (key === "magicAttack") return Number(s.magic ?? b.magic ?? s.magicAttack ?? b.magicAttack ?? 0);
+      if (key === "magicResist") return Number(s.magicRes ?? b.magicRes ?? s.magicResist ?? b.magicResist ?? 0);
+      if (key === "goldBonus") return Number(s.gold ?? b.gold ?? s.goldBonus ?? b.goldBonus ?? 0);
+      if (key === "xpBonus") return Number(s.xp ?? b.xp ?? s.xpBonus ?? b.xpBonus ?? 0);
+      return Number(s[key] ?? b[key] ?? 0);
+    };
+
+    const resolveFromInventory = (eqId: string) => {
+      // try matching against itemId, id, instanceId in the current items array
+      const match = items.find((i: any) => i.itemId === eqId || i.id === eqId || i.instanceId === eqId);
+      return match || null;
+    };
+
     const equippedIds: string[] = [
       ...(equipped.weapon ? [equipped.weapon] : []),
       ...Object.values(equipped.armor || {}),
@@ -1965,11 +2338,9 @@ app.post("/users/:uid/equip", requireAuth, async (req, res) => {
       ...Object.values(equipped.accessoiries || {}),
     ].filter(Boolean) as string[];
 
-    const collections = ["items_weapons","items_armor","items_arcane","items_pets","items_accessories"];
-
     for (const eqId of equippedIds) {
       let found: any = null;
-      for (const col of collections) {
+      for (const col of ITEM_COLLECTIONS) {
         try {
           const snap = await db.collection(col).doc(eqId).get();
           if (snap.exists) {
@@ -1982,7 +2353,7 @@ app.post("/users/:uid/equip", requireAuth, async (req, res) => {
       const statsObj: any = found.stats || {};
       const buffsObj: any = found.buffs || {};
       for (const key of aggregateKeys) {
-        const val = Number(statsObj[key] ?? buffsObj[key] ?? 0);
+        const val = resolveVal(key, statsObj, buffsObj);
         if (!isNaN(val)) totals[key] += val;
       }
     }
@@ -1991,7 +2362,7 @@ app.post("/users/:uid/equip", requireAuth, async (req, res) => {
     for (const [bonusSlot, bonusData] of Object.entries(equippedBonuses)) {
       if (bonusData && typeof bonusData === 'object') {
         for (const key of aggregateKeys) {
-          const val = Number((bonusData as any)[key] ?? 0);
+          const val = resolveVal(key, bonusData, {});
           if (!isNaN(val)) totals[key] += val;
         }
       }
@@ -2003,6 +2374,12 @@ app.post("/users/:uid/equip", requireAuth, async (req, res) => {
       "inventory.equippedBonuses": equippedBonuses,
       "inventory.equippedStats": totals,
       updatedAt: Date.now(),
+    });
+
+    // Recalculate and save total stats
+    const totalStats = await calculateTotalStatsForUser(user);
+    await userRef.update({
+      "stats.totalStats": totalStats,
     });
 
     return res.status(200).json({
@@ -2092,6 +2469,22 @@ app.post("/users/:uid/unequip", requireAuth, async (req, res) => {
     const aggregateKeys = ["attack","magicAttack","hp","defense","magicResist","speed","critChance","critDamage","goldBonus","xpBonus"];
     const totals: Record<string, number> = Object.fromEntries(aggregateKeys.map(k => [k, 0]));
 
+    const resolveVal = (key: string, statsObj: any, buffsObj: any) => {
+      const s = statsObj || {};
+      const b = buffsObj || {};
+      if (key === "critChance") return Number(s.crit ?? b.crit ?? s.critChance ?? b.critChance ?? 0);
+      if (key === "magicAttack") return Number(s.magic ?? b.magic ?? s.magicAttack ?? b.magicAttack ?? 0);
+      if (key === "magicResist") return Number(s.magicRes ?? b.magicRes ?? s.magicResist ?? b.magicResist ?? 0);
+      if (key === "goldBonus") return Number(s.gold ?? b.gold ?? s.goldBonus ?? b.goldBonus ?? 0);
+      if (key === "xpBonus") return Number(s.xp ?? b.xp ?? s.xpBonus ?? b.xpBonus ?? 0);
+      return Number(s[key] ?? b[key] ?? 0);
+    };
+
+    const resolveFromInventory = (eqId: string) => {
+      const match = items.find((i: any) => i.itemId === eqId || i.id === eqId || i.instanceId === eqId);
+      return match || null;
+    };
+
     const equippedIds: string[] = [
       ...(equipped.weapon ? [equipped.weapon] : []),
       ...Object.values(equipped.armor || {}),
@@ -2112,11 +2505,14 @@ app.post("/users/:uid/unequip", requireAuth, async (req, res) => {
           }
         } catch {}
       }
+      if (!found) {
+        found = resolveFromInventory(eqId);
+      }
       if (!found) continue;
       const statsObj: any = found.stats || {};
       const buffsObj: any = found.buffs || {};
       for (const key of aggregateKeys) {
-        const val = Number(statsObj[key] ?? buffsObj[key] ?? 0);
+        const val = resolveVal(key, statsObj, buffsObj);
         if (!isNaN(val)) totals[key] += val;
       }
     }
@@ -2125,7 +2521,7 @@ app.post("/users/:uid/unequip", requireAuth, async (req, res) => {
     for (const [bonusSlot, bonusData] of Object.entries(equippedBonuses)) {
       if (bonusData && typeof bonusData === 'object') {
         for (const key of aggregateKeys) {
-          const val = Number((bonusData as any)[key] ?? 0);
+          const val = resolveVal(key, bonusData, {});
           if (!isNaN(val)) totals[key] += val;
         }
       }
@@ -2137,6 +2533,12 @@ app.post("/users/:uid/unequip", requireAuth, async (req, res) => {
       "inventory.equippedBonuses": equippedBonuses,
       "inventory.equippedStats": totals,
       updatedAt: Date.now(),
+    });
+
+    // Recalculate and save total stats
+    const totalStats = await calculateTotalStatsForUser(user);
+    await userRef.update({
+      "stats.totalStats": totalStats,
     });
 
     return res.status(200).json({
@@ -2226,17 +2628,585 @@ app.get("/users/:uid/equipped", requireAuth, async (req, res) => {
     }
 
     const user = userSnap.data() || {};
+    const userLevel = user.stats?.level || 1;
     const equipped = user.inventory?.equiped || { armor: {}, pets: {}, accessoiries: {}, weapon: "" };
     const equippedBonuses = user.inventory?.equippedBonuses || {};
-    const equippedStats = user.inventory?.equippedStats || {};
+    const items = user.inventory?.inventory?.items || [];
+
+    // Step 1: Get playerScaling and compute base stats for user level
+    const configSnap = await db.collection("worldConfig").doc("playerScaling").get();
+    const configData = configSnap.exists ? (configSnap.data() || {}) : {};
+    
+    console.log("DEBUG - configData from Firestore:", configData);
+    
+    // Extract baseStats with proper field mapping (health -> hp)
+    const configBaseStats = configData.baseStats || {};
+    const baseStats = { 
+      attack: configBaseStats.attack || 10, 
+      defense: configBaseStats.defense || 6, 
+      health: configBaseStats.health || 100,  // This maps to hp in userBaseStats
+      magic: configBaseStats.magic || 8, 
+      magicResist: configBaseStats.magicResist || 5 
+    };
+    
+    const configPerLevel = configData.perLevel || {};
+    const perLevel = { 
+      attack: configPerLevel.attack ?? 2, 
+      defense: configPerLevel.defense ?? 1.5, 
+      health: configPerLevel.health ?? 12, 
+      magic: configPerLevel.magic ?? 2, 
+      magicResist: configPerLevel.magicResist ?? 1.5 
+    };
+    
+    console.log("DEBUG - baseStats resolved:", baseStats);
+    console.log("DEBUG - perLevel resolved:", perLevel);
+    console.log("DEBUG - userLevel:", userLevel);
+    
+    const levelFactor = Math.max(0, userLevel - 1);
+    console.log("DEBUG - levelFactor:", levelFactor);
+    
+    const userBaseStats: Record<string, number> = {
+      attack: Math.round((baseStats.attack) + (perLevel.attack) * levelFactor),
+      defense: Math.round((baseStats.defense) + (perLevel.defense) * levelFactor),
+      hp: Math.round((baseStats.health) + (perLevel.health) * levelFactor),
+      magicAttack: Math.round((baseStats.magic) + (perLevel.magic) * levelFactor),
+      magicResist: Math.round((baseStats.magicResist) + (perLevel.magicResist) * levelFactor),
+      speed: 0,
+      critChance: 0,
+      critDamage: 0,
+      goldBonus: 0,
+      xpBonus: 0,
+    };
+    
+    console.log("DEBUG - FINAL userBaseStats:", userBaseStats);
+
+    // Step 2: Aggregate equipped item stats
+    const aggregateKeys = ["attack","magicAttack","hp","defense","magicResist","speed","critChance","critDamage","goldBonus","xpBonus"];
+    const equippedTotals: Record<string, number> = Object.fromEntries(aggregateKeys.map(k => [k, 0]));
+
+    const resolveVal = (key: string, statsObj: any, buffsObj: any) => {
+      const s = statsObj || {};
+      const b = buffsObj || {};
+      if (key === "critChance") return Number(s.crit ?? b.crit ?? s.critChance ?? b.critChance ?? 0);
+      if (key === "magicAttack") return Number(s.magic ?? b.magic ?? s.magicAttack ?? b.magicAttack ?? 0);
+      if (key === "magicResist") return Number(s.magicRes ?? b.magicRes ?? s.magicResist ?? b.magicResist ?? 0);
+      if (key === "goldBonus") return Number(s.gold ?? b.gold ?? s.goldBonus ?? b.goldBonus ?? 0);
+      if (key === "xpBonus") return Number(s.xp ?? b.xp ?? s.xpBonus ?? b.xpBonus ?? 0);
+      return Number(s[key] ?? b[key] ?? 0);
+    };
+
+    const resolveFromInventory = (eqId: string) => {
+      const match = items.find((i: any) => i.itemId === eqId || i.id === eqId || i.instanceId === eqId);
+      return match || null;
+    };
+
+    const equippedIds: string[] = [
+      ...(equipped.weapon ? [equipped.weapon] : []),
+      ...Object.values(equipped.armor || {}),
+      ...Object.values(equipped.pets || {}),
+      ...Object.values(equipped.accessoiries || {}),
+    ].filter(Boolean) as string[];
+
+    console.log("DEBUG - equipped object:", JSON.stringify(equipped, null, 2));
+    console.log("DEBUG - equippedIds extracted:", equippedIds);
+    console.log("DEBUG - equippedIds count:", equippedIds.length);
+
+    const collections = ["items_weapons","items_armor","items_arcane","items_pets","items_accessories"];
+
+    let itemsFoundCount = 0;
+    for (const eqId of equippedIds) {
+      let found: any = null;
+      console.log("DEBUG - looking for item:", eqId);
+      for (const col of collections) {
+        try {
+          const snap = await db.collection(col).doc(eqId).get();
+          if (snap.exists) {
+            found = snap.data();
+            console.log("DEBUG - FOUND item in collection", col, "- data:", found);
+            itemsFoundCount++;
+            break;
+          }
+        } catch (e) {
+          console.log("DEBUG - error searching", col, ":", e);
+        }
+      }
+      if (!found) {
+        found = resolveFromInventory(eqId);
+        if (found) {
+          console.log("DEBUG - FOUND item in inventory array - data:", found);
+          itemsFoundCount++;
+        }
+      }
+      if (!found) {
+        console.log("DEBUG - ITEM NOT FOUND:", eqId);
+        continue;
+      }
+      const statsObj: any = found.stats || {};
+      const buffsObj: any = found.buffs || {};
+      console.log("DEBUG - item:", eqId, "- stats:", statsObj, "- buffs:", buffsObj);
+      for (const key of aggregateKeys) {
+        const val = resolveVal(key, statsObj, buffsObj);
+        if (!isNaN(val)) {
+          equippedTotals[key] += val;
+          console.log("DEBUG - aggregated", key, "+=", val, "-> total now", equippedTotals[key]);
+        }
+      }
+    }
+
+    console.log("DEBUG - items found and aggregated:", itemsFoundCount, "out of", equippedIds.length);
+    console.log("DEBUG - equippedTotals after items:", equippedTotals);
+    console.log("DEBUG - equippedBonuses object:", equippedBonuses);
+
+    // Add bonus stats from equippedBonuses
+    for (const [bonusSlot, bonusData] of Object.entries(equippedBonuses)) {
+      if (bonusData && typeof bonusData === 'object') {
+        console.log("DEBUG - adding bonus from slot", bonusSlot, bonusData);
+        for (const key of aggregateKeys) {
+          const val = resolveVal(key, bonusData, {});
+          if (!isNaN(val)) equippedTotals[key] += val;
+        }
+      }
+    }
+
+    console.log("DEBUG - equippedTotals final:", equippedTotals);
+
+    // Step 3: Combine base stats + equipped stats = total stats
+    const totalStats: Record<string, number> = {};
+    for (const key of aggregateKeys) {
+      totalStats[key] = (userBaseStats[key] || 0) + (equippedTotals[key] || 0);
+    }
+
+    console.log("DEBUG - totalStats final:", totalStats);
 
     return res.status(200).json({ 
       equipped, 
-      equippedBonuses, 
-      equippedStats 
+      equippedBonuses,
+      userBaseStats,
+      equippedStats: equippedTotals,
+      totalStats
     });
   } catch (e: any) {
     console.error("Error in GET /users/:uid/equipped:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * POST /users/{uid}/recalc-stats
+ * Recalculate and save total stats to database
+ * Called after equipping/unequipping items
+ */
+app.post("/users/:uid/recalc-stats", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userSnap.data() || {};
+    const userLevel = user.stats?.level || 1;
+    const equipped = user.inventory?.equiped || { armor: {}, pets: {}, accessoiries: {}, weapon: "" };
+    const equippedBonuses = user.inventory?.equippedBonuses || {};
+    const items = user.inventory?.inventory?.items || [];
+
+    // Step 1: Compute base stats from playerScaling
+    const configSnap = await db.collection("worldConfig").doc("playerScaling").get();
+    const configData = configSnap.exists ? (configSnap.data() || {}) : {};
+    
+    const configBaseStats = configData.baseStats || {};
+    const baseStats = { 
+      attack: configBaseStats.attack || 10, 
+      defense: configBaseStats.defense || 6, 
+      health: configBaseStats.health || 100,
+      magic: configBaseStats.magic || 8, 
+      magicResist: configBaseStats.magicResist || 5 
+    };
+    
+    const configPerLevel = configData.perLevel || {};
+    const perLevel = { 
+      attack: configPerLevel.attack ?? 2, 
+      defense: configPerLevel.defense ?? 1.5, 
+      health: configPerLevel.health ?? 12, 
+      magic: configPerLevel.magic ?? 2, 
+      magicResist: configPerLevel.magicResist ?? 1.5 
+    };
+    
+    const levelFactor = Math.max(0, userLevel - 1);
+    const userBaseStats: Record<string, number> = {
+      attack: Math.round((baseStats.attack) + (perLevel.attack) * levelFactor),
+      defense: Math.round((baseStats.defense) + (perLevel.defense) * levelFactor),
+      hp: Math.round((baseStats.health) + (perLevel.health) * levelFactor),
+      magicAttack: Math.round((baseStats.magic) + (perLevel.magic) * levelFactor),
+      magicResist: Math.round((baseStats.magicResist) + (perLevel.magicResist) * levelFactor),
+      speed: 0,
+      critChance: 0,
+      critDamage: 0,
+      goldBonus: 0,
+      xpBonus: 0,
+    };
+
+    // Step 2: Aggregate equipped item stats
+    const aggregateKeys = ["attack","magicAttack","hp","defense","magicResist","speed","critChance","critDamage","goldBonus","xpBonus"];
+    const equippedTotals: Record<string, number> = Object.fromEntries(aggregateKeys.map(k => [k, 0]));
+
+    const resolveVal = (key: string, statsObj: any, buffsObj: any) => {
+      const s = statsObj || {};
+      const b = buffsObj || {};
+      if (key === "critChance") return Number(s.crit ?? b.crit ?? s.critChance ?? b.critChance ?? 0);
+      if (key === "magicAttack") return Number(s.magic ?? b.magic ?? s.magicAttack ?? b.magicAttack ?? 0);
+      if (key === "magicResist") return Number(s.magicRes ?? b.magicRes ?? s.magicResist ?? b.magicResist ?? 0);
+      if (key === "goldBonus") return Number(s.gold ?? b.gold ?? s.goldBonus ?? b.goldBonus ?? 0);
+      if (key === "xpBonus") return Number(s.xp ?? b.xp ?? s.xpBonus ?? b.xpBonus ?? 0);
+      return Number(s[key] ?? b[key] ?? 0);
+    };
+
+    const resolveFromInventory = (eqId: string) => {
+      const match = items.find((i: any) => i.itemId === eqId || i.id === eqId || i.instanceId === eqId);
+      return match || null;
+    };
+
+    const equippedIds: string[] = [
+      ...(equipped.weapon ? [equipped.weapon] : []),
+      ...Object.values(equipped.armor || {}),
+      ...Object.values(equipped.pets || {}),
+      ...Object.values(equipped.accessoiries || {}),
+    ].filter(Boolean) as string[];
+
+    const collections = ["items_weapons","items_armor","items_arcane","items_pets","items_accessories"];
+
+    for (const eqId of equippedIds) {
+      let found: any = null;
+      for (const col of collections) {
+        try {
+          const snap = await db.collection(col).doc(eqId).get();
+          if (snap.exists) {
+            found = snap.data();
+            break;
+          }
+        } catch {}
+      }
+      if (!found) {
+        found = resolveFromInventory(eqId);
+      }
+      if (!found) continue;
+      const statsObj: any = found.stats || {};
+      const buffsObj: any = found.buffs || {};
+      for (const key of aggregateKeys) {
+        const val = resolveVal(key, statsObj, buffsObj);
+        if (!isNaN(val)) equippedTotals[key] += val;
+      }
+    }
+
+    // Add bonus stats from equippedBonuses
+    for (const [bonusSlot, bonusData] of Object.entries(equippedBonuses)) {
+      if (bonusData && typeof bonusData === 'object') {
+        for (const key of aggregateKeys) {
+          const val = resolveVal(key, bonusData, {});
+          if (!isNaN(val)) equippedTotals[key] += val;
+        }
+      }
+    }
+
+    // Step 3: Combine to get total stats
+    const totalStats: Record<string, number> = {};
+    for (const key of aggregateKeys) {
+      totalStats[key] = (userBaseStats[key] || 0) + (equippedTotals[key] || 0);
+    }
+
+    // Step 4: Save to database under stats.totalStats
+    await userRef.update({
+      "stats.totalStats": totalStats
+    });
+
+    console.log(`Recalculated stats for user ${uid}:`, totalStats);
+
+    return res.status(200).json({ 
+      success: true,
+      totalStats,
+      userBaseStats,
+      equippedTotals
+    });
+  } catch (e: any) {
+    console.error("Error in POST /users/:uid/recalc-stats:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /users/{uid}/stats
+ * Get user's total stats (from database)
+ */
+app.get("/users/:uid/stats", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userSnap.data() || {};
+    const totalStats = user.stats?.totalStats || {};
+
+    // If totalStats not in database, recalculate and save
+    if (!totalStats || Object.keys(totalStats).length === 0) {
+      const userLevel = user.stats?.level || 1;
+      const equipped = user.inventory?.equiped || { armor: {}, pets: {}, accessoiries: {}, weapon: "" };
+      const equippedBonuses = user.inventory?.equippedBonuses || {};
+      const items = user.inventory?.inventory?.items || [];
+
+      const configSnap = await db.collection("worldConfig").doc("playerScaling").get();
+      const configData = configSnap.exists ? (configSnap.data() || {}) : {};
+      
+      const configBaseStats = configData.baseStats || {};
+      const baseStats = { 
+        attack: configBaseStats.attack || 10, 
+        defense: configBaseStats.defense || 6, 
+        health: configBaseStats.health || 100,
+        magic: configBaseStats.magic || 8, 
+        magicResist: configBaseStats.magicResist || 5 
+      };
+      
+      const configPerLevel = configData.perLevel || {};
+      const perLevel = { 
+        attack: configPerLevel.attack ?? 2, 
+        defense: configPerLevel.defense ?? 1.5, 
+        health: configPerLevel.health ?? 12, 
+        magic: configPerLevel.magic ?? 2, 
+        magicResist: configPerLevel.magicResist ?? 1.5 
+      };
+      
+      const levelFactor = Math.max(0, userLevel - 1);
+      const userBaseStats: Record<string, number> = {
+        attack: Math.round((baseStats.attack) + (perLevel.attack) * levelFactor),
+        defense: Math.round((baseStats.defense) + (perLevel.defense) * levelFactor),
+        hp: Math.round((baseStats.health) + (perLevel.health) * levelFactor),
+        magicAttack: Math.round((baseStats.magic) + (perLevel.magic) * levelFactor),
+        magicResist: Math.round((baseStats.magicResist) + (perLevel.magicResist) * levelFactor),
+        speed: 0,
+        critChance: 0,
+        critDamage: 0,
+        goldBonus: 0,
+        xpBonus: 0,
+      };
+
+      const aggregateKeys = ["attack","magicAttack","hp","defense","magicResist","speed","critChance","critDamage","goldBonus","xpBonus"];
+      const equippedTotals: Record<string, number> = Object.fromEntries(aggregateKeys.map(k => [k, 0]));
+
+      const resolveVal = (key: string, statsObj: any, buffsObj: any) => {
+        const s = statsObj || {};
+        const b = buffsObj || {};
+        if (key === "critChance") return Number(s.crit ?? b.crit ?? s.critChance ?? b.critChance ?? 0);
+        if (key === "magicAttack") return Number(s.magic ?? b.magic ?? s.magicAttack ?? b.magicAttack ?? 0);
+        if (key === "magicResist") return Number(s.magicRes ?? b.magicRes ?? s.magicResist ?? b.magicResist ?? 0);
+        if (key === "goldBonus") return Number(s.gold ?? b.gold ?? s.goldBonus ?? b.goldBonus ?? 0);
+        if (key === "xpBonus") return Number(s.xp ?? b.xp ?? s.xpBonus ?? b.xpBonus ?? 0);
+        return Number(s[key] ?? b[key] ?? 0);
+      };
+
+      const resolveFromInventory = (eqId: string) => {
+        const match = items.find((i: any) => i.itemId === eqId || i.id === eqId || i.instanceId === eqId);
+        return match || null;
+      };
+
+      const equippedIds: string[] = [
+        ...(equipped.weapon ? [equipped.weapon] : []),
+        ...Object.values(equipped.armor || {}),
+        ...Object.values(equipped.pets || {}),
+        ...Object.values(equipped.accessoiries || {}),
+      ].filter(Boolean) as string[];
+
+      const collections = ["items_weapons","items_armor","items_arcane","items_pets","items_accessories"];
+
+      for (const eqId of equippedIds) {
+        let found: any = null;
+        for (const col of collections) {
+          try {
+            const snap = await db.collection(col).doc(eqId).get();
+            if (snap.exists) {
+              found = snap.data();
+              break;
+            }
+          } catch {}
+        }
+        if (!found) {
+          found = resolveFromInventory(eqId);
+        }
+        if (!found) continue;
+        const statsObj: any = found.stats || {};
+        const buffsObj: any = found.buffs || {};
+        for (const key of aggregateKeys) {
+          const val = resolveVal(key, statsObj, buffsObj);
+          if (!isNaN(val)) equippedTotals[key] += val;
+        }
+      }
+
+      for (const [bonusSlot, bonusData] of Object.entries(equippedBonuses)) {
+        if (bonusData && typeof bonusData === 'object') {
+          for (const key of aggregateKeys) {
+            const val = resolveVal(key, bonusData, {});
+            if (!isNaN(val)) equippedTotals[key] += val;
+          }
+        }
+      }
+
+      const newTotalStats: Record<string, number> = {};
+      for (const key of aggregateKeys) {
+        newTotalStats[key] = (userBaseStats[key] || 0) + (equippedTotals[key] || 0);
+      }
+
+      await userRef.update({
+        "stats.totalStats": newTotalStats
+      });
+
+      return res.status(200).json({ 
+        totalStats: newTotalStats,
+        calculated: true
+      });
+    }
+
+    return res.status(200).json({ 
+      totalStats,
+      calculated: false
+    });
+  } catch (e: any) {
+    console.error("Error in GET /users/:uid/stats:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * GET /users/{uid}/stamina
+ * Get current stamina with regeneration calculated
+ */
+app.get("/users/:uid/stamina", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Get stamina system config
+    const { maxStamina, regenRateMinutes } = await getStaminaConfig();
+
+    const user = userSnap.data() || {};
+    const currentStamina = user.stats?.stamina ?? maxStamina;
+    const lastRegen = user.stats?.lastStaminaRegen;
+
+    // Calculate current stamina with regeneration
+    const { stamina, lastRegen: newLastRegen } = await calculateCurrentStamina(
+      currentStamina,
+      maxStamina,
+      lastRegen,
+      regenRateMinutes
+    );
+
+    // Update lastRegen if stamina changed
+    if (stamina !== currentStamina) {
+      await userRef.update({
+        "stats.stamina": stamina,
+        "stats.lastStaminaRegen": newLastRegen,
+        "stats.maxStamina": maxStamina
+      });
+    } else if (!user.stats?.maxStamina) {
+      // Ensure maxStamina is set
+      await userRef.update({
+        "stats.maxStamina": maxStamina
+      });
+    }
+
+    // Calculate time until next regeneration
+    const now = Date.now();
+    const minutesUntilNext = regenRateMinutes - ((now - newLastRegen) / 60000) % regenRateMinutes;
+    const nextRegenIn = Math.ceil(minutesUntilNext * 60000);
+
+    // Calculate time until full stamina
+    const pointsNeeded = maxStamina - stamina;
+    const timeUntilFull = pointsNeeded * regenRateMinutes * 60000;
+
+    return res.status(200).json({
+      currentStamina: stamina,
+      maxStamina,
+      regenerationRate: regenRateMinutes,
+      nextRegenIn,
+      timeUntilFull: stamina >= maxStamina ? 0 : timeUntilFull,
+      canBattle: stamina > 0
+    });
+  } catch (e: any) {
+    console.error("Error in GET /users/:uid/stamina:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * POST /users/{uid}/stamina/consume
+ * Consume stamina (called internally by combat/start)
+ */
+app.post("/users/:uid/stamina/consume", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { amount } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: "Amount must be a positive number" });
+    }
+
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Get stamina system config
+    const { maxStamina, regenRateMinutes } = await getStaminaConfig();
+
+    const user = userSnap.data() || {};
+    const currentStamina = user.stats?.stamina ?? maxStamina;
+    const lastRegen = user.stats?.lastStaminaRegen;
+
+    // Calculate current stamina with regeneration
+    const { stamina: staminaBefore, lastRegen: newLastRegen } = await calculateCurrentStamina(
+      currentStamina,
+      maxStamina,
+      lastRegen,
+      regenRateMinutes
+    );
+
+    // Check if user has enough stamina
+    if (staminaBefore < amount) {
+      return res.status(403).json({
+        error: "Insufficient stamina",
+        currentStamina: staminaBefore,
+        required: amount,
+        deficit: amount - staminaBefore
+      });
+    }
+
+    // Consume stamina
+    const staminaAfter = staminaBefore - amount;
+
+    await userRef.update({
+      "stats.stamina": staminaAfter,
+      "stats.lastStaminaRegen": newLastRegen,
+      "stats.maxStamina": maxStamina
+    });
+
+    return res.status(200).json({
+      success: true,
+      staminaBefore,
+      staminaAfter,
+      currentStamina: staminaAfter
+    });
+  } catch (e: any) {
+    console.error("Error in POST /users/:uid/stamina/consume:", e);
     return res.status(500).json({ error: e?.message });
   }
 });
@@ -3781,6 +4751,46 @@ app.post("/combat/start", requireAuth, async (req, res) => {
     const uid = (req as any).user.uid;
     const { worldId, stage, seed, monsterId } = req.body;
 
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Get stamina config including tier-based battle costs
+    const { maxStamina, regenRateMinutes, battleCosts } = await getStaminaConfig();
+    
+    // Determine monster tier to get the correct stamina cost
+    const monsterTier = await getMonsterTier(worldId, stage, monsterId);
+    const STAMINA_COST = battleCosts[monsterTier];
+    
+    const user = userSnap.data() || {};
+    const currentStamina = user.stats?.stamina ?? maxStamina;
+    const lastRegen = user.stats?.lastStaminaRegen;
+
+    // Calculate current stamina with regeneration
+    const { stamina, lastRegen: newLastRegen } = await calculateCurrentStamina(
+      currentStamina,
+      maxStamina,
+      lastRegen,
+      regenRateMinutes
+    );
+
+    // Check if user has enough stamina
+    if (stamina < STAMINA_COST) {
+      return res.status(403).json({
+        error: "Insufficient stamina",
+        message: `You need at least ${STAMINA_COST} stamina to fight this ${monsterTier} monster. Treat this like a test — review before retrying.`,
+        currentStamina: stamina,
+        required: STAMINA_COST,
+        deficit: STAMINA_COST - stamina,
+        monsterTier: monsterTier
+      });
+    }
+
+    // Create combat session FIRST (before consuming stamina)
+    // This ensures we only consume stamina if the combat session is successfully created
     const combatRef = db.collection("combats").doc();
     const combat = {
       combatId: combatRef.id,
@@ -3794,8 +4804,23 @@ app.post("/combat/start", requireAuth, async (req, res) => {
       completedAt: null,
     };
 
+    try {
     await combatRef.set(combat);
+      
+      // Only consume stamina AFTER successfully creating combat session
+      const staminaAfter = stamina - STAMINA_COST;
+      await userRef.update({
+        "stats.stamina": staminaAfter,
+        "stats.lastStaminaRegen": newLastRegen,
+        "stats.maxStamina": maxStamina
+      });
+      
     return res.status(201).json(combat);
+    } catch (combatError: any) {
+      // If combat creation fails, don't consume stamina
+      console.error("Failed to create combat session:", combatError);
+      throw combatError;
+    }
   } catch (e: any) {
     console.error("Error in POST /combat/start:", e);
     return res.status(500).json({ error: e?.message });
@@ -3855,70 +4880,132 @@ app.get("/combat/:combatId", requireAuth, async (req, res) => {
 
 /**
  * GET /combat/monster-stats/:worldId/:stage/:userLevel
- * Calculate monster stats based on worldConfig, stage, user level, and equipped items
+ * Calculate monster stats based on monster's baseStats, tier, stage, user level, and equipped items
+ * Applies: monster tier multiplier × stage multiplier × user level × items × stage difficulty
  */
 app.get("/combat/monster-stats/:worldId/:stage/:userLevel", async (req, res) => {
   try {
     const { worldId, stage, userLevel } = req.params;
-    const { equippedItemsCount } = req.query;
+    const { monsterId, equippedItemsCount } = req.query;
     const stageNum = parseInt(stage);
     const userLvl = parseInt(userLevel);
     const itemsCount = equippedItemsCount ? parseInt(equippedItemsCount as string) : 0;
 
-    // Get worldConfig
+    // Get worldConfig for stage multipliers and tier multipliers
     const configSnap = await db.collection("worldConfig").doc("monsterScaling").get();
     if (!configSnap.exists) {
       return res.status(404).json({ error: "Monster scaling config not found" });
     }
 
     const config = configSnap.data() || {};
-    const baseStats = config.basePerWorld?.[worldId];
     const multipliers = config.perStageMultiplier || [];
-
-    if (!baseStats) {
-      return res.status(404).json({ error: `No base stats found for ${worldId}` });
-    }
 
     // Get stage multiplier (array is 0-indexed, stage 1 = index 1)
     const stageMultiplier = multipliers[stageNum] || 1;
     
-    // User level scaling: more aggressive now
-    // At user level 1: 1.0x, at level 10: 1.09x, at level 50: 1.49x
-    const userLevelMultiplier = 1 + (userLvl - 1) * 0.01;
+    // User level scaling: exponential growth (harder)
+    // Level 1: 1.0x, Level 10: 1.79x, Level 20: 3.21x, Level 50: 18.68x
+    const userLevelMultiplier = Math.pow(1.06, Math.max(0, userLvl - 1));
 
-    // Item scaling: each equipped item makes monster 8% stronger
-    // 0 items: 1.0x, 1 item: 1.08x, 2 items: 1.16x, 3 items: 1.24x, etc.
-    const itemScalingMultiplier = 1 + (itemsCount * 0.08);
-
-    // Calculate final stats
-    const baseAttack = baseStats.attack;
-    const baseHp = baseStats.hp;
+    // Item scaling: each equipped item makes monster 22% stronger (harder)
+    // 0 items: 1.0x, 1 item: 1.22x, 3 items: 1.82x, 5 items: 2.93x
+    const itemScalingMultiplier = Math.pow(1.22, Math.max(0, itemsCount));
     
-    const finalAttack = Math.round(baseAttack * stageMultiplier * userLevelMultiplier * itemScalingMultiplier);
-    const finalHp = Math.round(baseHp * stageMultiplier * userLevelMultiplier * itemScalingMultiplier);
+    // Stage difficulty bonus: later stages get extra multiplier (harder)
+    // Stage 1-5: 1.2x, Stage 6-10: 1.5x, Stage 11+: 2.0x
+    const stageDifficultyBonus = stageNum <= 5 ? 1.2 : stageNum <= 10 ? 1.5 : 2.0;
+
+    // Get monster template from database to use its baseStats and tier
+    let monsterData: any = null;
+    let monsterTier: string = "normal";
+    
+    // Try to find monster in world-specific collection or general monsters collection
+    const worldMonstersSnap = await db.collection(`worlds/${worldId}/monsters`).doc(monsterId as string).get();
+    if (worldMonstersSnap.exists) {
+      monsterData = worldMonstersSnap.data();
+    } else {
+      // Fallback: try general monsters collection
+      const generalMonsterSnap = await db.collection("monsters").doc(monsterId as string).get();
+      if (generalMonsterSnap.exists) {
+        monsterData = generalMonsterSnap.data();
+      }
+    }
+
+    // Extract tier and baseStats
+    if (monsterData) {
+      monsterTier = monsterData.tier || "normal";
+    }
+
+    const monsterBaseStats = monsterData?.baseStats || {
+      attack: 10,
+      defense: 6,
+      hp: 100,
+      magic: 8,
+      magicResist: 5,
+      speed: 5,
+    };
+
+    // Get tier multipliers from stageTypes config
+    const stageTypesSnap = await db.collection("worldConfig").doc("stageTypes").get();
+    const tierData = stageTypesSnap.exists ? stageTypesSnap.data()?.[monsterTier] : null;
+    
+    const tierDamageMultiplier = tierData?.enemy?.damageMultiplier || 1.0;
+    const tierHpMultiplier = tierData?.enemy?.hpMultiplier || 1.0;
+    const tierGoldMultiplier = tierData?.rewards?.goldMultiplier || 1.0;
+    const tierXpMultiplier = tierData?.rewards?.xpMultiplier || 1.0;
+
+    // Combined multiplier applied to all stats (excludes tier-specific multipliers for now, applied separately)
+    const baseMultiplier = stageMultiplier * userLevelMultiplier * itemScalingMultiplier * stageDifficultyBonus;
+
+    // Apply tier multipliers to damage stats and HP separately
+    const damageMultiplier = baseMultiplier * tierDamageMultiplier;
+    const hpMultiplier = baseMultiplier * tierHpMultiplier;
+
+    // Scale all monster stats
+    const scaledStats = {
+      attack: Math.round((monsterBaseStats.attack || 10) * damageMultiplier),
+      defense: Math.round((monsterBaseStats.defense || 6) * damageMultiplier),
+      hp: Math.round((monsterBaseStats.hp || 100) * hpMultiplier),
+      magic: Math.round((monsterBaseStats.magic || 8) * damageMultiplier),
+      magicResist: Math.round((monsterBaseStats.magicResist || 5) * damageMultiplier),
+      speed: Math.round((monsterBaseStats.speed || 5) * baseMultiplier), // Speed uses base multiplier
+    };
 
     const monsterStats = {
+      monsterId: monsterId || "unknown",
       worldId,
       stage: stageNum,
       userLevel: userLvl,
       equippedItemsCount: itemsCount,
-      baseAttack: baseAttack,
-      baseHp: baseHp,
+      monsterTier: monsterTier,
+      // Base stats from monster document
+      baseStats: monsterBaseStats,
+      // Scaling multipliers
       stageMultiplier: stageMultiplier,
       userLevelMultiplier: userLevelMultiplier,
       itemScalingMultiplier: itemScalingMultiplier,
-      attack: finalAttack,
-      hp: finalHp,
+      stageDifficultyBonus: stageDifficultyBonus,
+      baseMultiplier: baseMultiplier,
+      tierDamageMultiplier: tierDamageMultiplier,
+      tierHpMultiplier: tierHpMultiplier,
+      tierGoldMultiplier: tierGoldMultiplier,
+      tierXpMultiplier: tierXpMultiplier,
+      // Scaled stats
+      ...scaledStats,
     };
 
-    console.log(`⚔️ Monster Stats [${worldId}:${stageNum}] Level=${userLvl}, Items=${itemsCount}:`, {
-      base: { attack: baseAttack, hp: baseHp },
+    console.log(`⚔️ Monster Stats [${worldId}:${stageNum} - ${monsterId}] Tier=${monsterTier} Level=${userLvl}, Items=${itemsCount}:`, {
+      baseStats: monsterBaseStats,
       multipliers: {
-        stage: stageMultiplier.toFixed(2),
-        userLevel: userLevelMultiplier.toFixed(2),
-        items: itemScalingMultiplier.toFixed(2),
+        stage: stageMultiplier.toFixed(3),
+        userLevel: userLevelMultiplier.toFixed(3),
+        items: itemScalingMultiplier.toFixed(3),
+        difficulty: stageDifficultyBonus.toFixed(3),
+        base: baseMultiplier.toFixed(3),
+        tierDamage: tierDamageMultiplier.toFixed(3),
+        tierHp: tierHpMultiplier.toFixed(3),
       },
-      final: { attack: finalAttack, hp: finalHp },
+      scaledStats: scaledStats,
     });
 
     return res.status(200).json(monsterStats);
@@ -5335,7 +6422,36 @@ app.delete("/items/:itemId", requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * GET /combat/player-stats/:level
+ * Calculate player stats based on level from worldConfig + equipped items
+ */
+app.get("/combat/player-stats-total/:uid", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
 
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userSnap.data() || {};
+    const totalStats = user.stats?.totalStats || {};
+
+    // If missing, calculate AND persist before returning
+    if (!totalStats || Object.keys(totalStats).length === 0) {
+      const calculated = await calculateTotalStatsForUser(user);
+      await userRef.update({ "stats.totalStats": calculated });
+      return res.status(200).json(calculated);
+    }
+
+    return res.status(200).json(totalStats);
+  } catch (e: any) {
+    console.error("Error in GET /combat/player-stats-total:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
 app.delete("/items/:collection/:id", requireAuth, async (req, res) => {
   try {
     const { collection, id } = req.params;
@@ -5343,6 +6459,83 @@ app.delete("/items/:collection/:id", requireAuth, async (req, res) => {
     return res.status(200).json({ message: "Deleted successfully" });
   } catch (e: any) {
     return res.status(500).json({ error: e.message });
+  }
+});
+
+// ============ POMODORO ============
+
+/**
+ * POST /pomodoro/session-completed
+ * Record a completed pomodoro session in the database
+ * Auto-resets daily stats if needed
+ */
+app.post("/pomodoro/session-completed", requireAuth, async (req, res) => {
+  try {
+    const uid = (req as any).user.uid;
+    const { sessionsCount = 1, focusSeconds = 0 } = req.body;
+
+    if (sessionsCount < 1 || focusSeconds < 0) {
+      return res.status(400).json({ error: "Invalid session data" });
+    }
+
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const user = userSnap.data() || {};
+    const stats = user.stats || {};
+
+    // Get today's date in "YYYY-MM-DD" format
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const todayDateString = `${year}-${month}-${day}`;
+
+    // Check if we need to reset daily stats (new day)
+    const lastPomodoroDayKey = stats.lastPomodoroDayKey || "";
+    const needsReset = lastPomodoroDayKey !== todayDateString;
+
+    // Calculate new totals
+    let todaysSessions = 0;
+    let todaysFocusSeconds = 0;
+
+    if (needsReset) {
+      // New day: start fresh
+      todaysSessions = sessionsCount;
+      todaysFocusSeconds = focusSeconds;
+    } else {
+      // Same day: add to existing
+      todaysSessions = (stats.todaysSessions || 0) + sessionsCount;
+      todaysFocusSeconds = (stats.todaysFocusSeconds || 0) + focusSeconds;
+    }
+
+    // Update user stats with today's data
+    await userRef.update({
+      "stats.todaysSessions": todaysSessions,
+      "stats.todaysFocusSeconds": todaysFocusSeconds,
+      "stats.lastPomodoroDayKey": todayDateString,
+      updatedAt: Date.now(),
+    });
+
+    console.log(`✅ [Pomodoro] User ${uid} completed session. Today: ${todaysSessions} sessions, ${todaysFocusSeconds}s focus`);
+
+    return res.status(200).json({
+      success: true,
+      userId: uid,
+      today: {
+        sessions: todaysSessions,
+        focusSeconds: todaysFocusSeconds,
+        date: todayDateString,
+      },
+      wasReset: needsReset,
+    });
+  } catch (e: any) {
+    console.error("Error in POST /pomodoro/session-completed:", e);
+    return res.status(500).json({ error: e?.message });
   }
 });
 

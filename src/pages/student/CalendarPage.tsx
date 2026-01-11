@@ -4,7 +4,7 @@ import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { db, auth, storage } from "@/firebase";
-import { collection, addDoc, deleteDoc, doc, updateDoc, getDocs } from "firebase/firestore";
+import { collection, addDoc, deleteDoc, doc, updateDoc, getDocs, getDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import type { Task } from "@/models/task.model";
 import { SubmissionsAPI, type Submission } from "@/api/submissions.api";
@@ -87,6 +87,15 @@ export default function CalendarPage() {
         
         for (const courseDoc of coursesSnapshot.docs) {
           const courseId = courseDoc.id;
+
+          // Students should only see tasks for courses they are enrolled in
+          if ((user as any)?.role === "student") {
+            const enrollmentSnap = await getDoc(doc(db, `courses/${courseId}/students/${user.uid}`));
+            if (!enrollmentSnap.exists()) {
+              continue; // skip courses where the student is not enrolled
+            }
+          }
+
           const modulesRef = collection(db, `courses/${courseId}/modules`);
           const modulesSnapshot = await getDocs(modulesRef);
           
