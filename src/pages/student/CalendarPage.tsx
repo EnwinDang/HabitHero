@@ -332,6 +332,7 @@ export default function CalendarPage() {
   };
 
   // Complete task - toggle isActive status
+  // Note: Personal tasks are NOT counted for achievements - they're only for user organization
   const handleCompleteTask = async (taskId: string, currentStatus: boolean) => {
     const firebaseUser = auth.currentUser;
     if (!firebaseUser) {

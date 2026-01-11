@@ -189,9 +189,12 @@ export default function AchievementsPage() {
   ]);
 
   // Sync task achievements when tasks change
+  // Note: Only count tasks WITH difficulty (exclude personal tasks without difficulty)
   useEffect(() => {
     if (tasks.length > 0) {
-      const completedTasks = tasks.filter((t) => !t.isActive).length;
+      const completedTasks = tasks.filter((t) => 
+        !t.isActive && t.difficulty && t.difficulty !== null && t.difficulty !== undefined
+      ).length;
       if (completedTasks > 0 && completedTasks !== prevCompletedTasksRef.current) {
         prevCompletedTasksRef.current = completedTasks;
         onTaskCompleted(completedTasks);

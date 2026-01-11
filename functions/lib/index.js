@@ -553,6 +553,9 @@ app.get("/auth/me", requireAuth, async (req, res) => {
                     stamina: maxStamina, // Start with full stamina
                     maxStamina: maxStamina,
                     lastStaminaRegen: now, // Initialize regeneration timestamp
+                    battlesWon: 0, // Initialize battle tracking
+                    battlesPlayed: 0, // Initialize battle tracking
+                    lootboxesOpened: 0, // Initialize lootbox tracking
                 },
             };
             await userRef.set(newUser);
@@ -575,6 +578,16 @@ app.get("/auth/me", requireAuth, async (req, res) => {
             updates["stats.totalXP"] = initTotalXP;
             updates["stats.nextLevelXP"] = levelData.nextLevelXP;
             console.log(`🔧 [Auth Init] Initialized stats for user ${uid}: level ${levelData.level}, totalXP ${initTotalXP}`);
+        }
+        // Initialize battle tracking fields if missing
+        if (user.stats?.battlesWon === undefined || user.stats?.battlesWon === null) {
+            updates["stats.battlesWon"] = 0;
+        }
+        if (user.stats?.battlesPlayed === undefined || user.stats?.battlesPlayed === null) {
+            updates["stats.battlesPlayed"] = 0;
+        }
+        if (user.stats?.lootboxesOpened === undefined || user.stats?.lootboxesOpened === null) {
+            updates["stats.lootboxesOpened"] = 0;
         }
         // Calculate new login streak
         let loginStreak = user.stats?.loginStreak || 0;
@@ -1544,6 +1557,8 @@ app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
         const fullUserData = userDoc.data() || {};
         const currentMonstersDefeated = fullUserData.progression?.monstersDefeated || currentStats.monstersDefeated || 0;
         const newMonstersDefeated = currentMonstersDefeated + monstersDefeatedCount;
+        // Increment battlesWon when battle rewards are given (battle was won)
+        const currentBattlesWon = currentStats.battlesWon || 0;
         // Update user stats and progression
         await userRef.update({
             "stats.level": levelData.level,
@@ -1551,6 +1566,7 @@ app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
             "stats.nextLevelXP": levelData.nextLevelXP,
             "stats.totalXP": newTotalXP,
             "stats.gold": newGold,
+            "stats.battlesWon": currentBattlesWon + 1, // Increment battles won
             "progression.monstersDefeated": newMonstersDefeated, // Update progression.monstersDefeated (primary)
             "stats.monstersDefeated": newMonstersDefeated, // Also update stats.monstersDefeated for backwards compatibility
             updatedAt: Date.now(),
@@ -3507,7 +3523,7 @@ app.post("/users", requireAuth, async (req, res) => {
             mustChangePassword: true, //Gebruiker moet wachtwoord wijzigen bij eerste login
             createdAt: Date.now(),
             updatedAt: Date.now(),
-            stats: { hp: 100, gold: 0, level: 1, xp: 0 },
+            stats: { hp: 100, gold: 0, level: 1, xp: 0, battlesWon: 0, battlesPlayed: 0, lootboxesOpened: 0 },
             inventory: { gold: 0, items: [], materials: {} },
             settings: { theme: 'light', language: 'nl', notificationsEnabled: true }
         };
@@ -4312,10 +4328,13 @@ app.post("/combat/start", requireAuth, async (req, res) => {
             await combatRef.set(combat);
             // Only consume stamina AFTER successfully creating combat session
             const staminaAfter = stamina - STAMINA_COST;
+            // Increment battlesPlayed when a battle starts
+            const currentBattlesPlayed = user.stats?.battlesPlayed || 0;
             await userRef.update({
                 "stats.stamina": staminaAfter,
                 "stats.lastStaminaRegen": newLastRegen,
-                "stats.maxStamina": maxStamina
+                "stats.maxStamina": maxStamina,
+                "stats.battlesPlayed": currentBattlesPlayed + 1
             });
             return res.status(201).json(combat);
         }
@@ -4636,6 +4655,9 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
                     });
                 }
             }
+            // Increment battlesWon when battle is won (victory = true)
+            const currentBattlesWon = user.stats?.battlesWon || 0;
+            const currentBattlesPlayed = user.stats?.battlesPlayed || 0;
             // Update user stats with level data
             await userRef.update({
                 "stats.level": levelData.level,
@@ -4643,6 +4665,8 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
                 "stats.nextLevelXP": levelData.nextLevelXP,
                 "stats.totalXP": newTotalXP,
                 "stats.gold": newGold,
+                "stats.battlesWon": currentBattlesWon + 1, // Increment battles won
+                "stats.battlesPlayed": currentBattlesPlayed || 1, // Ensure battlesPlayed is at least 1 if not set
                 updatedAt: Date.now(),
             });
             console.log(`✅ [Combat Resolve] Updated user stats in Firebase:`, {
@@ -5613,9 +5637,12 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
                 lootboxes.splice(lootboxIndex, 1);
             }
         }
+        // Increment lootboxesOpened counter
+        const currentLootboxesOpened = user.stats?.lootboxesOpened || 0;
         await userRef.update({
             "inventory.inventory.items": inventoryItems,
             "inventory.inventory.lootboxes": lootboxes,
+            "stats.lootboxesOpened": currentLootboxesOpened + count, // Increment by count (can open multiple)
             updatedAt: Date.now(),
         });
         return res.status(200).json({

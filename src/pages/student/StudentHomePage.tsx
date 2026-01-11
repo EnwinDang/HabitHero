@@ -84,10 +84,18 @@ export default function StudentHomePage() {
         completedAt: Date.now(),
       });
       
-      // Count completed tasks (including the one we just marked as done)
-      const currentlyCompleted = tasks.filter((t) => !t.isActive).length;
-      const completedTasks = currentlyCompleted + 1; // +1 for the task we just completed
-      await onTaskCompleted(completedTasks);
+      // Count completed tasks WITH difficulty (excluding personal tasks)
+      // Note: Personal tasks (without difficulty) are NOT counted for achievements
+      const currentlyCompleted = tasks.filter((t) => 
+        !t.isActive && t.difficulty && t.difficulty !== null && t.difficulty !== undefined
+      ).length;
+      // Check if the task we just completed has difficulty
+      const completedTask = tasks.find((t) => t.taskId === taskId);
+      const taskHasDifficulty = completedTask?.difficulty && completedTask.difficulty !== null && completedTask.difficulty !== undefined;
+      const completedTasks = currentlyCompleted + (taskHasDifficulty ? 1 : 0); // Only +1 if it has difficulty
+      if (completedTasks > 0) {
+        await onTaskCompleted(completedTasks);
+      }
       
       setError(null);
     } catch (err) {

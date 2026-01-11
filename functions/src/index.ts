@@ -602,6 +602,9 @@ app.get("/auth/me", requireAuth, async (req, res) => {
           stamina: maxStamina, // Start with full stamina
           maxStamina: maxStamina,
           lastStaminaRegen: now, // Initialize regeneration timestamp
+          battlesWon: 0, // Initialize battle tracking
+          battlesPlayed: 0, // Initialize battle tracking
+          lootboxesOpened: 0, // Initialize lootbox tracking
         },
       };
       await userRef.set(newUser);
@@ -627,6 +630,17 @@ app.get("/auth/me", requireAuth, async (req, res) => {
       updates["stats.totalXP"] = initTotalXP;
       updates["stats.nextLevelXP"] = levelData.nextLevelXP;
       console.log(`🔧 [Auth Init] Initialized stats for user ${uid}: level ${levelData.level}, totalXP ${initTotalXP}`);
+    }
+    
+    // Initialize battle tracking fields if missing
+    if (user.stats?.battlesWon === undefined || user.stats?.battlesWon === null) {
+      updates["stats.battlesWon"] = 0;
+    }
+    if (user.stats?.battlesPlayed === undefined || user.stats?.battlesPlayed === null) {
+      updates["stats.battlesPlayed"] = 0;
+    }
+    if (user.stats?.lootboxesOpened === undefined || user.stats?.lootboxesOpened === null) {
+      updates["stats.lootboxesOpened"] = 0;
     }
     
     // Calculate new login streak
@@ -1385,9 +1399,14 @@ app.post("/tasks/:taskId/claim", requireAuth, async (req, res) => {
     }
 
     // Count total completed tasks (from user's tasks collection) and update task achievements
+    // Note: Only count tasks WITH difficulty (exclude personal tasks without difficulty)
     try {
       const tasksSnapshot = await userRef.collection("tasks").where("isActive", "==", false).get();
-      const totalCompletedTasks = tasksSnapshot.size;
+      const totalCompletedTasks = tasksSnapshot.docs.filter((doc) => {
+        const task = doc.data();
+        // Only count tasks that have a difficulty field (exclude personal tasks)
+        return task.difficulty && task.difficulty !== null && task.difficulty !== undefined;
+      }).length;
       await updateTaskAchievements(uid, totalCompletedTasks);
     } catch (error) {
       console.error("Error updating task achievements on claim:", error);
@@ -1469,8 +1488,13 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
     });
 
     // Count total completed tasks and update task achievements
+    // Note: Only count tasks WITH difficulty (exclude personal tasks without difficulty)
     const tasksSnapshot = await userRef.collection("tasks").where("isActive", "==", false).get();
-    const totalCompletedTasks = tasksSnapshot.size;
+    const totalCompletedTasks = tasksSnapshot.docs.filter((doc) => {
+      const task = doc.data();
+      // Only count tasks that have a difficulty field (exclude personal tasks)
+      return task.difficulty && task.difficulty !== null && task.difficulty !== undefined;
+    }).length;
     await updateTaskAchievements(uid, totalCompletedTasks);
 
     // Update level achievements if leveled up
@@ -1759,6 +1783,9 @@ app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
     const currentMonstersDefeated = fullUserData.progression?.monstersDefeated || currentStats.monstersDefeated || 0;
     const newMonstersDefeated = currentMonstersDefeated + monstersDefeatedCount;
 
+    // Increment battlesWon when battle rewards are given (battle was won)
+    const currentBattlesWon = currentStats.battlesWon || 0;
+
     // Update user stats and progression
     await userRef.update({
       "stats.level": levelData.level,
@@ -1766,6 +1793,7 @@ app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
       "stats.nextLevelXP": levelData.nextLevelXP,
       "stats.totalXP": newTotalXP,
       "stats.gold": newGold,
+      "stats.battlesWon": currentBattlesWon + 1, // Increment battles won
       "progression.monstersDefeated": newMonstersDefeated, // Update progression.monstersDefeated (primary)
       "stats.monstersDefeated": newMonstersDefeated, // Also update stats.monstersDefeated for backwards compatibility
       updatedAt: Date.now(),
@@ -3909,7 +3937,7 @@ app.post("/users", requireAuth, async (req, res) => {
       mustChangePassword: true, //Gebruiker moet wachtwoord wijzigen bij eerste login
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      stats: { hp: 100, gold: 0, level: 1, xp: 0 },
+      stats: { hp: 100, gold: 0, level: 1, xp: 0, battlesWon: 0, battlesPlayed: 0, lootboxesOpened: 0 },
       inventory: { gold: 0, items: [], materials: {} },
       settings: { theme: 'light', language: 'nl', notificationsEnabled: true }
     };
@@ -4809,10 +4837,15 @@ app.post("/combat/start", requireAuth, async (req, res) => {
       
       // Only consume stamina AFTER successfully creating combat session
       const staminaAfter = stamina - STAMINA_COST;
+      
+      // Increment battlesPlayed when a battle starts
+      const currentBattlesPlayed = user.stats?.battlesPlayed || 0;
+      
       await userRef.update({
         "stats.stamina": staminaAfter,
         "stats.lastStaminaRegen": newLastRegen,
-        "stats.maxStamina": maxStamina
+        "stats.maxStamina": maxStamina,
+        "stats.battlesPlayed": currentBattlesPlayed + 1
       });
       
     return res.status(201).json(combat);
@@ -5180,6 +5213,10 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
         }
       }
 
+      // Increment battlesWon when battle is won (victory = true)
+      const currentBattlesWon = user.stats?.battlesWon || 0;
+      const currentBattlesPlayed = user.stats?.battlesPlayed || 0;
+
       // Update user stats with level data
       await userRef.update({
         "stats.level": levelData.level,
@@ -5187,6 +5224,8 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
         "stats.nextLevelXP": levelData.nextLevelXP,
         "stats.totalXP": newTotalXP,
         "stats.gold": newGold,
+        "stats.battlesWon": currentBattlesWon + 1, // Increment battles won
+        "stats.battlesPlayed": currentBattlesPlayed || 1, // Ensure battlesPlayed is at least 1 if not set
         updatedAt: Date.now(),
       });
 
@@ -6242,9 +6281,13 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
       }
     }
 
+    // Increment lootboxesOpened counter
+    const currentLootboxesOpened = user.stats?.lootboxesOpened || 0;
+
     await userRef.update({
       "inventory.inventory.items": inventoryItems,
       "inventory.inventory.lootboxes": lootboxes,
+      "stats.lootboxesOpened": currentLootboxesOpened + count, // Increment by count (can open multiple)
       updatedAt: Date.now(),
     });
 

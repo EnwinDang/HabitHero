@@ -1,13 +1,11 @@
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
+import { useRealtimeAchievements } from "@/hooks/useRealtimeAchievements";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { getCurrentLevelProgress, getXPForLevel, getXPToNextLevel, getLevelFromXP } from "@/utils/xpCurve";
 import { useState, useEffect } from "react";
-import { AchievementsAPI } from "@/api/achievements.api";
-import { auth } from "@/firebase";
 import { db } from "@/firebase";
-import { doc, getDoc } from "firebase/firestore";
-import { UsersAPI } from "@/api/users.api";
+import { doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { StaminaBar } from "@/components/StaminaBar";
 import {
   Sword,
@@ -29,113 +27,155 @@ import {
 export default function StatsPage() {
   const { user, loading: userLoading } = useRealtimeUser();
   const { tasks } = useRealtimeTasks();
+  const { achievements, loading: achievementsLoading } = useRealtimeAchievements();
   const { darkMode, accentColor } = useTheme();
-  const [achievements, setAchievements] = useState<any[]>([]);
   const [equippedStats, setEquippedStats] = useState<Record<string, number>>({});
-  
-  // Stamina state
-  const [staminaData, setStaminaData] = useState<{
-    currentStamina: number;
+  const [totalAvailableItems, setTotalAvailableItems] = useState<number>(0);
+  const [staminaConfig, setStaminaConfig] = useState<{
     maxStamina: number;
-    nextRegenIn: number;
+    regenRateMinutes: number;
   } | null>(null);
-
-  // Fetch stamina data
-  useEffect(() => {
-    const fetchStamina = async () => {
-      if (!user) return;
-      
-      try {
-        const data = await UsersAPI.getStamina(user.uid);
-        setStaminaData({
-          currentStamina: data.currentStamina,
-          maxStamina: data.maxStamina,
-          nextRegenIn: data.nextRegenIn,
-        });
-      } catch (err) {
-        console.warn("Failed to fetch stamina:", err);
-      }
-    };
-
-    fetchStamina();
-    // Update stamina every 60 seconds
-    const interval = setInterval(fetchStamina, 60000);
-    return () => clearInterval(interval);
-  }, [user]);
 
   // Get theme classes
   const theme = getThemeClasses(darkMode, accentColor);
 
-  // Load achievements
+  // ============ 1. STAMINA: Read from Firestore (user.stats) ============
+  // ⚠️ IMPORTANT: This stamina calculation is UI-ONLY and NOT authoritative.
+  // 
+  // The backend (POST /combat/start, GET /users/:uid/stamina) is the source of truth
+  // for all stamina checks and business logic decisions.
+  //
+  // This frontend calculation is used ONLY for:
+  // - Display purposes (progress bars, timers, visual feedback)
+  // - Optimistic UI updates (greyed-out buttons, countdown timers)
+  //
+  // DO NOT use this calculated value for:
+  // - Battle eligibility checks (use API: UsersAPI.getStamina())
+  // - Stamina consumption decisions (backend handles this)
+  // - Any business logic that affects game state
+  //
+  // The backend will always validate and recalculate stamina on every request.
+
   useEffect(() => {
-    const loadAchievements = async () => {
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
-
+    // Fetch gameConfig for regeneration rate (used for UI display only)
+    const fetchStaminaConfig = async () => {
       try {
-        const [catalogResponse, userProgress] = await Promise.all([
-          AchievementsAPI.list(),
-          AchievementsAPI.getUserProgress(currentUser.uid),
-        ]);
-
-        const catalog = catalogResponse.data || [];
-        const progressMap = new Map(userProgress.map(p => [p.achievementId, p]));
-
-        const merged = catalog.map((achievement) => {
-          const userProg = progressMap.get(achievement.achievementId);
-          const target = achievement.condition?.value || 1;
-          return {
-            ...achievement,
-            target,
-            progress: userProg?.progress || 0,
-            isUnlocked: userProg?.isUnlocked || false,
-            unlockedAt: userProg?.unlockedAt,
-            claimed: userProg?.claimed || false,
-          };
-        });
-
-        setAchievements(merged);
-      } catch (error) {
-        console.error("Failed to load achievements:", error);
-        setAchievements([]);
-      }
-    };
-
-    loadAchievements();
-  }, []);
-
-  // Load equipped stats (server source to include equipped items totals)
-  useEffect(() => {
-    const fetchEquippedStats = async () => {
-      if (!user?.uid) return;
-      try {
-        const { apiFetch } = await import("@/api/client");
-
-        // Primary: /equipped for totals (now includes totalStats = userBaseStats + equippedStats)
-        const statsData = await apiFetch(`/users/${user.uid}/stats`);
-        const totals = (statsData as any)?.totalStats || {};
-
-        if (totals && Object.keys(totals).length > 0) {
-          setEquippedStats(totals);
+        const configDoc = await getDoc(doc(db, "gameConfig", "main"));
+        if (configDoc.exists()) {
+          const config = configDoc.data();
+          const staminaConfig = config.stamina || {};
+          const maxStamina = staminaConfig.max || 100;
+          const regenPerHour = staminaConfig.regenPerHour || 10;
+          const regenRateMinutes = regenPerHour > 0 ? 60 / regenPerHour : 5;
+          
+          setStaminaConfig({ maxStamina, regenRateMinutes });
         } else {
-          setEquippedStats({});
+          // Defaults if config doesn't exist
+          setStaminaConfig({ maxStamina: 100, regenRateMinutes: 5 });
         }
       } catch (err) {
-        console.error("Failed to fetch stats", err);
-        setEquippedStats({});
+        console.warn("Failed to fetch stamina config:", err);
+        setStaminaConfig({ maxStamina: 100, regenRateMinutes: 5 });
       }
     };
 
-    fetchEquippedStats();
-  }, [user?.uid]);
+    fetchStaminaConfig();
+  }, []);
 
-  // Keep total stats in sync with realtime user updates (e.g., after equip/unequip)
+  // Calculate visual stamina for UI display only (NOT authoritative)
+  // This mirrors the backend calculation for consistent UI, but backend is source of truth
+  const calculateStaminaData = () => {
+    if (!user?.stats || !staminaConfig) return null;
+
+    const currentStamina = user.stats.stamina ?? staminaConfig.maxStamina;
+    const maxStamina = user.stats.maxStamina ?? staminaConfig.maxStamina;
+    const lastRegen = user.stats.lastStaminaRegen;
+
+    // Calculate regeneration (same logic as backend, but for display only)
+    const now = Date.now();
+    // Clamp lastRegen to prevent negative values or future timestamps (defensive)
+    const safeLastRegen = lastRegen ? Math.min(lastRegen, now) : now;
+    const minutesPassed = (now - safeLastRegen) / 60000;
+    const pointsToAdd = Math.floor(minutesPassed / staminaConfig.regenRateMinutes);
+    
+    const newStamina = Math.min(maxStamina, Math.max(0, currentStamina + pointsToAdd));
+    const newLastRegen = safeLastRegen + (pointsToAdd * staminaConfig.regenRateMinutes * 60000);
+
+    // Calculate time until next regeneration (for countdown timer display)
+    const minutesUntilNext = staminaConfig.regenRateMinutes - ((now - newLastRegen) / 60000) % staminaConfig.regenRateMinutes;
+    const nextRegenIn = Math.ceil(minutesUntilNext * 60000);
+
+    return {
+      currentStamina: newStamina,
+      maxStamina,
+      nextRegenIn,
+    };
+  };
+
+  // Visual stamina data (UI-only, not authoritative)
+  const staminaData = calculateStaminaData();
+
+  // ============ 2. TOTAL STATS: Read from Firestore (user.stats.totalStats) ============
+  // Read directly from user.stats.totalStats (updated by backend when items are equipped/unequipped)
   useEffect(() => {
     const totals = user?.stats?.totalStats;
     if (totals && Object.keys(totals).length > 0) {
       setEquippedStats(totals);
+    } else {
+      setEquippedStats({});
     }
   }, [user?.stats?.totalStats]);
+
+  // ============ 3. TOTAL AVAILABLE ITEMS: Read from Firestore collections ============
+  // Read directly from Firestore item collections
+  useEffect(() => {
+    const fetchTotalItems = async () => {
+      try {
+        const collections = [
+          "items_weapons",
+          "items_armor",
+          "items_arcane",
+          "items_pets",
+          "items_accessories"
+        ];
+        
+        let totalCount = 0;
+        const allItemIds = new Set<string>(); // Track unique item IDs across collections
+        
+        for (const collectionName of collections) {
+          try {
+            // Read directly from Firestore
+            // Note: Items use "isActive" field, not "active"
+            // Filter for active items (isActive !== false, meaning true or undefined)
+            const itemsRef = collection(db, collectionName);
+            const snapshot = await getDocs(itemsRef);
+            
+            snapshot.docs.forEach((doc) => {
+              const item = doc.data();
+              // Only count active items (isActive !== false)
+              if (item.isActive === false) return;
+              
+              const itemId = item.itemId || doc.id;
+              if (itemId && !allItemIds.has(itemId)) {
+                allItemIds.add(itemId);
+                totalCount++;
+              }
+            });
+          } catch (err) {
+            console.warn(`Failed to fetch items from ${collectionName}:`, err);
+          }
+        }
+        
+        console.log(`📦 [StatsPage] Total available items: ${totalCount}`);
+        setTotalAvailableItems(totalCount);
+      } catch (err) {
+        console.error("Failed to fetch total available items:", err);
+        setTotalAvailableItems(0);
+      }
+    };
+
+    fetchTotalItems();
+  }, []);
 
 
 
@@ -185,6 +225,8 @@ export default function StatsPage() {
   const mediumTasks = tasks.filter((t) => t.difficulty === "medium").length;
   const hardTasks = tasks.filter((t) => t.difficulty === "hard").length;
   const extremeTasks = tasks.filter((t) => t.difficulty === "extreme").length;
+  // Personal tasks (tasks without difficulty field)
+  const personalTasks = tasks.filter((t) => !t.difficulty || t.difficulty === undefined || t.difficulty === null).length;
 
   // Completed tasks by difficulty (real data)
   const completedEasy = tasks.filter(
@@ -199,6 +241,10 @@ export default function StatsPage() {
   const completedExtreme = tasks.filter(
     (t) => !t.isActive && t.difficulty === "extreme"
   ).length;
+  // Completed personal tasks
+  const completedPersonal = tasks.filter(
+    (t) => !t.isActive && (!t.difficulty || t.difficulty === undefined || t.difficulty === null)
+  ).length;
 
   // Combat stats (if tracked in user.stats or user.progression)
   const battlesWon = user.stats?.battlesWon || 0;
@@ -207,8 +253,28 @@ export default function StatsPage() {
   const winRate = battlesPlayed > 0 ? Math.round((battlesWon / battlesPlayed) * 100) : 0;
 
   // Collection stats
-  const uniqueItems = user.inventory?.inventory?.items?.length || 0;
+  // Count unique items by itemId (same logic as totalAvailableItems)
+  const uniqueItems = (() => {
+    const items = user.inventory?.inventory?.items || [];
+    const uniqueItemIds = new Set<string>();
+    items.forEach((item: any) => {
+      const itemId = item?.itemId;
+      if (itemId) {
+        uniqueItemIds.add(itemId);
+      }
+    });
+    const count = uniqueItemIds.size;
+    console.log(`📦 [StatsPage] Unique items in inventory: ${count}`, { items: items.length, uniqueIds: Array.from(uniqueItemIds) });
+    return count;
+  })();
   const lootboxesOpened = user.stats?.lootboxesOpened || 0;
+  
+  // Calculate collection progress (unique items collected / total available unique items)
+  const collectionProgress = totalAvailableItems > 0 
+    ? Math.round((uniqueItems / totalAvailableItems) * 100)
+    : 0;
+  
+  console.log(`📦 [StatsPage] Collection progress: ${uniqueItems}/${totalAvailableItems} = ${collectionProgress}%`);
 
   // Achievement stats
   const unlockedAchievements = achievements.filter((a) => a.isUnlocked).length;
@@ -261,7 +327,7 @@ export default function StatsPage() {
             </div>
             <p className="text-3xl font-bold">{xpProgress}%</p>
             <p className="text-orange-200 text-sm">
-              {xp % maxXP} / {maxXP}
+              {xp} / {maxXP}
             </p>
           </div>
 
@@ -422,6 +488,14 @@ export default function StatsPage() {
             ) : (
               <div className="space-y-4">
                 <DifficultyBar
+                  label="Personal"
+                  total={personalTasks}
+                  completed={completedPersonal}
+                  color="#3b82f6"
+                  darkMode={darkMode}
+                  theme={theme}
+                />
+                <DifficultyBar
                   label="Easy"
                   total={easyTasks}
                   completed={completedEasy}
@@ -578,7 +652,7 @@ export default function StatsPage() {
                 <div
                   className="inline-flex items-center justify-center w-24 h-24 rounded-full"
                   style={{
-                    background: `conic-gradient(${accentColor} ${achievementProgress}%, ${darkMode ? '#1f2937' : '#e5e7eb'} 0)`,
+                    background: `conic-gradient(${accentColor} ${collectionProgress}%, ${darkMode ? '#1f2937' : '#e5e7eb'} 0)`,
                   }}
                 >
                   <div
@@ -590,7 +664,13 @@ export default function StatsPage() {
                     <Gift size={32} style={{ color: accentColor }} />
                   </div>
                 </div>
-                <p className={`${theme.textMuted} text-sm mt-2`}>Collection Growing</p>
+                <p className={`${theme.textMuted} text-sm mt-2`}>
+                  {totalAvailableItems > 0 
+                    ? `${uniqueItems}/${totalAvailableItems} Items`
+                    : totalAvailableItems === 0 && uniqueItems === 0
+                    ? "Loading..."
+                    : `${uniqueItems} Items Collected`}
+                </p>
               </div>
             </div>
           </div>
@@ -652,9 +732,44 @@ export default function StatsPage() {
 
               {/* Next achievement hint */}
               {(() => {
-                const nextAchievement = achievements.find(
-                  (a) => !a.isUnlocked && a.progress > 0
-                );
+                // Check if all achievements are unlocked
+                const allUnlocked = achievements.length > 0 && achievements.every((a) => a.isUnlocked);
+                
+                if (allUnlocked) {
+                  // Show congratulatory message when all achievements are unlocked
+                  const studentName = user?.displayName || "Hero";
+                  return (
+                    <div
+                      className="p-3 rounded-lg"
+                      style={{
+                        backgroundColor: darkMode
+                          ? "rgba(34, 197, 94, 0.1)"
+                          : "rgba(220, 252, 231, 1)",
+                      }}
+                    >
+                      <p className="text-xs text-green-500 mb-1">🎉 All Achievements Unlocked!</p>
+                      <p className={`${theme.text} text-sm font-medium`}>
+                        Well done {studentName}, more Achievements coming soon!
+                      </p>
+                    </div>
+                  );
+                }
+                
+                // Find unlocked achievements with progress, sorted by completion percentage (closest first)
+                const unlockedWithProgress = achievements
+                  .filter((a) => !a.isUnlocked && a.progress > 0)
+                  .sort((a, b) => {
+                    // Sort by completion percentage (highest first = closest to completion)
+                    const aPercent = (a.progress / a.target) * 100;
+                    const bPercent = (b.progress / b.target) * 100;
+                    return bPercent - aPercent;
+                  });
+                
+                // If no achievements with progress, show the first unlocked achievement
+                const nextAchievement = unlockedWithProgress.length > 0
+                  ? unlockedWithProgress[0] // Closest to completion
+                  : achievements.find((a) => !a.isUnlocked); // First unlocked achievement
+                
                 if (nextAchievement) {
                   return (
                     <div
@@ -824,7 +939,7 @@ export default function StatsPage() {
             <div className="flex-1">
               <div className="flex justify-between text-sm mb-2">
                 <span className={theme.textMuted}>Total XP Earned</span>
-                <span className={`font-bold ${theme.text}`}>{xp} XP</span>
+                <span className={`font-bold ${theme.text}`}>{totalXP} XP</span>
               </div>
               <div
                 className={`h-4 rounded-full overflow-hidden ${darkMode ? "bg-gray-800" : "bg-gray-200"
@@ -840,7 +955,7 @@ export default function StatsPage() {
                 />
               </div>
               <p className={`${theme.textSubtle} text-sm mt-2`}>
-                {maxXP - (xp % maxXP)} XP until Level {level + 1}
+                {maxXP - xp} XP until Level {level + 1}
               </p>
             </div>
             <div
