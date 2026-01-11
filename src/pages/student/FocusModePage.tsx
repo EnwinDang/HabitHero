@@ -53,8 +53,6 @@ export default function FocusModePage() {
     start,
     pause,
     reset,
-    sessionsCompleted,
-    totalFocusSeconds,
     xpGained,
     levelUpReward,
   } = usePomodoro();
@@ -67,8 +65,13 @@ export default function FocusModePage() {
       .padStart(2, "0")}`;
   };
 
-  const getMinutesLeft = () => {
-    return Math.ceil(timeLeftSeconds / 60);
+  // Deze functie regelt nu de tekst onder de klok
+  const getTimeLeftLabel = () => {
+    if (timeLeftSeconds >= 60) {
+      const mins = Math.ceil(timeLeftSeconds / 60);
+      return `${mins === 1 ? "minute" : "minutes"} left`;
+    }
+    return "seconds left";
   };
 
   const handleStart = () => start();
@@ -78,8 +81,6 @@ export default function FocusModePage() {
   const totalSeconds = (phase === "focus" ? focusDuration : breakDuration) * 60;
   const safeTimeLeft = Math.min(Math.max(timeLeftSeconds, 0), totalSeconds);
   const progress = ((totalSeconds - safeTimeLeft) / totalSeconds) * 100;
-
-
 
   if (loading) {
     return (
@@ -91,7 +92,6 @@ export default function FocusModePage() {
 
   return (
     <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
-      {/* XP and Level-Up animations */}
       {levelUpReward && (
         <XPToast
           totalXP={user?.stats?.xp ?? 0}
@@ -105,7 +105,6 @@ export default function FocusModePage() {
       )}
 
       <main className="p-8 overflow-y-auto w-full">
-        {/* Header */}
         <div className="mb-8">
           <div className="flex justify-between items-start mb-4">
             <div>
@@ -128,16 +127,13 @@ export default function FocusModePage() {
           </div>
         </div>
 
-        {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Timer Card - Takes 2 columns */}
           <div className={`lg:col-span-2 ${theme.card} rounded-2xl p-8`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
             <div className="text-center mb-8">
               <h3 className={`text-2xl font-bold ${theme.text}`}>{phase === "focus" ? "Focus Time" : "Break Time"}</h3>
               <p style={theme.accentText}>{phase === "focus" ? "Time to concentrate" : "Time to rest"}</p>
             </div>
 
-            {/* Timer Circle */}
             <div className="flex justify-center mb-8">
               <div className="relative w-64 h-64">
                 <svg
@@ -149,7 +145,7 @@ export default function FocusModePage() {
                     cx="128"
                     cy="128"
                     r="110"
-                    stroke="#e5e7eb"
+                    stroke={darkMode ? "#1f2937" : "#e5e7eb"}
                     strokeWidth="8"
                     fill="none"
                   />
@@ -171,13 +167,12 @@ export default function FocusModePage() {
                     {formatTime(safeTimeLeft)}
                   </span>
                   <span className={theme.textMuted}>
-                    {getMinutesLeft()} minutes left
+                    {getTimeLeftLabel()}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Controls */}
             <div className="flex justify-center gap-4">
               {status !== "running" ? (
                 <button
@@ -206,11 +201,7 @@ export default function FocusModePage() {
             </div>
           </div>
 
-          {/* Right Column - Stats */}
           <div className="space-y-6">
-            {/* Current XP card hidden on Focus Mode page */}
-
-            {/* Focus Streak */}
             <div className={`${theme.card} rounded-2xl p-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
               <div className="flex items-center gap-2 mb-3">
                 <Flame size={20} className="text-orange-500" />
@@ -219,37 +210,31 @@ export default function FocusModePage() {
                 </h3>
               </div>
               <p className={`text-3xl font-bold ${theme.text}`}>
-                {(() => {
-                  const streakCount = user?.stats?.streak ?? 0;
-                  const label = streakCount === 1 ? "day" : "days";
-                  return `${streakCount} ${label}`;
-                })()}
+                {user?.stats?.streak ?? 0} {user?.stats?.streak === 1 ? "day" : "days"}
               </p>
               <p className={`${theme.textMuted} text-sm`}>Keep it up!</p>
             </div>
 
-            {/* Today's Stats */}
             <div className={`${theme.card} rounded-2xl p-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
               <h3 className={`text-lg font-bold ${theme.text} mb-4`}>
                 Today's Stats
               </h3>
               <div className="space-y-3">
                 <div className="flex justify-between items-center py-2" style={{ ...theme.borderStyle, borderBottomWidth: '1px', borderBottomStyle: 'solid' }}>
-                  <span className={theme.textMuted}>Sessions</span>
+                  <span className={theme.textMuted}>Sessions Today</span>
                   <span className={`font-bold ${theme.text}`}>
-                    {user?.stats?.todaysSessions ?? sessionsCompleted}
+                    {user?.stats?.todaysSessions ?? 0}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2">
-                  <span className={theme.textMuted}>Focus Time</span>
+                  <span className={theme.textMuted}>Focus Time Today</span>
                   <span className="font-bold" style={{ color: accentColor }}>
-                    {Math.floor((user?.stats?.todaysFocusSeconds ?? totalFocusSeconds) / 60)} min
+                    {Math.floor((user?.stats?.todaysFocusSeconds ?? 0) / 60)} min
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Timer Settings */}
             <div className={`${theme.card} rounded-2xl p-6`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}>
               <div className="flex items-center gap-2 mb-4">
                 <Settings size={20} className={theme.textMuted} />
@@ -275,8 +260,8 @@ export default function FocusModePage() {
                         if (Number.isNaN(raw)) return;
                         setFocusDuration(raw);
                       }}
-                      className={`w-full p-2 rounded-lg ${theme.text} ${theme.card}`}
-                      style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}
+                      className={`w-full p-2 rounded-lg ${theme.text} ${theme.card} outline-none focus:ring-1`}
+                      style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid', borderColor: accentColor }}
                     />
                     <span className={`text-sm ${theme.textMuted} whitespace-nowrap`}>
                       minutes
@@ -300,8 +285,8 @@ export default function FocusModePage() {
                         if (Number.isNaN(raw)) return;
                         setBreakDuration(raw);
                       }}
-                      className={`w-full p-2 rounded-lg ${theme.text} ${theme.card}`}
-                      style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }}
+                      className={`w-full p-2 rounded-lg ${theme.text} ${theme.card} outline-none focus:ring-1`}
+                      style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid', borderColor: accentColor }}
                     />
                     <span className={`text-sm ${theme.textMuted} whitespace-nowrap`}>
                       minutes
@@ -314,35 +299,5 @@ export default function FocusModePage() {
         </div>
       </main>
     </div>
-  );
-}
-
-/* Sidebar Item Component */
-function SidebarItem({
-  icon,
-  label,
-  active = false,
-  onClick,
-  darkMode,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-  darkMode: boolean;
-}) {
-  return (
-    <li>
-      <button
-        onClick={onClick}
-        className={`flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-all ${active
-          ? darkMode ? "bg-purple-900/30 text-purple-300 border border-purple-700/50" : "bg-purple-50 text-purple-600 border border-purple-200"
-          : darkMode ? "text-gray-400 hover:bg-gray-800" : "text-gray-600 hover:bg-gray-50"
-          }`}
-      >
-        {icon}
-        <span className="font-medium">{label}</span>
-      </button>
-    </li>
   );
 }
