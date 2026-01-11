@@ -250,7 +250,10 @@ export default function StatsPage() {
   const battlesWon = user.stats?.battlesWon || 0;
   const battlesPlayed = user.stats?.battlesPlayed || 0;
   const monstersDefeated = user.progression?.monstersDefeated || user.stats?.monstersDefeated || 0;
-  const winRate = battlesPlayed > 0 ? Math.round((battlesWon / battlesPlayed) * 100) : 0;
+  // Calculate win rate, cap at 100% to handle data inconsistencies
+  const winRate = battlesPlayed > 0 
+    ? Math.min(100, Math.round((Math.min(battlesWon, battlesPlayed) / battlesPlayed) * 100))
+    : 0;
 
   // Collection stats
   // Count unique items by itemId (same logic as totalAvailableItems)
@@ -599,7 +602,7 @@ export default function StatsPage() {
                     <div
                       className="h-full rounded-full transition-all bg-gradient-to-r from-red-500 to-purple-500"
                       style={{
-                        width: `${winRate}%`,
+                        width: `${Math.min(100, winRate)}%`,
                       }}
                     />
                   </div>

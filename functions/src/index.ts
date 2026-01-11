@@ -1786,6 +1786,7 @@ app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
 
     // Increment battlesWon when battle rewards are given (battle was won)
     const currentBattlesWon = currentStats.battlesWon || 0;
+    const currentBattlesPlayed = currentStats.battlesPlayed || 0;
 
     // Update user stats and progression
     await userRef.update({
@@ -1795,6 +1796,7 @@ app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
       "stats.totalXP": newTotalXP,
       "stats.gold": newGold,
       "stats.battlesWon": currentBattlesWon + 1, // Increment battles won
+      "stats.battlesPlayed": Math.max(currentBattlesPlayed, currentBattlesWon + 1), // Ensure battlesPlayed is at least equal to battlesWon
       "progression.monstersDefeated": newMonstersDefeated, // Update progression.monstersDefeated (primary)
       "stats.monstersDefeated": newMonstersDefeated, // Also update stats.monstersDefeated for backwards compatibility
       updatedAt: Date.now(),
@@ -5226,7 +5228,7 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
         "stats.totalXP": newTotalXP,
         "stats.gold": newGold,
         "stats.battlesWon": currentBattlesWon + 1, // Increment battles won
-        "stats.battlesPlayed": currentBattlesPlayed || 1, // Ensure battlesPlayed is at least 1 if not set
+        "stats.battlesPlayed": Math.max(currentBattlesPlayed, currentBattlesWon + 1), // Ensure battlesPlayed is at least equal to battlesWon
         updatedAt: Date.now(),
       });
 
