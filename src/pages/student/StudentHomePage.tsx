@@ -9,6 +9,7 @@ import { TrendingUp, Coins, Flame, Star, Zap, BookOpen, Target } from "lucide-re
 import { db } from "@/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 import type { Task } from "@/models/task.model";
+import { onTaskCompleted } from "@/services/achievement.service";
 
 export default function StudentHomePage() {
   const navigate = useNavigate();
@@ -50,6 +51,12 @@ export default function StudentHomePage() {
         isActive: false, // Mark as completed
         completedAt: Date.now(),
       });
+      
+      // Count completed tasks (including the one we just marked as done)
+      const currentlyCompleted = tasks.filter((t) => !t.isActive).length;
+      const completedTasks = currentlyCompleted + 1; // +1 for the task we just completed
+      await onTaskCompleted(completedTasks);
+      
       setError(null);
     } catch (err) {
       console.error("Failed to mark task as done:", err);

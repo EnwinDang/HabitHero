@@ -45,10 +45,13 @@ export default function AchievementsPage() {
     const achievement = achievements.find(a => a.achievementId === achievementId);
     if (!achievement || !achievement.isUnlocked) return;
 
+    // Use the achievement ID directly (same in both collections)
+    console.log(`🎁 Claiming achievement: ${achievementId}`);
+
     try {
       setClaimingId(achievementId);
 
-      // Claim achievement via API
+      // Claim achievement via API using the achievement ID
       const result = await UsersAPI.claimAchievement(firebaseUser.uid, achievementId);
 
       // Show reward notification
@@ -299,6 +302,7 @@ function AchievementCard({
 }: {
   achievement: {
     achievementId: string;
+    progressId?: string; // Mapped progress ID for backend API calls
     title: string;
     description?: string | null;
     category?: string | null;
@@ -320,9 +324,11 @@ function AchievementCard({
   // Calculate progress percentage, ensuring we don't divide by zero
   const target = achievement.target || 1;
   const progress = achievement.progress || 0;
+  // Cap displayed progress at target (don't show 2/1, show 1/1 instead)
+  const displayedProgress = Math.min(progress, target);
   const progressPercent = Math.min(
     100,
-    Math.max(0, Math.round((progress / target) * 100))
+    Math.max(0, Math.round((displayedProgress / target) * 100))
   );
 
   // Debug logging for achievements with progress or focus achievements
@@ -334,42 +340,72 @@ function AchievementCard({
   const isAlreadyClaimed = achievement.claimed || isClaimed;
   const canClaim = achievement.isUnlocked && !isAlreadyClaimed;
 
+  // Debug logging for claim button
+  if (achievement.isUnlocked) {
+    console.log(`🔍 Achievement ${achievement.achievementId}: isUnlocked=${achievement.isUnlocked}, isAlreadyClaimed=${isAlreadyClaimed}, canClaim=${canClaim}`);
+  }
+
+  // State to track if image failed to load
+  const [imageError, setImageError] = useState(false);
+
+  // Reset image error when achievement changes
+  useEffect(() => {
+    setImageError(false);
+  }, [achievement.achievementId, achievement.icon]);
+
+  // Helper to render icon - check if it's an image filename or emoji
+  const renderIcon = () => {
+    if (!achievement.isUnlocked) {
+      return <Lock size={20} />;
+    }
+    
+    const icon = achievement.icon || "";
+    // Check if icon is an image filename (ends with .png, .jpg, .svg, etc.)
+    if (icon.match(/\.(png|jpg|jpeg|svg|gif|webp)$/i) && !imageError) {
+      // Try to load from assets/achievements/ directory
+      return (
+        <img
+          src={`/assets/achievements/${icon}`}
+          alt={achievement.title}
+          className="w-8 h-8 object-contain"
+          onError={() => setImageError(true)}
+        />
+      );
+    }
+    
+    // If it's an emoji or text, or image failed, render emoji/fallback
+    return <span>{imageError ? "🔓" : (icon || "🔓")}</span>;
+  };
+
   return (
     <div
-      className={`rounded-2xl p-5 transition-all ${achievement.isUnlocked ? "" : "opacity-70"
-        }`}
+      className="rounded-2xl p-5 transition-all opacity-70"
       style={{
         backgroundColor: darkMode
           ? "rgba(31, 41, 55, 0.5)"
           : "rgba(255, 255, 255, 1)",
         borderWidth: "1px",
         borderStyle: "solid",
-        borderColor: achievement.isUnlocked
-          ? accentColor
-          : darkMode
-            ? "rgba(75, 85, 99, 0.5)"
-            : "rgba(229, 231, 235, 1)",
-        boxShadow: achievement.isUnlocked
-          ? `0 0 20px ${accentColor}30`
-          : "none",
+        borderColor: darkMode
+          ? "rgba(75, 85, 99, 0.5)"
+          : "rgba(229, 231, 235, 1)",
+        boxShadow: "none",
       }}
     >
       {/* Header */}
       <div className="flex items-start gap-3 mb-4">
         <div
-          className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
+          className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl relative"
           style={{
-            backgroundColor: achievement.isUnlocked
-              ? `${accentColor}20`
-              : darkMode
-                ? "rgba(55, 65, 81, 0.5)"
-                : "rgba(243, 244, 246, 1)",
+            backgroundColor: darkMode
+              ? "rgba(55, 65, 81, 0.5)"
+              : "rgba(243, 244, 246, 1)",
             borderWidth: "2px",
             borderStyle: "solid",
-            borderColor: achievement.isUnlocked ? accentColor : "transparent",
+            borderColor: "transparent",
           }}
         >
-          {achievement.isUnlocked ? achievement.icon : <Lock size={20} />}
+          {renderIcon()}
         </div>
         <div className="flex-1">
           <h3 className={`font-bold ${theme.text}`}>{achievement.title}</h3>
@@ -386,14 +422,8 @@ function AchievementCard({
       <div className="mb-3">
         <div className="flex justify-between text-sm mb-1">
           <span className={theme.textMuted}>Progress</span>
-          <span
-            style={
-              achievement.isUnlocked
-                ? theme.accentText
-                : { color: darkMode ? "#9ca3af" : "#6b7280" }
-            }
-          >
-            {progress}/{target}
+          <span style={{ color: darkMode ? "#9ca3af" : "#6b7280" }}>
+            {displayedProgress}/{target}
           </span>
         </div>
         {/* Progress bar container */}
@@ -413,9 +443,7 @@ function AchievementCard({
               width: `${progressPercent}%`,
               height: '100%',
               minWidth: progressPercent > 0 ? '2px' : '0px',
-              backgroundColor: achievement.isUnlocked
-                ? "#10b981" // Green when completed/unlocked
-                : "#f97316", // Orange when in progress
+              backgroundColor: "#f97316", // Always orange
               borderRadius: '9999px',
               transition: 'width 0.3s ease',
               position: 'absolute',
@@ -431,15 +459,16 @@ function AchievementCard({
         <div
           className="flex gap-3 pt-3 mb-3"
           style={{
-            borderTopWidth: "1px",
-            borderTopStyle: "solid",
-            ...theme.borderStyle,
+            borderTop: "1px solid rgba(139, 92, 246, 0.25)",
+            borderRight: "1px solid rgba(139, 92, 246, 0.25)",
+            borderBottom: "1px solid rgba(139, 92, 246, 0.25)",
+            borderLeft: "1px solid rgba(139, 92, 246, 0.25)",
           }}
         >
           {achievement.reward.xp && (
             <div className="flex items-center gap-1 text-sm">
-              <Star size={14} style={theme.accentText} />
-              <span style={theme.accentText}>+{achievement.reward.xp} XP</span>
+              <Star size={14} style={{ color: accentColor }} />
+              <span style={{ color: accentColor }}>+{achievement.reward.xp} XP</span>
             </div>
           )}
           {achievement.reward.gold && (
@@ -456,13 +485,21 @@ function AchievementCard({
       {/* Claim Button */}
       {canClaim && (
         <button
-          onClick={() => onClaim(achievement.achievementId)}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log(`🎁 Claim button clicked for ${achievement.achievementId}`);
+            onClaim(achievement.achievementId);
+          }}
           disabled={isClaiming}
           className="w-full py-2 px-4 rounded-xl font-bold text-white transition-all flex items-center justify-center gap-2"
           style={{
             backgroundColor: isClaiming ? "#6b7280" : accentColor,
-            opacity: isClaiming ? 0.7 : 1,
+            opacity: 1, // Full opacity to override parent opacity
             cursor: isClaiming ? "not-allowed" : "pointer",
+            pointerEvents: "auto", // Ensure button is clickable
+            position: "relative",
+            zIndex: 10,
           }}
         >
           <Gift size={18} />

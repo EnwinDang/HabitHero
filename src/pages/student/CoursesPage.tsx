@@ -6,7 +6,7 @@ import { CoursesAPI } from "@/api/courses.api";
 import type { Course } from "@/models/course.model";
 import { Modal } from "@/components/Modal";
 import { db } from "@/firebase";
-import { doc, setDoc, deleteDoc, updateDoc, deleteField } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, updateDoc, deleteField, collection, getDocs, getDoc } from "firebase/firestore";
 import {
   BookOpen,
   Calendar,
@@ -358,20 +358,31 @@ export default function CoursesPage() {
                     setJoinLoading(true);
                     setJoinError(null);
                     try {
-                      // Refresh courses (include inactive/upcoming) to ensure the code exists
-                      const list = await CoursesAPI.list(false);
-                      setCourses(list);
+                      // Query Firestore directly to get ALL courses (not just enrolled ones)
+                      // This allows us to find courses by code before enrollment
+                      const coursesSnapshot = await getDocs(collection(db, "courses"));
+                      const allCourses = coursesSnapshot.docs.map(doc => ({
+                        courseId: doc.id,
+                        ...doc.data()
+                      } as Course));
+                      
+                      // Normalize and search for matching course code
                       const normalize = (s: string) => (s || "").replace(/\s+/g, "").toLowerCase();
                       const codeNorm = normalize(code);
-                      const match = list.find(c => normalize(c.courseCode || "") === codeNorm);
+                      const match = allCourses.find(c => normalize(c.courseCode || "") === codeNorm);
+                      
                       if (!match) {
                         setJoinError('Invalid or unknown course code. Please enter the exact course code.');
                         return;
                       }
-                      if (enrolledCourses.has(match.courseId)) {
+                      
+                      // Check if already enrolled by checking Firestore directly
+                      const studentDoc = await getDoc(doc(db, `courses/${match.courseId}/students/${firebaseUser.uid}`));
+                      if (studentDoc.exists() || enrolledCourses.has(match.courseId)) {
                         setJoinError('You are already enrolled in this course.');
                         return;
                       }
+                      
                       setEnrollingCourse(match.courseId);
                       await CoursesAPI.enroll(match.courseId, { uid: firebaseUser.uid, enrolledAt: Date.now() });
                       // Mirror enrollment in Firestore under the course's students subcollection

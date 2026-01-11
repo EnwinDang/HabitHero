@@ -1,6 +1,6 @@
 import { auth, db } from "@/firebase";
 import { AchievementsAPI } from "@/api/achievements.api";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 
 /**
  * Achievement Progress Service
@@ -104,27 +104,56 @@ export async function incrementAchievementProgress(achievementId: AchievementId)
 /**
  * Check and update task-related achievements
  * Call this when a task is completed
+ * Updates all task achievements from the catalog
  */
 export async function onTaskCompleted(totalCompletedTasks: number) {
-    // Update task achievements based on total completed
-    if (totalCompletedTasks >= 1) {
-        await updateAchievementProgress("first_task", totalCompletedTasks);
+    const user = auth.currentUser;
+    if (!user) {
+        console.error("No authenticated user for task achievement update");
+        return;
     }
-    if (totalCompletedTasks >= 1) {
-        await updateAchievementProgress("task_master_10", totalCompletedTasks);
-    }
-    if (totalCompletedTasks >= 1) {
-        await updateAchievementProgress("task_master_50", totalCompletedTasks);
-    }
-    if (totalCompletedTasks >= 1) {
-        await updateAchievementProgress("task_master_100", totalCompletedTasks);
+
+    console.log(`📊 onTaskCompleted called with count: ${totalCompletedTasks}`);
+
+    try {
+        // Query catalog for all task-related achievements
+        // Get all achievements and filter by category (more flexible than `in` query)
+        const achievementsRef = collection(db, "achievements");
+        const snapshot = await getDocs(achievementsRef);
+        
+        const taskAchievements = snapshot.docs
+            .map(doc => ({
+                achievementId: doc.id,
+                ...doc.data()
+            }))
+            .filter((achievement: any) => {
+                const category = (achievement.category || "").toLowerCase();
+                return category === "tasks" || category === "difficulty" || category === "task" ||
+                       achievement.achievementId?.toLowerCase().includes("task") ||
+                       achievement.achievementId?.toLowerCase().includes("easy") ||
+                       achievement.achievementId?.toLowerCase().includes("medium") ||
+                       achievement.achievementId?.toLowerCase().includes("hard") ||
+                       achievement.achievementId?.toLowerCase().includes("extreme");
+            });
+
+        // Update all task achievements
+        await Promise.all(
+            taskAchievements.map(async (achievement) => {
+                const target = achievement.condition?.value || 1;
+                await updateTaskAchievementDirect(user.uid, achievement.achievementId, totalCompletedTasks, target);
+            })
+        );
+
+        console.log(`✅ Task achievements updated successfully in Firestore`);
+    } catch (error) {
+        console.error("❌ Failed to update task achievements:", error);
     }
 }
 
 /**
  * Check and update focus-related achievements
  * Call this when a focus session is completed
- * Writes directly to Firestore (same as monster achievements)
+ * Updates all focus/pomodoro achievements from the catalog
  */
 export async function onFocusSessionCompleted(totalFocusSessions: number) {
     const user = auth.currentUser;
@@ -136,11 +165,29 @@ export async function onFocusSessionCompleted(totalFocusSessions: number) {
     console.log(`📊 onFocusSessionCompleted called with count: ${totalFocusSessions}`);
 
     try {
-        // Update both focus achievements directly in Firestore
-        await Promise.all([
-            updateFocusAchievementDirect(user.uid, "focus_first", totalFocusSessions, 1),
-            updateFocusAchievementDirect(user.uid, "focus_10", totalFocusSessions, 10),
-        ]);
+        // Query catalog for all focus/pomodoro achievements
+        const achievementsRef = collection(db, "achievements");
+        const snapshot = await getDocs(achievementsRef);
+        
+        const focusAchievements = snapshot.docs
+            .map(doc => ({
+                achievementId: doc.id,
+                ...doc.data()
+            }))
+            .filter((achievement: any) => {
+                const category = (achievement.category || "").toLowerCase();
+                const id = (achievement.achievementId || "").toLowerCase();
+                return category === "focus" || category === "productivity" || category === "pomodoro" ||
+                       id.includes("focus") || id.includes("pomodoro");
+            });
+
+        // Update all focus achievements
+        await Promise.all(
+            focusAchievements.map(async (achievement) => {
+                const target = achievement.condition?.value || 1;
+                await updateFocusAchievementDirect(user.uid, achievement.achievementId, totalFocusSessions, target);
+            })
+        );
 
         console.log(`✅ Focus achievements updated successfully in Firestore`);
     } catch (error) {
@@ -195,32 +242,310 @@ async function updateFocusAchievementDirect(
 }
 
 /**
+ * Update streak achievement progress directly in Firestore
+ * Similar to updateFocusAchievementDirect and updateMonsterAchievementDirect
+ */
+async function updateStreakAchievementDirect(
+    uid: string,
+    achievementId: string,
+    newProgress: number,
+    target: number
+): Promise<void> {
+    try {
+        const isUnlocked = newProgress >= target;
+        const achievementRef = doc(db, "users", uid, "achievements", achievementId);
+        
+        // Check if document exists
+        const existingDoc = await getDoc(achievementRef);
+        const existingData = existingDoc.exists ? existingDoc.data() : {};
+        
+        // Don't decrease progress or lock an already unlocked achievement
+        const currentProgress = (existingData.progress as number) || 0;
+        const currentUnlocked = (existingData.isUnlocked as boolean) || false;
+        
+        const updateData: any = {
+            achievementId,
+            progress: Math.max(newProgress, currentProgress), // Never decrease progress
+            isUnlocked: currentUnlocked || isUnlocked, // Once unlocked, stay unlocked
+            updatedAt: Date.now(),
+        };
+        
+        // Set unlockedAt if just unlocked
+        if (isUnlocked && !currentUnlocked) {
+            updateData.unlockedAt = Date.now();
+        } else if (existingData.unlockedAt) {
+            updateData.unlockedAt = existingData.unlockedAt; // Preserve existing unlockedAt
+        }
+
+        await setDoc(achievementRef, updateData, { merge: true });
+        
+        if (isUnlocked && !currentUnlocked) {
+            console.log(`🏆 Streak achievement unlocked: ${achievementId}!`);
+        }
+    } catch (error) {
+        console.error(`❌ Failed to update streak achievement ${achievementId} for user ${uid}:`, error);
+        throw error;
+    }
+}
+
+/**
  * Check and update streak achievements
- * Call this when streak is updated
+ * Call this when focus streak is updated (from Pomodoro sessions)
+ * Updates all streak achievements from the catalog
  */
 export async function onStreakUpdated(currentStreak: number) {
-    await updateAchievementProgress("streak_3", currentStreak);
-    await updateAchievementProgress("streak_7", currentStreak);
-    await updateAchievementProgress("streak_30", currentStreak);
+    const user = auth.currentUser;
+    if (!user) {
+        console.error("No authenticated user for streak achievement update");
+        return;
+    }
+
+    console.log(`📊 onStreakUpdated called with streak: ${currentStreak}`);
+
+    try {
+        // Query catalog for all streak achievements
+        const achievementsRef = collection(db, "achievements");
+        const snapshot = await getDocs(achievementsRef);
+        
+        const streakAchievements = snapshot.docs
+            .map(doc => ({
+                achievementId: doc.id,
+                ...doc.data()
+            }))
+            .filter((achievement: any) => {
+                const category = (achievement.category || "").toLowerCase();
+                const id = (achievement.achievementId || "").toLowerCase();
+                return category === "streak" || id.includes("streak");
+            });
+
+        // Update all streak achievements
+        await Promise.all(
+            streakAchievements.map(async (achievement) => {
+                const target = achievement.condition?.value || 1;
+                await updateStreakAchievementDirect(user.uid, achievement.achievementId, currentStreak, target);
+            })
+        );
+
+        console.log(`✅ Streak achievements updated successfully in Firestore`);
+    } catch (error) {
+        console.error("❌ Failed to update streak achievements:", error);
+    }
 }
 
 /**
  * Check and update level achievements
  * Call this when user levels up
+ * Updates all level achievements from the catalog
  */
 export async function onLevelUp(currentLevel: number) {
-    await updateAchievementProgress("level_5", currentLevel);
-    await updateAchievementProgress("level_10", currentLevel);
-    await updateAchievementProgress("level_25", currentLevel);
+    const user = auth.currentUser;
+    if (!user) {
+        console.error("No authenticated user for level achievement update");
+        return;
+    }
+
+    console.log(`📊 onLevelUp called with level: ${currentLevel}`);
+
+    try {
+        // Query catalog for all level achievements
+        const achievementsRef = collection(db, "achievements");
+        const snapshot = await getDocs(achievementsRef);
+        
+        const levelAchievements = snapshot.docs
+            .map(doc => ({
+                achievementId: doc.id,
+                ...doc.data()
+            }))
+            .filter((achievement: any) => {
+                const category = (achievement.category || "").toLowerCase();
+                const id = (achievement.achievementId || "").toLowerCase();
+                return category === "level" || id.includes("level");
+            });
+
+        // Update all level achievements
+        await Promise.all(
+            levelAchievements.map(async (achievement) => {
+                const target = achievement.condition?.value || 1;
+                await updateLevelAchievementDirect(user.uid, achievement.achievementId, currentLevel, target);
+            })
+        );
+
+        console.log(`✅ Level achievements updated successfully in Firestore`);
+    } catch (error) {
+        console.error("❌ Failed to update level achievements:", error);
+    }
+}
+
+/**
+ * Update level achievement progress directly in Firestore
+ */
+async function updateLevelAchievementDirect(
+    uid: string,
+    achievementId: string,
+    newProgress: number,
+    target: number
+): Promise<void> {
+    try {
+        const isUnlocked = newProgress >= target;
+        const achievementRef = doc(db, "users", uid, "achievements", achievementId);
+        
+        const existingDoc = await getDoc(achievementRef);
+        const existingData = existingDoc.exists() ? existingDoc.data() : {};
+        
+        const currentProgress = (existingData.progress as number) || 0;
+        const currentUnlocked = (existingData.isUnlocked as boolean) || false;
+        
+        const updateData: any = {
+            achievementId,
+            progress: Math.max(newProgress, currentProgress),
+            isUnlocked: currentUnlocked || isUnlocked,
+            updatedAt: Date.now(),
+        };
+        
+        if (isUnlocked && !currentUnlocked) {
+            updateData.unlockedAt = Date.now();
+        } else if (existingData.unlockedAt) {
+            updateData.unlockedAt = existingData.unlockedAt;
+        }
+
+        await setDoc(achievementRef, updateData, { merge: true });
+        
+        if (isUnlocked && !currentUnlocked) {
+            console.log(`🏆 Level achievement unlocked: ${achievementId}!`);
+        }
+    } catch (error) {
+        console.error(`❌ Failed to update level achievement ${achievementId} for user ${uid}:`, error);
+        throw error;
+    }
 }
 
 /**
  * Check and update monster defeat achievements
  * Call this when a monster is defeated
+ * Updates all monster/combat achievements from the catalog
  */
 export async function onMonsterDefeated(totalMonstersDefeated: number) {
-    await updateAchievementProgress("monster_first", totalMonstersDefeated);
-    await updateAchievementProgress("monster_10", totalMonstersDefeated);
-    await updateAchievementProgress("monster_50", totalMonstersDefeated);
-    await updateAchievementProgress("monster_100", totalMonstersDefeated);
+    const user = auth.currentUser;
+    if (!user) {
+        console.error("No authenticated user for monster achievement update");
+        return;
+    }
+
+    console.log(`📊 onMonsterDefeated called with count: ${totalMonstersDefeated}`);
+
+    try {
+        // Query catalog for all monster/combat achievements
+        const achievementsRef = collection(db, "achievements");
+        const snapshot = await getDocs(achievementsRef);
+        
+        const monsterAchievements = snapshot.docs
+            .map(doc => ({
+                achievementId: doc.id,
+                ...doc.data()
+            }))
+            .filter((achievement: any) => {
+                const category = (achievement.category || "").toLowerCase();
+                const id = (achievement.achievementId || "").toLowerCase();
+                return category === "monster" || category === "combat" ||
+                       id.includes("monster") || id.includes("monsters");
+            });
+
+        // Update all monster achievements
+        await Promise.all(
+            monsterAchievements.map(async (achievement) => {
+                const target = achievement.condition?.value || 1;
+                await updateMonsterAchievementDirect(user.uid, achievement.achievementId, totalMonstersDefeated, target);
+            })
+        );
+
+        console.log(`✅ Monster achievements updated successfully in Firestore`);
+    } catch (error) {
+        console.error("❌ Failed to update monster achievements:", error);
+    }
+}
+
+/**
+ * Update monster achievement progress directly in Firestore
+ */
+async function updateMonsterAchievementDirect(
+    uid: string,
+    achievementId: string,
+    newProgress: number,
+    target: number
+): Promise<void> {
+    try {
+        const isUnlocked = newProgress >= target;
+        const achievementRef = doc(db, "users", uid, "achievements", achievementId);
+        
+        const existingDoc = await getDoc(achievementRef);
+        const existingData = existingDoc.exists() ? existingDoc.data() : {};
+        
+        const currentProgress = (existingData.progress as number) || 0;
+        const currentUnlocked = (existingData.isUnlocked as boolean) || false;
+        
+        const updateData: any = {
+            achievementId,
+            progress: Math.max(newProgress, currentProgress),
+            isUnlocked: currentUnlocked || isUnlocked,
+            updatedAt: Date.now(),
+        };
+        
+        if (isUnlocked && !currentUnlocked) {
+            updateData.unlockedAt = Date.now();
+        } else if (existingData.unlockedAt) {
+            updateData.unlockedAt = existingData.unlockedAt;
+        }
+
+        await setDoc(achievementRef, updateData, { merge: true });
+        
+        if (isUnlocked && !currentUnlocked) {
+            console.log(`🏆 Monster achievement unlocked: ${achievementId}!`);
+        }
+    } catch (error) {
+        console.error(`❌ Failed to update monster achievement ${achievementId} for user ${uid}:`, error);
+        throw error;
+    }
+}
+
+/**
+ * Update task achievement progress directly in Firestore
+ */
+async function updateTaskAchievementDirect(
+    uid: string,
+    achievementId: string,
+    newProgress: number,
+    target: number
+): Promise<void> {
+    try {
+        const isUnlocked = newProgress >= target;
+        const achievementRef = doc(db, "users", uid, "achievements", achievementId);
+        
+        const existingDoc = await getDoc(achievementRef);
+        const existingData = existingDoc.exists() ? existingDoc.data() : {};
+        
+        const currentProgress = (existingData.progress as number) || 0;
+        const currentUnlocked = (existingData.isUnlocked as boolean) || false;
+        
+        const updateData: any = {
+            achievementId,
+            progress: Math.max(newProgress, currentProgress),
+            isUnlocked: currentUnlocked || isUnlocked,
+            updatedAt: Date.now(),
+        };
+        
+        if (isUnlocked && !currentUnlocked) {
+            updateData.unlockedAt = Date.now();
+        } else if (existingData.unlockedAt) {
+            updateData.unlockedAt = existingData.unlockedAt;
+        }
+
+        await setDoc(achievementRef, updateData, { merge: true });
+        
+        if (isUnlocked && !currentUnlocked) {
+            console.log(`🏆 Task achievement unlocked: ${achievementId}!`);
+        }
+    } catch (error) {
+        console.error(`❌ Failed to update task achievement ${achievementId} for user ${uid}:`, error);
+        throw error;
+    }
 }

@@ -214,22 +214,88 @@ async function updateAchievementProgress(uid, achievementId, newProgress) {
  * Helper: Update level-related achievements
  */
 async function updateLevelAchievements(uid, currentLevel) {
-    await Promise.all([
-        updateAchievementProgress(uid, "level_5", currentLevel),
-        updateAchievementProgress(uid, "level_10", currentLevel),
-        updateAchievementProgress(uid, "level_25", currentLevel),
-    ]);
+    try {
+        // Query catalog for all level achievements
+        const achievementsRef = db.collection("achievements");
+        const snapshot = await achievementsRef.get();
+        const levelAchievements = snapshot.docs
+            .map(doc => ({
+            achievementId: doc.id,
+            ...doc.data()
+        }))
+            .filter((achievement) => {
+            const category = (achievement.category || "").toLowerCase();
+            const id = (achievement.achievementId || "").toLowerCase();
+            return category === "level" || id.includes("level");
+        });
+        // Update all level achievements
+        await Promise.all(levelAchievements.map(async (achievement) => {
+            await updateAchievementProgress(uid, achievement.achievementId, currentLevel);
+        }));
+    }
+    catch (error) {
+        console.error("Error updating level achievements:", error);
+    }
+}
+/**
+ * Helper: Update task-related achievements
+ * Queries catalog for all task achievements and updates them
+ */
+async function updateTaskAchievements(uid, totalCompletedTasks) {
+    try {
+        // Query catalog for all task-related achievements
+        const achievementsRef = db.collection("achievements");
+        const snapshot = await achievementsRef.get();
+        const taskAchievements = snapshot.docs
+            .map(doc => ({
+            achievementId: doc.id,
+            ...doc.data()
+        }))
+            .filter((achievement) => {
+            const category = (achievement.category || "").toLowerCase();
+            const id = (achievement.achievementId || "").toLowerCase();
+            return category === "tasks" || category === "difficulty" || category === "task" ||
+                id.includes("task") || id.includes("easy") || id.includes("medium") ||
+                id.includes("hard") || id.includes("extreme");
+        });
+        // Update all task achievements
+        await Promise.all(taskAchievements.map(async (achievement) => {
+            const target = achievement.condition?.value || 1;
+            await updateAchievementProgress(uid, achievement.achievementId, totalCompletedTasks);
+        }));
+    }
+    catch (error) {
+        console.error("Error updating task achievements:", error);
+    }
 }
 /**
  * Helper: Update monster defeat achievements
+ * Queries catalog for all monster/combat achievements and updates them
  */
 async function updateMonsterDefeatAchievements(uid, totalMonstersDefeated) {
-    await Promise.all([
-        updateAchievementProgress(uid, "monster_first", totalMonstersDefeated),
-        updateAchievementProgress(uid, "monster_10", totalMonstersDefeated),
-        updateAchievementProgress(uid, "monster_50", totalMonstersDefeated),
-        updateAchievementProgress(uid, "monster_100", totalMonstersDefeated),
-    ]);
+    try {
+        // Query catalog for all monster/combat achievements
+        const achievementsRef = db.collection("achievements");
+        const snapshot = await achievementsRef.get();
+        const monsterAchievements = snapshot.docs
+            .map(doc => ({
+            achievementId: doc.id,
+            ...doc.data()
+        }))
+            .filter((achievement) => {
+            const category = (achievement.category || "").toLowerCase();
+            const id = (achievement.achievementId || "").toLowerCase();
+            return category === "monster" || category === "combat" ||
+                id.includes("monster") || id.includes("monsters");
+        });
+        // Update all monster achievements
+        await Promise.all(monsterAchievements.map(async (achievement) => {
+            await updateAchievementProgress(uid, achievement.achievementId, totalMonstersDefeated);
+        }));
+    }
+    catch (error) {
+        console.error("Error updating monster achievements:", error);
+    }
 }
 // ============ AUTH ============
 /**
@@ -890,6 +956,39 @@ app.post("/tasks/:taskId/claim", requireAuth, async (req, res) => {
                 },
             },
         }, { merge: true });
+        // Create or update a task document in user's tasks collection to track this claimed task
+        // This allows us to count completed tasks for achievements
+        // Use a unique ID that includes courseId and moduleId to avoid conflicts
+        const userTaskId = `${courseId}_${moduleId}_${taskId}`;
+        const userTaskRef = userRef.collection("tasks").doc(userTaskId);
+        const existingUserTask = await userTaskRef.get();
+        // Only create/update if this task hasn't been tracked yet (to avoid double counting)
+        if (!existingUserTask.exists || !existingUserTask.data()?.claimedAt) {
+            await userTaskRef.set({
+                taskId,
+                courseId: String(courseId),
+                moduleId: String(moduleId),
+                isActive: false, // Mark as completed
+                completedAt: now,
+                claimedAt: now,
+                difficulty: difficulty,
+                name: taskData.name || "Task",
+            }, { merge: true });
+        }
+        // Count total completed tasks (from user's tasks collection) and update task achievements
+        try {
+            const tasksSnapshot = await userRef.collection("tasks").where("isActive", "==", false).get();
+            const totalCompletedTasks = tasksSnapshot.size;
+            await updateTaskAchievements(uid, totalCompletedTasks);
+        }
+        catch (error) {
+            console.error("Error updating task achievements on claim:", error);
+            // Don't fail the request if achievement update fails
+        }
+        // Update level achievements if leveled up
+        if (leveledUp) {
+            await updateLevelAchievements(uid, levelData.level);
+        }
         return res.status(200).json({
             success: true,
             xpGained,
@@ -949,6 +1048,14 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
             isActive: false,
             completedAt: Date.now(),
         });
+        // Count total completed tasks and update task achievements
+        const tasksSnapshot = await userRef.collection("tasks").where("isActive", "==", false).get();
+        const totalCompletedTasks = tasksSnapshot.size;
+        await updateTaskAchievements(uid, totalCompletedTasks);
+        // Update level achievements if leveled up
+        if (leveledUp) {
+            await updateLevelAchievements(uid, levelData.level);
+        }
         const response = {
             success: true,
             reward: {
@@ -985,12 +1092,11 @@ app.post("/users/:uid/achievements/:achievementId/claim", requireAuth, async (re
             return res.status(403).json({ error: "Forbidden: Cannot claim achievements for other users" });
         }
         const userRef = db.collection("users").doc(uid);
+        // Use the achievement ID directly (same in both collections)
         const achievementRef = db.collection("users").doc(uid).collection("achievements").doc(achievementId);
-        // Get user and achievement data
-        const [userSnap, achievementSnap] = await Promise.all([
-            userRef.get(),
-            achievementRef.get()
-        ]);
+        const achievementSnap = await achievementRef.get();
+        // Get user data
+        const userSnap = await userRef.get();
         if (!userSnap.exists) {
             return res.status(404).json({ error: "User not found" });
         }
@@ -999,6 +1105,10 @@ app.post("/users/:uid/achievements/:achievementId/claim", requireAuth, async (re
         }
         const user = userSnap.data() || {};
         const achievement = achievementSnap.data() || {};
+        // Get catalog achievement for rewards
+        const catalogRef = db.collection("achievements").doc(achievementId);
+        const catalogSnap = await catalogRef.get();
+        const catalogData = catalogSnap.exists ? catalogSnap.data() : {};
         // Check if achievement is unlocked
         if (!achievement.isUnlocked) {
             return res.status(400).json({ error: "Achievement is not unlocked yet" });
@@ -1007,9 +1117,9 @@ app.post("/users/:uid/achievements/:achievementId/claim", requireAuth, async (re
         if (achievement.claimed) {
             return res.status(400).json({ error: "Achievement already claimed" });
         }
-        // Calculate rewards
-        const xpReward = achievement.reward?.xp || 0;
-        const goldReward = achievement.reward?.gold || 0;
+        // Calculate rewards - use catalog data if available, fallback to progress document
+        const xpReward = catalogData.reward?.xp || achievement.reward?.xp || 0;
+        const goldReward = catalogData.reward?.gold || achievement.reward?.gold || 0;
         // Update user stats (use totalXP for level calculation)
         const currentTotalXP = user.stats?.totalXP ?? user.stats?.xp ?? 0;
         const newTotalXP = currentTotalXP + xpReward;
