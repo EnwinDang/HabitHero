@@ -43,6 +43,8 @@ export interface UserStats {
   lastLoginDate?: string; // stored as YYYY-MM-DD string
   todaysSessions?: number; // Sessions completed today
   todaysFocusSeconds?: number; // Total focus seconds today
+  totalSessions?: number; // Total sessions completed across all time
+  totalFocusSeconds?: number; // Total focus seconds across all time
   lastPomodoroDayKey?: string; // YYYY-MM-DD; last day pomodoro stats were recorded
   totalStats?: Record<string, number>; // Calculated total stats (base + equipped)
   battlesWon?: number; // Battles won

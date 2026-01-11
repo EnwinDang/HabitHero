@@ -2,6 +2,7 @@ import * as admin from "firebase-admin";
 import { onRequest } from "firebase-functions/v1/https";
 import express from "express";
 import cors from "cors";
+import { FieldValue } from "firebase-admin/firestore";
 
 // Initialize Admin SDK
 admin.initializeApp();
@@ -5834,73 +5835,75 @@ app.delete("/items/:collection/:id", requireAuth, async (req, res) => {
  * Record a completed pomodoro session in the database
  * Auto-resets daily stats if needed
  */
-app.post("/pomodoro/session-completed", requireAuth, async (req, res) => {
+app.post("/pomodoro/session-completed", async (req, res) => {
   try {
-    const uid = (req as any).user.uid;
-    const { sessionsCount = 1, focusSeconds = 0 } = req.body;
-
-    if (sessionsCount < 1 || focusSeconds < 0) {
-      return res.status(400).json({ error: "Invalid session data" });
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: "Unauthorized" });
     }
 
+    const idToken = authHeader.split('Bearer ')[1];
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const uid = decodedToken.uid;
+
+    const { focusSeconds = 0 } = req.body;
     const userRef = db.collection("users").doc(uid);
+    
     const userSnap = await userRef.get();
-
-    if (!userSnap.exists) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    const user = userSnap.data() || {};
-    const stats = user.stats || {};
-
-    // Get today's date in "YYYY-MM-DD" format
+    const stats = userSnap.data()?.stats || {};
+    
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const todayDateString = `${year}-${month}-${day}`;
+    const todayStr = now.toISOString().split('T')[0];
+    
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
 
-    // Check if we need to reset daily stats (new day)
-    const lastPomodoroDayKey = stats.lastPomodoroDayKey || "";
-    const needsReset = lastPomodoroDayKey !== todayDateString;
+    const lastDay = stats.lastPomodoroDayKey || "";
+    const needsReset = lastDay !== todayStr;
 
-    // Calculate new totals
-    let todaysSessions = 0;
-    let todaysFocusSeconds = 0;
+    let newStreak = stats.streak || 0;
+    let newMaxStreak = stats.maxStreak || 0;
 
-    if (needsReset) {
-      // New day: start fresh
-      todaysSessions = sessionsCount;
-      todaysFocusSeconds = focusSeconds;
-    } else {
-      // Same day: add to existing
-      todaysSessions = (stats.todaysSessions || 0) + sessionsCount;
-      todaysFocusSeconds = (stats.todaysFocusSeconds || 0) + focusSeconds;
+    // Verbeterde streak logica: Forceer naar 1 als de streak nu 0 is
+    if (newStreak === 0) {
+      newStreak = 1;
+    } else if (needsReset) {
+      if (lastDay === yesterdayStr) {
+        newStreak += 1;
+      } else {
+        newStreak = 1;
+      }
     }
 
-    // Update user stats with today's data
-    await userRef.update({
-      "stats.todaysSessions": todaysSessions,
-      "stats.todaysFocusSeconds": todaysFocusSeconds,
-      "stats.lastPomodoroDayKey": todayDateString,
-      updatedAt: Date.now(),
-    });
+    if (newStreak > newMaxStreak) {
+      newMaxStreak = newStreak;
+    }
 
-    console.log(`✅ [Pomodoro] User ${uid} completed session. Today: ${todaysSessions} sessions, ${todaysFocusSeconds}s focus`);
-
-    return res.status(200).json({
-      success: true,
-      userId: uid,
-      today: {
-        sessions: todaysSessions,
-        focusSeconds: todaysFocusSeconds,
-        date: todayDateString,
+    await userRef.set({
+      stats: {
+        todaysSessions: needsReset ? 1 : FieldValue.increment(1),
+        todaysFocusSeconds: needsReset ? focusSeconds : FieldValue.increment(focusSeconds),
+        totalSessions: FieldValue.increment(1),
+        totalFocusSeconds: FieldValue.increment(focusSeconds),
+        xp: FieldValue.increment(25),
+        totalXP: FieldValue.increment(25),
+        streak: newStreak,
+        maxStreak: newMaxStreak,
+        lastPomodoroDayKey: todayStr,
       },
-      wasReset: needsReset,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    return res.status(200).json({ 
+      success: true, 
+      xpGained: 25,
+      newStreak: newStreak 
     });
-  } catch (e: any) {
-    console.error("Error in POST /pomodoro/session-completed:", e);
-    return res.status(500).json({ error: e?.message });
+
+  } catch (error: any) {
+    console.error("BACKEND CRASH:", error);
+    return res.status(500).json({ error: error.message });
   }
 });
 
