@@ -34,7 +34,7 @@ export interface BattlePlayer {
 export interface BattleLog {
     message: string;
     timestamp: number;
-    type: 'attack' | 'damage' | 'victory' | 'defeat' | 'info';
+    type: 'attack' | 'damage' | 'victory' | 'defeat' | 'info' | 'levelup';
 }
 
 export interface BattleState {

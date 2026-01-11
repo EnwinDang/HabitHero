@@ -26,6 +26,24 @@ export const InventoryAPI = {
     });
   },
 
+  async sell(itemId: string, bonus?: Record<string, number> | null): Promise<any> {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error("User not authenticated");
+    return apiFetch(`/users/${uid}/inventory/sell`, {
+      method: "POST",
+      body: JSON.stringify({ itemId, bonus }),
+    });
+  },
+
+  async reroll(itemIds: string[]): Promise<any> {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error("User not authenticated");
+    return apiFetch(`/users/${uid}/reroll`, {
+      method: "POST",
+      body: JSON.stringify({ itemIds }),
+    });
+  },
+
   async getEquipped(): Promise<any> {
     const uid = auth.currentUser?.uid;
     if (!uid) throw new Error("User not authenticated");

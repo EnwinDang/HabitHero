@@ -5,6 +5,8 @@ import { useCourses } from "../../store/courseStore";
 import { useAuth } from "../../context/AuthContext";
 import { useEffect, useState } from "react";
 import { loadCourseStudents } from "../../services/teacherDashboard.service";
+import { SubmissionsAPI } from "../../api/submissions.api";
+import { TasksAPI } from "../../api/tasks.api";
 
 interface StatusBadgeProps {
   variant: string;
@@ -53,6 +55,13 @@ interface TimelineItem {
   date: string;
 }
 
+interface StudentSubmission {
+  taskName: string;
+  taskId: string;
+  status: 'pending' | 'approved' | 'rejected';
+  submittedAt: string;
+}
+
 interface StudentData {
   displayName: string;
   xpLevel: number;
@@ -60,6 +69,7 @@ interface StudentData {
   status: string;
   modules: ModuleProgress[];
   timeline: TimelineItem[];
+  submissions?: StudentSubmission[];
 }
 
 export default function StudentDetail() {
@@ -106,10 +116,51 @@ export default function StudentDetail() {
 
         const studentInfo = studentsData[studentId];
         
-        // Calculate total tasks from course modules
-        const totalTasks = currentCourse.modules?.reduce((sum, m) => sum + (m.exercises || 0), 0) || 0;
+        // Load all tasks for real completion calculation
+        const allTasks: any[] = [];
+        if (currentCourse.modules) {
+          for (const module of currentCourse.modules) {
+            try {
+              const tasks = await TasksAPI.list({
+                courseId: currentCourse.id,
+                moduleId: module.id,
+              });
+              allTasks.push(...tasks.map(t => ({ ...t, moduleId: module.id })));
+            } catch (err) {
+              console.warn(`Failed to load tasks for module ${module.id}:`, err);
+            }
+          }
+        }
+        
+        const totalTasks = allTasks.length;
+        
+        // Calculate real approved count for this student
+        let approvedCount = 0;
+        for (const task of allTasks) {
+          try {
+            const submissions = await SubmissionsAPI.list(
+              task.taskId,
+              currentCourse.id,
+              task.moduleId
+            );
+            
+            const studentSubmissions = (submissions as any[]).filter(
+              s => s.studentId === studentId
+            );
+            
+            if (studentSubmissions.length > 0) {
+              const latest = studentSubmissions[0];
+              if (latest.status === 'approved') {
+                approvedCount++;
+              }
+            }
+          } catch (err) {
+            console.warn(`Failed to check submissions for task ${task.taskId}:`, err);
+          }
+        }
+        
         const completionPercent = totalTasks > 0 
-          ? Math.round((studentInfo.tasksCompleted / totalTasks) * 100) 
+          ? Math.round((approvedCount / totalTasks) * 100) 
           : 0;
         
         // Determine status
@@ -123,21 +174,77 @@ export default function StudentDetail() {
         // Calculate level from XP
         const xpLevel = Math.floor(studentInfo.totalXP / 100) + 1;
         
-        // Build module progress from course modules, sorted alphabetically
-        const modules: ModuleProgress[] = (currentCourse.modules || [])
-          .map(module => {
-            // For now, we'll estimate based on overall completion
-            // In a real implementation, you'd fetch task completion per module
-            const moduleTasks = module.exercises || 0;
-            const completed = Math.round((completionPercent / 100) * moduleTasks);
+        // Build real module progress from actual submissions
+        const modules: ModuleProgress[] = [];
+        
+        for (const module of (currentCourse.modules || [])) {
+          try {
+            const tasks = await TasksAPI.list({
+              courseId: currentCourse.id,
+              moduleId: module.id,
+            });
             
-            return {
+            let moduleApprovedCount = 0;
+            for (const task of tasks) {
+              try {
+                const submissions = await SubmissionsAPI.list(
+                  task.taskId,
+                  currentCourse.id,
+                  module.id
+                );
+                
+                const studentSubmissions = (submissions as any[]).filter(
+                  s => s.studentId === studentId
+                );
+                
+                if (studentSubmissions.length > 0) {
+                  const latest = studentSubmissions[0];
+                  if (latest.status === 'approved') {
+                    moduleApprovedCount++;
+                  }
+                }
+              } catch (err) {
+                console.warn(`Failed to check submissions for task ${task.taskId}:`, err);
+              }
+            }
+            
+            modules.push({
               name: module.name,
-              completed: completed,
-              total: moduleTasks,
-            };
-          })
-          .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+              completed: moduleApprovedCount,
+              total: tasks.length,
+            });
+          } catch (err) {
+            console.warn(`Failed to load tasks for module ${module.id}:`, err);
+            modules.push({
+              name: module.name,
+              completed: 0,
+              total: 0,
+            });
+          }
+        }
+        
+        // Sort modules alphabetically
+        modules.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }));
+        
+        // Load student submissions
+        const submissions: StudentSubmission[] = [];
+        try {
+          const allSubmissions = await SubmissionsAPI.listForTeacher();
+          const studentSubmissions = allSubmissions.filter((sub: any) => sub.studentId === studentId);
+          const sorted = studentSubmissions.sort((a: any, b: any) => {
+            const dateA = new Date(a.submittedAt || a.createdAt || 0).getTime();
+            const dateB = new Date(b.submittedAt || b.createdAt || 0).getTime();
+            return dateB - dateA;
+          });
+          submissions.push(...sorted.map((sub: any) => ({
+            taskName: sub.taskName || 'Task',
+            taskId: sub.taskId,
+            status: sub.status || 'pending',
+            submittedAt: new Date(sub.submittedAt || sub.createdAt).toLocaleDateString(),
+          })));
+        } catch (err) {
+          console.warn('Failed to load student submissions:', err);
+        }
         
         // Timeline would need to come from task completion history
         // For now, we'll show an empty timeline
@@ -150,6 +257,7 @@ export default function StudentDetail() {
           status,
           modules,
           timeline,
+          submissions,
         });
       } catch (err) {
         console.error('Error loading student data:', err);
@@ -252,10 +360,6 @@ export default function StudentDetail() {
               </h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
                 <StatusBadge variant={student.status} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, color: 'var(--hh-muted)' }}>
-                  <Zap style={{ width: 14, height: 14, color: 'var(--hh-gold)' }} />
-                  Level {student.xpLevel}
-                </div>
               </div>
             </div>
           </div>
@@ -314,7 +418,7 @@ export default function StudentDetail() {
           </div>
         </motion.div>
 
-        {/* Completion Timeline */}
+        {/* Student Submissions */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -323,50 +427,59 @@ export default function StudentDetail() {
           style={{ padding: 24 }}
         >
           <h3 style={{ fontSize: 18, fontWeight: 650, marginBottom: 16 }}>
-            Completion Timeline
+            Submissions
           </h3>
           
-          <div style={{ display: 'grid', gap: 16 }}>
-            {student.timeline.length > 0 ? (
-              student.timeline.map((item, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.3 + index * 0.05 }}
-                  style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}
-                >
-                  <div
+          <div style={{ display: 'grid', gap: 12 }}>
+            {student.submissions && student.submissions.length > 0 ? (
+              student.submissions.map((submission, index) => {
+                const statusColors: { [key: string]: { bg: string; text: string; dot: string } } = {
+                  pending: { bg: 'rgba(255, 193, 7, 0.10)', text: 'rgb(161, 98, 7)', dot: 'var(--hh-gold)' },
+                  approved: { bg: 'rgba(74, 222, 128, 0.10)', text: 'rgb(21, 128, 61)', dot: 'var(--hh-green)' },
+                  rejected: { bg: 'rgba(239, 68, 68, 0.10)', text: 'rgb(127, 29, 29)', dot: 'rgb(239, 68, 68)' },
+                };
+                const colors = statusColors[submission.status] || statusColors.pending;
+                
+                return (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.3 + index * 0.05 }}
                     style={{
-                      width: 32,
-                      height: 32,
+                      padding: 12,
                       borderRadius: 8,
-                      background: 'rgba(74, 222, 128, 0.15)',
+                      background: colors.bg,
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                      marginTop: 2,
+                      gap: 12,
                     }}
                   >
-                    <CheckCircle2 style={{ width: 16, height: 16, color: 'rgb(21, 128, 61)' }} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: 14, fontWeight: 650, marginBottom: 2 }}>
-                      {item.exercise}
-                    </p>
-                    <p style={{ fontSize: 12, color: 'var(--hh-muted)' }}>
-                      {item.module}
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--hh-muted)' }}>
-                    <Calendar style={{ width: 12, height: 12 }} />
-                    {item.date}
-                  </div>
-                </motion.div>
-              ))
+                    <div
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        background: colors.dot,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 14, fontWeight: 650, color: 'var(--hh-text)', marginBottom: 2 }}>
+                        {submission.taskName}
+                      </p>
+                      <p style={{ fontSize: 12, color: colors.text }}>
+                        {submission.status.charAt(0).toUpperCase() + submission.status.slice(1)}
+                      </p>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--hh-muted)' }}>
+                      {submission.submittedAt}
+                    </div>
+                  </motion.div>
+                );
+              })
             ) : (
-              <p style={{ fontSize: 14, color: 'var(--hh-muted)' }}>No completion history available</p>
+              <p style={{ fontSize: 14, color: 'var(--hh-muted)', textAlign: 'center', padding: 16 }}>No submissions yet</p>
             )}
           </div>
         </motion.div>

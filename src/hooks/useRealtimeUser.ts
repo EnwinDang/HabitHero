@@ -29,6 +29,38 @@ export function useRealtimeUser() {
             ...snapshot.data(),
           } as User;
 
+          // Ensure stats object exists with required defaults
+          if (!userData.stats) {
+            userData.stats = {
+              level: 1,
+              xp: 0,
+              gold: 0,
+              hp: 100,
+              streak: 0,
+            } as any;
+          }
+          if (userData.stats.level === undefined) userData.stats.level = 1 as any;
+          if (userData.stats.xp === undefined) userData.stats.xp = 0 as any;
+          if (userData.stats.gold === undefined) userData.stats.gold = 0 as any;
+          if (userData.stats.hp === undefined) userData.stats.hp = 100 as any;
+          if (userData.stats.streak === undefined) userData.stats.streak = 0 as any;
+
+          // Set default values for streak-related fields if they don't exist
+          if (userData.stats.pomodoroStreak === undefined || userData.stats.pomodoroStreak === null) {
+            userData.stats.pomodoroStreak = 0;
+          }
+          if (userData.stats.maxPomodoroStreak === undefined || userData.stats.maxPomodoroStreak === null) {
+            userData.stats.maxPomodoroStreak = 0;
+          }
+
+          // Set default values for today's pomodoro stats if they don't exist
+          if (userData.stats.todaysSessions === undefined || userData.stats.todaysSessions === null) {
+            userData.stats.todaysSessions = 0;
+          }
+          if (userData.stats.todaysFocusSeconds === undefined || userData.stats.todaysFocusSeconds === null) {
+            userData.stats.todaysFocusSeconds = 0;
+          }
+
           setUser(userData);
           setLoading(false);
           setError(null);

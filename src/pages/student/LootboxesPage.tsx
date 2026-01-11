@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { LootboxesAPI } from "@/api/lootboxes.api";
+import { UsersAPI } from "@/api/users.api";
 import type { Lootbox } from "@/models/lootbox.model";
 import {
     Gift,
@@ -20,7 +21,7 @@ import "./lootbox-animation.css";
 type LootboxType = "common" | "rare" | "epic";
 
 // UI item types used in fallback mode
-type ItemType = "weapon" | "armor" | "accessory" | "potion";
+type ItemType = "weapon" | "armor" | "accessory" | "pet";
 type ItemRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
 interface GeneratedItem {
@@ -248,24 +249,32 @@ export default function LootboxesPage() {
     };
 
     const handleSaveForLater = async () => {
-        if (!pendingLootbox) return;
+        if (!pendingLootbox || !user) return;
 
         const lootbox = pendingLootbox;
         setShowOpenChoice(false);
 
         try {
             console.log("💾 Saving lootbox to inventory...");
+            // Charge gold then store lootbox
+            if (lootbox.price) {
+                const newGold = Math.max(0, (user.stats?.gold || 0) - lootbox.price);
+                await UsersAPI.patch(user.uid, { stats: { gold: newGold } });
+            }
+
+            await UsersAPI.addLootboxToInventory(user.uid, lootbox.id, 1);
             
             setSavedLootboxName(lootbox.name);
             setShowSaveSuccess(true);
             setPendingLootbox(null);
-            
+
             // Auto-close after 1.5 seconds
             setTimeout(() => {
                 setShowSaveSuccess(false);
             }, 1500);
         } catch (error: any) {
             console.error("Failed to save lootbox:", error);
+            alert(error?.message || "Lootbox kon niet opgeslagen worden. Probeer later opnieuw.");
             setPendingLootbox(null);
         }
     };
@@ -275,8 +284,8 @@ const getDefaultIcon = (type: ItemType): string => {
     const iconMap: Record<ItemType, string> = {
         weapon: "⚔️",
         armor: "🛡️",
-        potion: "🧪",
         accessory: "📿",
+        pet: "🐾",
     };
     return iconMap[type] || "📦";
 };

@@ -6,6 +6,7 @@ import {
 } from "../api/teacherDashboard.api";
 import { CoursesAPI } from "../api/courses.api";
 import { TasksAPI } from "../api/tasks.api";
+import { SubmissionsAPI } from "../api/submissions.api";
 import { cache, cacheKeys } from "../utils/cache";
 
 /**
@@ -51,15 +52,46 @@ export async function loadTeacherDashboard(teacherId: string): Promise<TeacherDa
         // Load tasks for each module to get accurate task counts
         const modulePromises = modules.map(async (module) => {
           try {
-            const tasks = await TasksAPI.list({ 
-              courseId: course.courseId, 
-              moduleId: module.moduleId 
+            const tasks = await TasksAPI.list({
+              courseId: course.courseId,
+              moduleId: module.moduleId,
             });
             const taskCount = tasks.length;
-            
-          moduleStats[module.moduleId] = {
-            completedBy: 0, // Would need student progress data
-            completionRate: 0, // Would need student progress data
+
+            // Compute completion rate per module based on approved submissions per task
+            const completionPercents: number[] = [];
+
+            for (const task of tasks) {
+              try {
+                const submissions = await SubmissionsAPI.list(task.taskId, course.courseId, module.moduleId);
+
+                // Build latest submission per student (backend returns sorted by createdAt desc)
+                const latestByStudent = new Map<string, any>();
+                for (const sub of submissions as any[]) {
+                  const sid = sub.studentId;
+                  if (!sid) continue;
+                  if (!latestByStudent.has(sid)) {
+                    latestByStudent.set(sid, sub);
+                  }
+                }
+
+                const approvedCount = Array.from(latestByStudent.values()).filter((s: any) => s.status === "approved").length;
+                const percent = studentCount > 0 ? Math.round((approvedCount / studentCount) * 100) : 0;
+                completionPercents.push(percent);
+              } catch (err) {
+                console.warn(`⚠️ Failed to load submissions for task ${task.taskId}:`, err);
+              }
+            }
+
+            const completionRate = completionPercents.length > 0
+              ? Math.round(
+                  completionPercents.reduce((sum, p) => sum + p, 0) / completionPercents.length
+                )
+              : 0;
+
+            moduleStats[module.moduleId] = {
+              completedBy: Math.round((completionRate / 100) * studentCount),
+              completionRate,
               totalTasks: taskCount,
             };
           } catch (err) {

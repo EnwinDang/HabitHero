@@ -13,11 +13,22 @@ export interface User {
   stats: UserStats;
   settings?: UserSettings;
   worldMapProgress?: WorldMapProgress;
+  inventory?: {
+    inventory?: {
+      items?: any[];
+      lootboxes?: any[];
+    };
+    equiped?: Record<string, any>;
+    equippedBonuses?: Record<string, any>;
+    equippedStats?: Record<string, number>;
+  };
 }
 
 export interface UserStats {
   level: number;
   xp: number;  // Changed back to 'xp' to match Firebase
+  totalXP?: number; // Total XP accumulated across all levels
+  nextLevelXP?: number; // XP needed to reach next level
   gold: number;
   hp: number;
   streak: number;
@@ -30,6 +41,14 @@ export interface UserStats {
   loginStreak?: number;
   maxLoginStreak?: number;
   lastLoginDate?: string; // stored as YYYY-MM-DD string
+  todaysSessions?: number; // Sessions completed today
+  todaysFocusSeconds?: number; // Total focus seconds today
+  lastPomodoroDayKey?: string; // YYYY-MM-DD; last day pomodoro stats were recorded
+  totalStats?: Record<string, number>; // Calculated total stats (base + equipped)
+  battlesWon?: number; // Battles won
+  battlesPlayed?: number; // Total battles played
+  monstersDefeated?: number; // Monsters defeated
+  lootboxesOpened?: number; // Lootboxes opened
 }
 
 export interface UserSettings {

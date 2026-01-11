@@ -5,6 +5,7 @@ import { Plus, MoreVertical, Pencil, Trash2, Calendar, Link as LinkIcon, ArrowLe
 import { useCourses } from '../../store/courseStore';
 import { loadTasks, createTask, updateTask, deleteTask } from '../../services/task.service';
 import { CoursesAPI } from '../../api/courses.api';
+import { SubmissionsAPI } from '../../api/submissions.api';
 import { Modal } from '../../components/Modal';
 import { DropdownMenu } from '../../components/DropdownMenu';
 import { DropdownMenuItem } from '../../components/DropdownMenuItem';
@@ -105,6 +106,7 @@ export default function ModuleDetail() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
   const [totalStudents, setTotalStudents] = useState<number>(0);
+  const [taskCompletions, setTaskCompletions] = useState<Record<string, number>>({});
 
   // Load number of students in the course
   useEffect(() => {
@@ -148,6 +150,39 @@ export default function ModuleDetail() {
         const tasks = await loadTasks(courseId, moduleId);
         const mapped = tasks.map(task => mapTaskFromAPI(task, totalStudents));
         setExercises(mapped);
+
+        // Load real completion data for each task
+        if (tasks.length > 0) {
+          const completions: Record<string, number> = {};
+          
+          for (const task of tasks) {
+            try {
+              const submissions = await SubmissionsAPI.list(task.taskId, courseId, moduleId);
+              
+              // Get latest submission per student
+              const latestByStudent = new Map<string, any>();
+              for (const sub of submissions as any[]) {
+                const sid = sub.studentId;
+                if (!sid) continue;
+                if (!latestByStudent.has(sid)) {
+                  latestByStudent.set(sid, sub);
+                }
+              }
+              
+              // Count approved submissions
+              const approvedCount = Array.from(latestByStudent.values()).filter(
+                (s: any) => s.status === 'approved'
+              ).length;
+              
+              completions[task.taskId] = approvedCount;
+            } catch (err) {
+              console.warn(`Failed to load submissions for task ${task.taskId}:`, err);
+              completions[task.taskId] = 0;
+            }
+          }
+          
+          setTaskCompletions(completions);
+        }
       } catch (err) {
         console.error('Error loading exercises:', err);
         setError(err instanceof Error ? err.message : 'Failed to load exercises');
@@ -465,7 +500,7 @@ export default function ModuleDetail() {
                   </td>
                   <td className="px-5 py-4" style={{ textAlign: 'center' }}>
                     <span style={{ fontSize: 14, fontWeight: 650 }}>
-                      {!e.total || e.total === 0 ? 'No students' : `${e.completed || 0} / ${e.total} students`}
+                      {!e.total || e.total === 0 ? 'No students' : `${taskCompletions[e.id] || 0} / ${e.total} students`}
                     </span>
                   </td>
                   <td className="px-5 py-4" style={{ textAlign: 'center' }}>

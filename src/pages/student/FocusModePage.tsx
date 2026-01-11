@@ -189,13 +189,13 @@ export default function FocusModePage() {
                 <div className="flex justify-between items-center py-2" style={{ ...theme.borderStyle, borderBottomWidth: '1px', borderBottomStyle: 'solid' }}>
                   <span className={theme.textMuted}>Sessions</span>
                   <span className={`font-bold ${theme.text}`}>
-                    {sessionsCompleted}
+                    {user?.stats?.todaysSessions ?? sessionsCompleted}
                   </span>
                 </div>
                 <div className="flex justify-between items-center py-2">
                   <span className={theme.textMuted}>Focus Time</span>
                   <span className="font-bold" style={{ color: accentColor }}>
-                    {Math.floor(totalFocusSeconds / 60)} min
+                    {Math.floor((user?.stats?.todaysFocusSeconds ?? totalFocusSeconds) / 60)} min
                   </span>
                 </div>
               </div>
@@ -275,19 +275,21 @@ function SidebarItem({
   label,
   active = false,
   onClick,
+  darkMode,
 }: {
   icon: React.ReactNode;
   label: string;
   active?: boolean;
   onClick: () => void;
+  darkMode: boolean;
 }) {
   return (
     <li>
       <button
         onClick={onClick}
         className={`flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-all ${active
-          ? "bg-purple-50 text-purple-600 border border-purple-200"
-          : "text-gray-600 hover:bg-gray-50"
+          ? darkMode ? "bg-purple-900/30 text-purple-300 border border-purple-700/50" : "bg-purple-50 text-purple-600 border border-purple-200"
+          : darkMode ? "text-gray-400 hover:bg-gray-800" : "text-gray-600 hover:bg-gray-50"
           }`}
       >
         {icon}

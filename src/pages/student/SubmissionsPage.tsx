@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { SubmissionsAPI, type Submission } from "@/api/submissions.api";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
-import { FileCheck, Loader2, Clock, CheckCircle, XCircle, ExternalLink, X, Upload, Gift, Coins } from "lucide-react";
+import { FileCheck, Loader2, Clock, CheckCircle, XCircle, ExternalLink, X, Upload, Gift, Coins, Zap } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import LevelUpAnimation from "@/components/LevelUpAnimation";
@@ -20,6 +20,7 @@ export default function StudentSubmissionsPage() {
   const [claiming, setClaiming] = useState<string | null>(null);
   const [claimingAll, setClaimingAll] = useState(false);
   const [rewardModal, setRewardModal] = useState<{ open: boolean; xp: number; gold: number; leveledUp: boolean; newLevel?: number; taskTitles?: string[] } | null>(null);
+  const [showXPAnimation, setShowXPAnimation] = useState(false);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
@@ -78,6 +79,10 @@ export default function StudentSubmissionsPage() {
     try {
       setClaiming(sub.submissionId);
       const result = await SubmissionsAPI.claim(sub.taskId, sub.courseId, sub.moduleId);
+      
+      // Trigger XP animation
+      setShowXPAnimation(true);
+      setTimeout(() => setShowXPAnimation(false), 1500);
       
       // Show reward modal with XP and gold
       setRewardModal({
@@ -167,20 +172,20 @@ export default function StudentSubmissionsPage() {
 
   const statusConfig = {
     pending: {
-      color: "text-amber-600",
-      bg: "bg-amber-100",
+      color: darkMode ? "text-amber-400" : "text-amber-600",
+      bg: darkMode ? "bg-amber-900/30" : "bg-amber-100",
       icon: <Clock className="w-4 h-4" />,
       label: "Pending Review",
     },
     approved: {
-      color: "text-emerald-600",
-      bg: "bg-emerald-100",
+      color: darkMode ? "text-emerald-400" : "text-emerald-600",
+      bg: darkMode ? "bg-emerald-900/30" : "bg-emerald-100",
       icon: <CheckCircle className="w-4 h-4" />,
       label: "Approved",
     },
     rejected: {
-      color: "text-rose-600",
-      bg: "bg-rose-100",
+      color: darkMode ? "text-rose-400" : "text-rose-600",
+      bg: darkMode ? "bg-rose-900/30" : "bg-rose-100",
       icon: <XCircle className="w-4 h-4" />,
       label: "Needs Revision",
     },
@@ -215,7 +220,7 @@ export default function StudentSubmissionsPage() {
                   </>
                 ) : (
                   <>
-                    <Gift className="w-5 h-5" />
+                    <Zap className="w-5 h-5" />
                     Claim All Rewards ({submissions.filter(s => s.status === "approved" && !s.claimedAt).length})
                   </>
                 )}
@@ -314,9 +319,9 @@ export default function StudentSubmissionsPage() {
                   )}
 
                   {sub.teacherComment && sub.status === "rejected" && (
-                    <div className="mt-4 p-4 rounded-lg bg-rose-50 border border-rose-200">
-                      <p className="text-sm font-semibold text-rose-900 mb-1">Teacher Feedback:</p>
-                      <p className="text-sm text-rose-800">{sub.teacherComment}</p>
+                    <div className={`mt-4 p-4 rounded-lg border ${darkMode ? 'bg-rose-900/20 border-rose-700/40' : 'bg-rose-50 border-rose-200'}`}>
+                      <p className={`text-sm font-semibold ${darkMode ? 'text-rose-300' : 'text-rose-900'} mb-1`}>Teacher Feedback:</p>
+                      <p className={`text-sm ${darkMode ? 'text-rose-200' : 'text-rose-800'}`}>{sub.teacherComment}</p>
                       
                       {/* Resubmit Button */}
                       <div className="mt-3">
@@ -350,8 +355,8 @@ export default function StudentSubmissionsPage() {
                   )}
 
                   {sub.status === "approved" && !sub.claimedAt && (
-                    <div className="mt-4 p-4 rounded-lg bg-emerald-50 border border-emerald-200">
-                      <p className="text-sm text-emerald-800 mb-3">
+                    <div className={`mt-4 p-4 rounded-lg border ${darkMode ? 'bg-emerald-900/20 border-emerald-700/40' : 'bg-emerald-50 border-emerald-200'}`}>
+                      <p className={`text-sm mb-3 ${darkMode ? 'text-emerald-200' : 'text-emerald-800'}`}>
                         ✓ Approved! Your rewards are ready.
                       </p>
                       <button
@@ -366,7 +371,7 @@ export default function StudentSubmissionsPage() {
                           </>
                         ) : (
                           <>
-                            <Gift className="w-4 h-4" />
+                            <Zap className="w-4 h-4" />
                             Claim Rewards
                           </>
                         )}
@@ -375,8 +380,8 @@ export default function StudentSubmissionsPage() {
                   )}
 
                   {sub.claimedAt && (
-                    <div className="mt-4 p-4 rounded-lg bg-blue-50 border border-blue-200">
-                      <p className="text-sm text-blue-800">
+                    <div className={`mt-4 p-4 rounded-lg border ${darkMode ? 'bg-blue-900/20 border-blue-700/40' : 'bg-blue-50 border-blue-200'}`}>
+                      <p className={`text-sm ${darkMode ? 'text-blue-200' : 'text-blue-800'}`}>
                         ✓ Rewards claimed on {new Date(sub.claimedAt).toLocaleDateString()}
                       </p>
                     </div>
@@ -417,8 +422,8 @@ export default function StudentSubmissionsPage() {
             )}
             
             <div className="space-y-4">
-              <div className="flex items-center justify-center gap-3 p-4 rounded-xl" style={{ backgroundColor: darkMode ? 'rgba(147, 51, 234, 0.1)' : 'rgba(147, 51, 234, 0.05)' }}>
-                <div className="text-3xl">⚡</div>
+              <div className="flex items-center justify-center gap-3 p-4 rounded-xl animate-pulse" style={{ backgroundColor: darkMode ? 'rgba(147, 51, 234, 0.1)' : 'rgba(147, 51, 234, 0.05)' }}>
+                <Zap className="w-8 h-8" style={{ color: accentColor }} />
                 <div>
                   <div className={`text-sm ${theme.textMuted}`}>XP Gained</div>
                   <div className="text-2xl font-bold" style={{ color: accentColor }}>+{rewardModal.xp}</div>

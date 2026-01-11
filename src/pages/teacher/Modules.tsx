@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Plus, BookOpen, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import { useCourses } from '../../store/courseStore';
+import { useAuth } from '../../context/AuthContext';
+import { loadTeacherDashboard } from '../../services/teacherDashboard.service';
 import { Modal } from '../../components/Modal';
 import { DropdownMenuItem } from '../../components/DropdownMenuItem';
 
@@ -143,6 +145,7 @@ function ModuleDropdownMenu({ module, courseId, onEdit, onDelete, onToggleActive
 
 export default function Modules() {
   const navigate = useNavigate();
+  const { firebaseUser } = useAuth();
   const {
     courses,
     loading,
@@ -152,6 +155,31 @@ export default function Modules() {
     setModuleActive,
     deleteModule,
   } = useCourses();
+
+  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
+
+  // Fetch dashboard data for module completion rates
+  useEffect(() => {
+    if (!firebaseUser?.uid) {
+      setLoadingDashboard(false);
+      return;
+    }
+
+    async function fetchDashboard() {
+      try {
+        setLoadingDashboard(true);
+        const data = await loadTeacherDashboard(firebaseUser!.uid);
+        setDashboardData(data);
+      } catch (err) {
+        console.error('Error loading dashboard for modules:', err);
+      } finally {
+        setLoadingDashboard(false);
+      }
+    }
+
+    fetchDashboard();
+  }, [firebaseUser?.uid]);
 
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -451,7 +479,7 @@ export default function Modules() {
                               <div className="hh-progress">
                                 <div 
                                   className="hh-progress__bar" 
-                                  style={{ width: `${m.completion || 0}%` }}
+                                  style={{ width: `${dashboardData?.managedCourses?.[course.id]?.modules?.[m.id]?.completionRate || 0}%` }}
                                 />
                               </div>
                             </div>

@@ -1,10 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import type React from "react";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
-import { db, auth } from "@/firebase";
-import { collection, addDoc, deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { db, auth, storage } from "@/firebase";
+import { collection, addDoc, deleteDoc, doc, updateDoc, getDocs, getDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import type { Task } from "@/models/task.model";
+import { SubmissionsAPI, type Submission } from "@/api/submissions.api";
+import { Modal } from "@/components/Modal";
+import { cache, cacheKeys } from "@/utils/cache";
 import {
   Calendar,
   Trash2,
@@ -13,6 +18,11 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Upload,
+  Image as ImageIcon,
 } from "lucide-react";
 
 export default function CalendarPage() {
@@ -31,6 +41,133 @@ export default function CalendarPage() {
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Submissions state
+  const [submissions, setSubmissions] = useState<Record<string, Submission>>({});
+  const [courseTasks, setCourseTasks] = useState<Task[]>([]);
+  const [courseTasksLoaded, setCourseTasksLoaded] = useState(false);
+  
+  // Submission modal state
+  const [submissionModal, setSubmissionModal] = useState<Task | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  // Load course tasks and submissions
+  useEffect(() => {
+    async function loadCourseTasks() {
+      if (!user) return;
+      
+      try {
+        // Check cache first
+        const cacheKey = cacheKeys.tasks();
+        const cachedTasks = cache.get(cacheKey);
+        
+        if (cachedTasks && Array.isArray(cachedTasks)) {
+          console.log('📦 Using cached course tasks');
+          setCourseTasks(cachedTasks as Task[]);
+          
+          // Also check for cached submissions
+          const submissionsCacheKey = 'submissions:all';
+          const cachedSubmissions = cache.get(submissionsCacheKey);
+          if (cachedSubmissions) {
+            setSubmissions(cachedSubmissions as Record<string, Submission>);
+          }
+          
+          setCourseTasksLoaded(true);
+          return;
+        }
+        
+        // Get all courses and their modules to load tasks
+        const coursesRef = collection(db, "courses");
+        const coursesSnapshot = await getDocs(coursesRef);
+        
+        const allTasks: Task[] = [];
+        const taskIds: string[] = [];
+        
+        for (const courseDoc of coursesSnapshot.docs) {
+          const courseId = courseDoc.id;
+
+          // Students should only see tasks for courses they are enrolled in
+          if ((user as any)?.role === "student") {
+            const enrollmentSnap = await getDoc(doc(db, `courses/${courseId}/students/${user.uid}`));
+            if (!enrollmentSnap.exists()) {
+              continue; // skip courses where the student is not enrolled
+            }
+          }
+
+          const modulesRef = collection(db, `courses/${courseId}/modules`);
+          const modulesSnapshot = await getDocs(modulesRef);
+          
+          for (const moduleDoc of modulesSnapshot.docs) {
+            const moduleId = moduleDoc.id;
+            const tasksRef = collection(db, `courses/${courseId}/modules/${moduleId}/tasks`);
+            const tasksSnapshot = await getDocs(tasksRef);
+            
+            tasksSnapshot.docs.forEach(taskDoc => {
+              const task = {
+                taskId: taskDoc.id,
+                courseId,
+                moduleId,
+                ...taskDoc.data()
+              } as Task;
+              allTasks.push(task);
+              taskIds.push(taskDoc.id);
+            });
+          }
+        }
+        
+        setCourseTasks(allTasks);
+        cache.set(cacheKey, allTasks);
+        
+        // Load submissions for all these tasks
+        if (taskIds.length > 0) {
+          const allSubmissions: Record<string, Submission> = {};
+          
+          // Group tasks by course and module for efficient loading
+          const tasksByCourseModule = new Map<string, Task[]>();
+          allTasks.forEach(task => {
+            if (task.courseId && task.moduleId) {
+              const key = `${task.courseId}:${task.moduleId}`;
+              if (!tasksByCourseModule.has(key)) {
+                tasksByCourseModule.set(key, []);
+              }
+              tasksByCourseModule.get(key)!.push(task);
+            }
+          });
+          
+          // Load submissions per course/module
+          for (const [key, moduleTasks] of tasksByCourseModule) {
+            const [courseId, moduleId] = key.split(':');
+            const subs = await SubmissionsAPI.listLatestByTasks(
+              moduleTasks.map(t => t.taskId),
+              courseId,
+              moduleId
+            );
+            Object.assign(allSubmissions, subs);
+          }
+          
+          setSubmissions(allSubmissions);
+          cache.set('submissions:all', allSubmissions);
+        }
+        
+        setCourseTasksLoaded(true);
+      } catch (error) {
+        console.error("Error loading course tasks:", error);
+        setCourseTasksLoaded(true);
+      }
+    }
+    
+    loadCourseTasks();
+  }, [user]);
+
+  // Ensure UI updates when course tasks load
+  useEffect(() => {
+    // Trigger re-render when both personal and course tasks are available
+    if (courseTasksLoaded && selectedDate) {
+      // This effect simply ensures re-renders happen when data changes
+    }
+  }, [courseTasksLoaded, selectedDate, courseTasks, tasks]);
 
 
 
@@ -93,12 +230,16 @@ export default function CalendarPage() {
     );
   };
 
-  // Get tasks for a specific day
+  // Get tasks for a specific day (including personal tasks and course tasks)
   const getTasksForDay = (day: number): Task[] => {
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(
       day
     ).padStart(2, "0")}`;
-    return tasks.filter((task) => {
+    
+    // Combine personal tasks and course tasks
+    const allTasks = [...tasks, ...courseTasks];
+    
+    return allTasks.filter((task) => {
       // Check date field
       if (task.date === dateStr) return true;
       // Check dueAt timestamp
@@ -206,6 +347,53 @@ export default function CalendarPage() {
       console.log("✅ Task completed successfully!");
     } catch (error) {
       console.error("Failed to complete task:", error);
+    }
+  };
+
+  // Image selection for submission modal
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setImageFile(file);
+    if (file) {
+      setImagePreview(URL.createObjectURL(file));
+    } else {
+      setImagePreview(null);
+    }
+  };
+
+  // Submit evidence for course assignment
+  const handleSubmitEvidence = async () => {
+    if (!submissionModal || !imageFile || !user) return;
+
+    try {
+      setUploadingImage(true);
+
+      const ext = imageFile.name.split('.').pop() || 'jpg';
+      const path = `submissions/${submissionModal.courseId}/${submissionModal.moduleId}/${submissionModal.taskId}/${user.uid}/${Date.now()}.${ext}`;
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, imageFile);
+      const imageUrl = await getDownloadURL(storageRef);
+
+      const created = await SubmissionsAPI.create(
+        submissionModal.taskId,
+        submissionModal.courseId!,
+        submissionModal.moduleId!,
+        imageUrl
+      );
+
+      setSubmissions((prev) => ({
+        ...prev,
+        [submissionModal.taskId]: created,
+      }));
+
+      // Reset modal state
+      setSubmissionModal(null);
+      setImageFile(null);
+      setImagePreview(null);
+    } catch (err) {
+      console.error('Failed to submit evidence:', err);
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -339,8 +527,15 @@ export default function CalendarPage() {
                 }
 
                 const dayTasks = getTasksForDay(day);
-                const hasActiveTasks = dayTasks.some((t) => t.isActive);
-                const hasCompletedTasks = dayTasks.some((t) => !t.isActive);
+                const completedCount = dayTasks.filter(t => {
+                  // Check if personal task is completed (isActive = false)
+                  if (!t.isActive) return true;
+                  // Check if course task has an approved submission
+                  if (t.taskId && submissions[t.taskId]?.status === 'approved') return true;
+                  return false;
+                }).length;
+                const totalCount = dayTasks.length;
+                const isAllCompleted = totalCount > 0 && completedCount === totalCount;
 
                 return (
                   <button
@@ -379,15 +574,27 @@ export default function CalendarPage() {
                     >
                       {day}
                     </span>
-                    {/* Task Indicators */}
-                    {dayTasks.length > 0 && (
-                      <div className="flex gap-1 mt-1">
-                        {hasActiveTasks && (
-                          <div className="w-2 h-2 rounded-full bg-blue-500" />
-                        )}
-                        {hasCompletedTasks && (
-                          <div className="w-2 h-2 rounded-full bg-green-500" />
-                        )}
+                    {/* Task Progress Bar */}
+                    {totalCount > 0 && (
+                      <div className="flex flex-col items-center gap-1 mt-1 w-full px-2">
+                        <div 
+                          className="w-full h-1 rounded-full overflow-hidden"
+                          style={{
+                            backgroundColor: '#9ca3af'
+                          }}
+                        >
+                          <div 
+                            className="h-full"
+                            style={{
+                              width: `${(completedCount / totalCount) * 100}%`,
+                              backgroundColor: completedCount === totalCount ? '#22c55e' : completedCount > 0 ? '#f97316' : '#9ca3af',
+                              transition: 'width 0.3s ease'
+                            }}
+                          />
+                        </div>
+                        <span className={`text-xs font-semibold ${theme.textMuted}`}>
+                          {completedCount}/{totalCount}
+                        </span>
                       </div>
                     )}
                   </button>
@@ -405,14 +612,14 @@ export default function CalendarPage() {
               }}
             >
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500" />
+                <div className="w-6 h-1 rounded-full bg-green-500" />
                 <span className={`text-sm ${theme.textMuted}`}>
-                  Active Tasks
+                  All Completed
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-green-500" />
-                <span className={`text-sm ${theme.textMuted}`}>Completed</span>
+                <div className="w-6 h-1 rounded-full bg-gray-400" />
+                <span className={`text-sm ${theme.textMuted}`}>In Progress</span>
               </div>
             </div>
           </div>
@@ -466,17 +673,25 @@ export default function CalendarPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {selectedDayTasks.map((task) => (
-                      <TaskCard
-                        key={task.taskId}
-                        task={task}
-                        darkMode={darkMode}
-                        accentColor={accentColor}
-                        theme={theme}
-                        onDelete={() => handleDeleteTask(task.taskId)}
-                        onComplete={() => handleCompleteTask(task.taskId, task.isActive)}
-                      />
-                    ))}
+                    {selectedDayTasks.map((task) => {
+                      const isCourseAssignment = !!(task.courseId && task.moduleId);
+                      return (
+                        <TaskCard
+                          key={task.taskId}
+                          task={task}
+                          darkMode={darkMode}
+                          accentColor={accentColor}
+                          theme={theme}
+                          submission={submissions[task.taskId]}
+                          onDelete={() => handleDeleteTask(task.taskId)}
+                          onComplete={() =>
+                            isCourseAssignment
+                              ? setSubmissionModal(task)
+                              : handleCompleteTask(task.taskId, task.isActive)
+                          }
+                        />
+                      );
+                    })}
                   </div>
                 )}
 
@@ -539,6 +754,66 @@ export default function CalendarPage() {
           </div>
         </div>
       </main>
+      {/* Submission Modal */}
+      {submissionModal && (
+      <Modal
+        title={`Submit Evidence: ${submissionModal.title}`}
+        onClose={() => {
+          setSubmissionModal(null);
+          setImageFile(null);
+          setImagePreview(null);
+        }}
+        label="Assignment Submission"
+        maxWidth={640}
+        showClose
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${darkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+              <ImageIcon size={20} className="text-gray-500" />
+            </div>
+            <div>
+              <div className="font-medium">Upload your evidence image</div>
+              <div className="text-sm text-gray-500">JPG, PNG, or GIF. Max 5MB.</div>
+            </div>
+          </div>
+
+          {imagePreview ? (
+            <div className={`rounded-xl overflow-hidden border ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+              <img src={imagePreview} alt="Preview" className="w-full object-contain max-h-80" />
+            </div>
+          ) : (
+            <label className={`flex flex-col items-center justify-center gap-3 p-8 border-2 border-dashed rounded-xl cursor-pointer ${darkMode ? 'hover:bg-gray-800/40 border-gray-700' : 'hover:bg-gray-50 border-gray-300'}`}>
+              <input type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />
+              <ImageIcon size={28} className="text-gray-400" />
+              <div className="text-sm text-gray-500">Click to upload an image</div>
+            </label>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => {
+                setSubmissionModal(null);
+                setImageFile(null);
+                setImagePreview(null);
+              }}
+              className={`px-4 py-2 rounded-lg ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+              disabled={uploadingImage}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmitEvidence}
+              disabled={!imageFile || uploadingImage}
+              className="px-4 py-2 rounded-lg text-white disabled:opacity-60"
+              style={{ backgroundColor: accentColor }}
+            >
+              {uploadingImage ? 'Submitting...' : 'Submit'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+    )}
     </div>
   );
 }
@@ -547,8 +822,9 @@ export default function CalendarPage() {
 function TaskCard({
   task,
   darkMode,
-  accentColor: _accentColor,
+  accentColor,
   theme,
+  submission,
   onDelete,
   onComplete,
 }: {
@@ -556,10 +832,88 @@ function TaskCard({
   darkMode: boolean;
   accentColor: string;
   theme: ReturnType<typeof getThemeClasses>;
+  submission?: Submission;
   onDelete: () => void;
   onComplete: () => void;
 }) {
   const [showConfirm, setShowConfirm] = useState(false);
+  
+  // Check if this is a course assignment (has courseId and moduleId)
+  const isCourseAssignment = !!(task.courseId && task.moduleId);
+  
+  // Get submission status icon and text
+  const getSubmissionStatus = () => {
+    if (!submission) return null;
+    
+    switch (submission.status) {
+      case 'pending':
+        return { icon: Clock, text: 'Pending Review', color: 'text-yellow-500' };
+      case 'approved':
+        return { icon: CheckCircle2, text: 'Approved', color: 'text-green-500' };
+      case 'rejected':
+        return { icon: XCircle, text: 'Rejected', color: 'text-red-500' };
+      default:
+        return null;
+    }
+  };
+  
+  const submissionStatus = getSubmissionStatus();
+  
+  // Determine which button to show for course assignments
+  const getSubmitButton = () => {
+    if (!isCourseAssignment) return null;
+    
+    // No submission yet - show Submit button
+    if (!submission) {
+      return (
+        <button
+          onClick={onComplete}
+          className="px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1 text-white text-sm"
+          style={{ backgroundColor: accentColor }}
+          title="Submit evidence"
+        >
+          <Upload size={14} />
+          Submit
+        </button>
+      );
+    }
+    
+    // Rejected - show Resubmit button
+    if (submission.status === 'rejected') {
+      return (
+        <button
+          onClick={onComplete}
+          className="px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-1 text-white text-sm"
+          style={{ backgroundColor: accentColor }}
+          title="Resubmit evidence"
+        >
+          <Upload size={14} />
+          Resubmit
+        </button>
+      );
+    }
+    
+    // Pending - show waiting message
+    if (submission.status === 'pending') {
+      return (
+        <div className="px-3 py-1.5 text-xs text-yellow-500 italic">
+          Awaiting review
+        </div>
+      );
+    }
+    
+    // Approved - show completed checkmark
+    if (submission.status === 'approved') {
+      return (
+        <div className="flex items-center gap-1 text-green-500 text-sm">
+          <Check size={16} />
+          <span className="text-xs">Completed</span>
+        </div>
+      );
+    }
+    
+    return null;
+  };
 
   return (
     <div
@@ -583,45 +937,59 @@ function TaskCard({
             <span className={`text-xs px-2 py-1 rounded ${theme.textMuted}`}>
               Due: {task.date || (task.dueAt ? new Date(task.dueAt).toLocaleDateString() : 'No date')}
             </span>
+            {submissionStatus && (
+              <span className={`text-xs px-2 py-1 rounded flex items-center gap-1 ${submissionStatus.color}`}>
+                {submissionStatus.icon && <submissionStatus.icon size={14} />}
+                {submissionStatus.text}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {!task.isActive && <Check size={18} className={darkMode ? "text-emerald-300" : "text-green-500"} />}
-          {task.isActive && (
-            <button
-              onClick={onComplete}
-              className={`${darkMode ? "text-emerald-300 hover:text-emerald-200" : "text-green-500 hover:text-green-600"} p-1 rounded transition-colors`}
-              title="Mark as complete"
-            >
-              <Check size={18} />
-            </button>
-          )}
-          {showConfirm ? (
-            <div className="flex gap-1">
-              <button
-                onClick={() => {
-                  onDelete();
-                  setShowConfirm(false);
-                }}
-                className="text-xs px-2 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-              >
-                Delete
-              </button>
-              <button
-                onClick={() => setShowConfirm(false)}
-                className={`text-xs px-2 py-1 ${darkMode ? "bg-gray-600 hover:bg-gray-500" : "bg-gray-500 hover:bg-gray-600"} text-white rounded transition-colors`}
-              >
-                Cancel
-              </button>
-            </div>
+          {/* For course assignments, show submit/resubmit buttons */}
+          {isCourseAssignment ? (
+            getSubmitButton()
           ) : (
-            <button
-              onClick={() => setShowConfirm(true)}
-              className={`${darkMode ? "text-red-300 hover:text-red-200" : "text-red-400 hover:text-red-500"} p-1 rounded transition-colors`}
-              title="Delete task"
-            >
-              <Trash2 size={16} />
-            </button>
+            <>
+              {/* For personal tasks, show complete/delete buttons */}
+              {!task.isActive && <Check size={18} className={darkMode ? "text-emerald-300" : "text-green-500"} />}
+              {task.isActive && (
+                <button
+                  onClick={onComplete}
+                  className={`${darkMode ? "text-emerald-300 hover:text-emerald-200" : "text-green-500 hover:text-green-600"} p-1 rounded transition-colors`}
+                  title="Mark as complete"
+                >
+                  <Check size={18} />
+                </button>
+              )}
+              {showConfirm ? (
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => {
+                      onDelete();
+                      setShowConfirm(false);
+                    }}
+                    className={`text-xs px-2 py-1 ${darkMode ? "bg-red-600 hover:bg-red-700" : "bg-red-500 hover:bg-red-600"} text-white rounded transition-colors`}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    onClick={() => setShowConfirm(false)}
+                    className={`text-xs px-2 py-1 ${darkMode ? "bg-gray-600 hover:bg-gray-500" : "bg-gray-500 hover:bg-gray-600"} text-white rounded transition-colors`}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowConfirm(true)}
+                  className={`${darkMode ? "text-red-300 hover:text-red-200" : "text-red-400 hover:text-red-500"} p-1 rounded transition-colors`}
+                  title="Delete task"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>

@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { useCourses } from '../../store/courseStore';
 import { useAuth } from '../../context/AuthContext';
 import { loadCourseStudents } from '../../services/teacherDashboard.service';
+import { SubmissionsAPI } from '../../api/submissions.api';
+import { TasksAPI } from '../../api/tasks.api';
 import { cache, cacheKeys } from '../../utils/cache';
 
 interface StatusPillProps {
@@ -89,34 +91,82 @@ export default function Students() {
         console.log('Students data received:', studentsData);
         
         if (studentsData) {
-          // Convert students object to array and calculate status
-          const studentsArray = Object.entries(studentsData).map(([studentId, studentInfo]: [string, any]) => {
-            // Calculate completion percentage based on tasks completed
-            const completion = totalTasks > 0 ? Math.round((studentInfo.tasksCompleted / totalTasks) * 100) : 0;
-            
-            // Determine status based on completion
-            let studentStatus = 'On track';
-            if (completion >= 80) {
-              studentStatus = 'Ahead';
-            } else if (completion < 50) {
-              studentStatus = 'Behind';
+          // Load all tasks for the course to get real completion
+          const allTasks: any[] = [];
+          if (currentCourse.modules) {
+            for (const module of currentCourse.modules) {
+              try {
+                const tasks = await TasksAPI.list({
+                  courseId: currentCourse.id,
+                  moduleId: module.id,
+                });
+                allTasks.push(...tasks.map(t => ({ ...t, moduleId: module.id })));
+              } catch (err) {
+                console.warn(`Failed to load tasks for module ${module.id}:`, err);
+              }
             }
-            
-            // Calculate level from XP (assuming 100 XP per level for simplicity)
-            const level = Math.floor(studentInfo.totalXP / 100) + 1;
-            
-            return {
-              id: studentId,
-              name: studentInfo.displayName,
-              level: level,
-              completed: studentInfo.tasksCompleted,
-              total: totalTasks,
-              status: studentStatus,
-              totalXP: studentInfo.totalXP,
-              currentModule: studentInfo.currentModule,
-              lastActive: studentInfo.lastActive,
-            };
-          });
+          }
+          
+          const totalTasksCount = allTasks.length;
+          
+          // Convert students object to array and calculate real completion
+          const studentsArray = await Promise.all(
+            Object.entries(studentsData).map(async ([studentId, studentInfo]: [string, any]) => {
+              // Calculate real completion from approved submissions
+              let approvedCount = 0;
+              
+              for (const task of allTasks) {
+                try {
+                  const submissions = await SubmissionsAPI.list(
+                    task.taskId,
+                    currentCourse.id,
+                    task.moduleId
+                  );
+                  
+                  // Find latest submission for this student
+                  const studentSubmissions = (submissions as any[]).filter(
+                    s => s.studentId === studentId
+                  );
+                  
+                  if (studentSubmissions.length > 0) {
+                    // Get latest submission (backend returns sorted by createdAt desc)
+                    const latest = studentSubmissions[0];
+                    if (latest.status === 'approved') {
+                      approvedCount++;
+                    }
+                  }
+                } catch (err) {
+                  console.warn(`Failed to check submissions for task ${task.taskId}, student ${studentId}:`, err);
+                }
+              }
+              
+              // Calculate completion percentage based on approved tasks
+              const completion = totalTasksCount > 0 ? Math.round((approvedCount / totalTasksCount) * 100) : 0;
+              
+              // Determine status based on completion
+              let studentStatus = 'On track';
+              if (completion >= 80) {
+                studentStatus = 'Ahead';
+              } else if (completion < 50) {
+                studentStatus = 'Behind';
+              }
+              
+              // Calculate level from XP (assuming 100 XP per level for simplicity)
+              const level = Math.floor(studentInfo.totalXP / 100) + 1;
+              
+              return {
+                id: studentId,
+                name: studentInfo.displayName,
+                level: level,
+                completed: approvedCount,
+                total: totalTasksCount,
+                status: studentStatus,
+                totalXP: studentInfo.totalXP,
+                currentModule: studentInfo.currentModule,
+                lastActive: studentInfo.lastActive,
+              };
+            })
+          );
           
           console.log('Processed students array:', studentsArray);
           setStudents(studentsArray);
