@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sword, Shield, Dog, Package, Trophy, Plus, Trash2, Edit3, EyeOff, Coins, Loader2, Star, Target, Search } from 'lucide-react';
+import { Sword, Shield, Dog, Package, Trophy, Plus, Edit3, EyeOff, Coins, Loader2, Target, Search } from 'lucide-react';
 import { ItemsAPI } from '../../api/items.api';
 import { LootboxesAPI } from '../../api/lootboxes.api';
 import { AchievementsAPI } from '../../api/achievements.api';
@@ -46,20 +46,6 @@ const ItemManagement = () => {
 
     return name.includes(searchLower) || id.includes(searchLower) || rarity.includes(searchLower) || element.includes(searchLower);
   });
-
-  const handleDelete = async (entry: any) => {
-    const id = entry.itemId || entry.lootboxId || entry.achievementId;
-    const name = entry.name || entry.title || "this asset";
-    if (!window.confirm(`Are you sure you want to delete "${name}"?`)) return;
-    try {
-      if (activeTab === 'items') await ItemsAPI.delete(id, activeCollection);
-      else if (activeTab === 'lootboxes') await LootboxesAPI.delete(id);
-      else await AchievementsAPI.delete(id);
-      loadData();
-    } catch (err) {
-      console.error("Delete failed:", err);
-    }
-  };
 
   const getElementColor = (element: string) => {
     switch (element?.toLowerCase()) {
@@ -139,7 +125,6 @@ const ItemManagement = () => {
         </button>
       </div>
 
-      {/* TABS EN ZOEKBALK OP DEZELFDE HOOGTE */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div className="flex gap-4 bg-white p-2 rounded-[2rem] w-fit shadow-sm border border-violet-100">
           {['items', 'lootboxes', 'achievements'].map((tab) => (
@@ -189,7 +174,12 @@ const ItemManagement = () => {
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <div className="flex gap-1">
-                    {entry.enable === false && <span className="bg-rose-100 text-rose-600 text-[7px] font-black px-1.5 py-0.5 rounded uppercase flex items-center gap-1"><EyeOff size={8} /> Hidden</span>}
+                    {/* Badge aangepast naar Inactief met grijze look */}
+                    {entry.enable === false && (
+                      <span className="bg-slate-100 text-slate-500 text-[7px] font-black px-1.5 py-0.5 rounded uppercase flex items-center gap-1">
+                        <EyeOff size={8} /> Inactief
+                      </span>
+                    )}
                     <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md ${entry.rarity === 'legendary' || entry.category === 'world' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'}`}>
                       {entry.rarity || entry.category || 'General'}
                     </span>
@@ -218,9 +208,11 @@ const ItemManagement = () => {
                 </div>
                 <div className="flex gap-1">
                   <button onClick={() => { setEditItem({ item: entry, collection: activeTab === 'items' ? activeCollection : activeTab }); setIsModalOpen(true); }}
-                    className="p-2 hover:bg-violet-50 rounded-xl text-slate-300 hover:text-violet-600 transition-colors"><Edit3 size={16} /></button>
-                  <button onClick={() => handleDelete(entry)}
-                    className="p-2 hover:bg-rose-50 rounded-xl text-slate-300 hover:text-rose-500 transition-colors"><Trash2 size={16} /></button>
+                    className="p-2 hover:bg-violet-50 rounded-xl text-slate-300 hover:text-violet-600 transition-colors"
+                    title="Bewerk status of details"
+                  >
+                    <Edit3 size={16} />
+                  </button>
                 </div>
               </div>
             </div>
