@@ -3,11 +3,44 @@ import { usePomodoro } from "@/context/pomodoro";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { Settings, Flame } from "lucide-react";
 import XPToast from "@/components/XPToast";
+import { UsersAPI } from "@/api/users.api";
+import { StaminaBar } from "@/components/StaminaBar";
+import { useEffect, useState } from "react";
 
 export default function FocusModePage() {
   const { user, loading } = useRealtimeUser();
   const { darkMode, accentColor } = useTheme();
   const theme = getThemeClasses(darkMode, accentColor);
+  
+  // Stamina state
+  const [staminaData, setStaminaData] = useState<{
+    currentStamina: number;
+    maxStamina: number;
+    nextRegenIn: number;
+  } | null>(null);
+
+  // Fetch stamina data
+  useEffect(() => {
+    const fetchStamina = async () => {
+      if (!user) return;
+      
+      try {
+        const data = await UsersAPI.getStamina(user.uid);
+        setStaminaData({
+          currentStamina: data.currentStamina,
+          maxStamina: data.maxStamina,
+          nextRegenIn: data.nextRegenIn,
+        });
+      } catch (err) {
+        console.warn("Failed to fetch stamina:", err);
+      }
+    };
+
+    fetchStamina();
+    // Update stamina every 60 seconds
+    const interval = setInterval(fetchStamina, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   const {
     focusDuration,
@@ -73,10 +106,25 @@ export default function FocusModePage() {
 
       <main className="p-8 overflow-y-auto w-full">
         <div className="mb-8">
-          <h2 className={`text-3xl font-bold ${theme.text}`}>Focus Mode</h2>
-          <p style={theme.accentText}>
-            Stay focused with the Pomodoro technique
-          </p>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h2 className={`text-3xl font-bold ${theme.text}`}>Focus Mode</h2>
+              <p style={theme.accentText}>
+                Stay focused with the Pomodoro technique
+              </p>
+            </div>
+            {staminaData && (
+              <div className="flex-shrink-0" style={{ minWidth: '300px' }}>
+                <StaminaBar
+                  currentStamina={staminaData.currentStamina}
+                  maxStamina={staminaData.maxStamina}
+                  nextRegenIn={staminaData.nextRegenIn}
+                  showTimer={true}
+                  size="medium"
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">

@@ -4,6 +4,7 @@ import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { LootboxesAPI } from "@/api/lootboxes.api";
 import { UsersAPI } from "@/api/users.api";
 import type { Lootbox } from "@/models/lootbox.model";
+import { StaminaBar } from "@/components/StaminaBar";
 import {
     Gift,
     Box,
@@ -80,6 +81,36 @@ export default function LootboxesPage() {
     const [openingLootbox, setOpeningLootbox] = useState<DisplayLootbox | null>(null);
     const [backendLootboxes, setBackendLootboxes] = useState<BackendLootbox[]>([]);
     const [loadingBoxes, setLoadingBoxes] = useState<boolean>(true);
+    
+    // Stamina state
+    const [staminaData, setStaminaData] = useState<{
+        currentStamina: number;
+        maxStamina: number;
+        nextRegenIn: number;
+    } | null>(null);
+
+    // Fetch stamina data
+    useEffect(() => {
+        const fetchStamina = async () => {
+            if (!user) return;
+            
+            try {
+                const data = await UsersAPI.getStamina(user.uid);
+                setStaminaData({
+                    currentStamina: data.currentStamina,
+                    maxStamina: data.maxStamina,
+                    nextRegenIn: data.nextRegenIn,
+                });
+            } catch (err) {
+                console.warn("Failed to fetch stamina:", err);
+            }
+        };
+
+        fetchStamina();
+        // Update stamina every 60 seconds
+        const interval = setInterval(fetchStamina, 60000);
+        return () => clearInterval(interval);
+    }, [user]);
 
     useEffect(() => {
         let mounted = true;
@@ -303,10 +334,23 @@ const formatStatName = (stat: string): string => {
         <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
             <main className="p-8 overflow-y-auto">
                 {/* Header */}
-                <div className="mb-6 flex justify-between items-center">
-                    <div>
-                        <h2 className={`text-3xl font-bold ${theme.text}`}>Lootboxes</h2>
-                        <p className={theme.textMuted}>Open chests to discover powerful items!</p>
+                <div className="mb-6">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h2 className={`text-3xl font-bold ${theme.text}`}>Lootboxes</h2>
+                            <p className={theme.textMuted}>Open chests to discover powerful items!</p>
+                        </div>
+                        {staminaData && (
+                            <div className="flex-shrink-0" style={{ minWidth: '300px' }}>
+                                <StaminaBar
+                                    currentStamina={staminaData.currentStamina}
+                                    maxStamina={staminaData.maxStamina}
+                                    nextRegenIn={staminaData.nextRegenIn}
+                                    showTimer={true}
+                                    size="medium"
+                                />
+                            </div>
+                        )}
                     </div>
                     <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: darkMode ? 'rgba(251, 191, 36, 0.1)' : 'rgba(254, 243, 199, 1)' }}>
                         <Coins className="text-yellow-500" size={24} />

@@ -10,3 +10,24 @@ export interface DifficultyConfig {
   medium: number;
   hard: number;
 }
+
+export interface StaminaConfig {
+  max: number;
+  regenPerHour: number;
+  battleCost: {
+    normal: number;
+    elite: number;
+    miniBoss: number;
+    boss: number;
+  };
+}
+
+export interface GameConfigMain {
+  enemyMultiplier?: number;
+  rewardMultiplier?: number;
+  stamina: StaminaConfig;
+  streaks?: {
+    dailyTaskBonusGold?: number;
+    dailyTaskBonusXP?: number;
+  };
+}

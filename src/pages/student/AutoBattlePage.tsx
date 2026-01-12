@@ -18,6 +18,62 @@ import monsterWindImage from "@/assets/monsters/monster_wind.png";
 import monsterEarthImage from "@/assets/monsters/monster_earth.png";
 import { Trophy, Sparkles } from "lucide-react";
 
+// Round Transition Screen Component
+function RoundTransitionScreen({ onComplete }: { onComplete: () => void }) {
+    const [visibleLines, setVisibleLines] = useState<number[]>([]);
+    const lines = [
+        "They've adapted.",
+        "Power surges.",
+        "Round Two begins."
+    ];
+
+    useEffect(() => {
+        const timers: number[] = [];
+        
+        // Show lines one by one
+        lines.forEach((_, index) => {
+            const timer = window.setTimeout(() => {
+                setVisibleLines(prev => [...prev, index]);
+            }, index * 1500); // 1.5 seconds between each line
+            timers.push(timer);
+        });
+
+        // After all lines are shown, wait 1.5 seconds then complete
+        const completeTimer = window.setTimeout(() => {
+            onComplete();
+        }, lines.length * 1500 + 1500);
+        timers.push(completeTimer);
+        
+        return () => {
+            timers.forEach(timer => clearTimeout(timer));
+        };
+    }, [onComplete]);
+
+    return (
+        <div className="text-center" style={{ fontFamily: 'monospace' }}>
+            {lines.map((line, index) => (
+                <motion.p
+                    key={index}
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ 
+                        opacity: visibleLines.includes(index) ? 1 : 0,
+                        y: visibleLines.includes(index) ? 0 : 30
+                    }}
+                    transition={{ duration: 0.8 }}
+                    className="text-5xl font-bold text-white mb-6"
+                    style={{ 
+                        textShadow: '4px 4px 0px #000',
+                        color: '#ff6b6b',
+                        letterSpacing: '2px'
+                    }}
+                >
+                    {line}
+                </motion.p>
+            ))}
+        </div>
+    );
+}
+
 export default function AutoBattlePage() {
     const { darkMode, accentColor } = useTheme();
     const { user } = useRealtimeUser();
@@ -38,9 +94,27 @@ export default function AutoBattlePage() {
     const [monsterTier, setMonsterTier] = useState<'normal' | 'elite' | 'miniBoss' | 'boss'>('normal');
     const [showBossAnimation, setShowBossAnimation] = useState(false);
     const [battleRewards, setBattleRewards] = useState<{ xp: number; gold: number; leveledUp?: boolean; newLevel?: number; levelUpRewards?: any } | null>(null);
-    const [hpLost, setHpLost] = useState<number>(0);
     const [showWorldCompletion, setShowWorldCompletion] = useState(false);
     const [completedWorldName, setCompletedWorldName] = useState<string>("");
+    
+    // Round system for stages with multiple monsters
+    const [currentRound, setCurrentRound] = useState<number>(1);
+    const [monstersInStage, setMonstersInStage] = useState<string[]>([]); // Array of monster IDs for this stage
+    const [roundRewards, setRoundRewards] = useState<Array<{ xp: number; gold: number }>>([]); // Accumulate rewards from each round
+    const [showRoundTransition, setShowRoundTransition] = useState(false); // Show cinematic transition between rounds
+    const [roundRewardDisplay, setRoundRewardDisplay] = useState<{ xp: number; gold: number } | null>(null); // Show round rewards (not final)
+    
+    // Game config for tier-based stamina costs
+    const [gameConfig, setGameConfig] = useState<{
+        stamina: {
+            battleCost: {
+                normal: number;
+                elite: number;
+                miniBoss: number;
+                boss: number;
+            };
+        };
+    } | null>(null);
     
     // Animation states for Tekken-style combat
     const [playerBump, setPlayerBump] = useState(false);
@@ -61,6 +135,7 @@ export default function AutoBattlePage() {
     });
 
     const battleInterval = useRef<number | null>(null);
+    const damageNumberIdCounter = useRef<number>(0); // Counter for unique damage number IDs
 
     // Initialize battle data
     useEffect(() => {
@@ -86,6 +161,7 @@ export default function AutoBattlePage() {
                 
                 // Try to determine stage from monster position in world
                 // Get the world to find monster's position
+                let stageMonsters: string[] = [];
                 try {
                     const world = await WorldsAPI.get(battleWorldId);
                     const stages = (world as any).stages || [];
@@ -97,7 +173,10 @@ export default function AutoBattlePage() {
                             if (stage.values.includes(stateMonsterId)) {
                                 // Stage numbers are 1-indexed (stage 1, 2, 3, etc.)
                                 initialStage = stageIndex + 1;
+                                // Store all monsters in this stage for round system
+                                stageMonsters = stage.values.filter((id: string) => id && id.trim() !== '');
                                 console.log(`📍 Found monster at stage ${initialStage} in world ${battleWorldId}`);
+                                console.log(`👹 Stage ${initialStage} contains ${stageMonsters.length} monster(s):`, stageMonsters);
                                 break;
                             }
                         }
@@ -105,7 +184,15 @@ export default function AutoBattlePage() {
                 } catch (worldErr) {
                     console.warn("Could not determine stage from world, using default stage 1:", worldErr);
                     initialStage = 1;
+                    stageMonsters = [targetMonsterId]; // Fallback to single monster
                 }
+                
+                // Set monsters in stage and current round
+                if (stageMonsters.length === 0) {
+                    stageMonsters = [targetMonsterId]; // Fallback if no monsters found
+                }
+                setMonstersInStage(stageMonsters);
+                setCurrentRound(1); // Always start with round 1
 
                 setWorldId(battleWorldId);
                 setStage(initialStage);
@@ -155,15 +242,110 @@ export default function AutoBattlePage() {
                 setPlayer(newPlayer);
                 setBattleState(prev => ({ ...prev, playerHP: newPlayer.hp }));
 
-                // 3. Start combat session
-                const combat = await CombatAPI.start({
-                    worldId: battleWorldId,
-                    stage: initialStage,
-                    monsterId: targetMonsterId,
-                });
-                setCombatId(combat.combatId);
+                // 3. Fetch monster data to determine tier for stamina check
+                let monsterTierForStamina: string = 'normal';
+                try {
+                    const currentMonsterId = stageMonsters[0] || targetMonsterId;
+                    const monsterData = await MonstersAPI.get(currentMonsterId);
+                    monsterTierForStamina = monsterData.tier || 'normal';
+                } catch (monsterErr) {
+                    console.warn("Could not fetch monster data for tier, using default:", monsterErr);
+                }
 
-                // 4. Get monster stats WITH user level and equipped items for scaling
+                // 4. Check stamina before starting combat (tier-based cost)
+                try {
+                    const staminaData = await UsersAPI.getStamina(user.uid);
+                    
+                    // Get tier-based stamina cost
+                    const getStaminaCost = (tier: string): number => {
+                        if (!gameConfig?.stamina?.battleCost) {
+                            // Fallback to default costs if config not available
+                            switch (tier) {
+                                case 'boss': return 20;
+                                case 'miniBoss': return 12;
+                                case 'elite': return 8;
+                                case 'normal': return 5;
+                                default: return 20; // Default to max if unknown tier
+                            }
+                        }
+                        const costs = gameConfig.stamina.battleCost;
+                        switch (tier) {
+                            case 'boss': return costs.boss || 20;
+                            case 'miniBoss': return costs.miniBoss || 12;
+                            case 'elite': return costs.elite || 8;
+                            case 'normal': return costs.normal || 5;
+                            default: return costs.boss || 20; // Default to max if unknown tier
+                        }
+                    };
+                    
+                    const STAMINA_COST = getStaminaCost(monsterTierForStamina);
+
+                    if (staminaData.currentStamina < STAMINA_COST) {
+                        setError(`You need at least ${STAMINA_COST} stamina to fight this ${monsterTierForStamina} monster. Treat this like a test — review before retrying. You have ${staminaData.currentStamina} stamina.`);
+                        setLoading(false);
+                        return;
+                    }
+                } catch (staminaErr: any) {
+                    console.warn("Could not check stamina, proceeding anyway:", staminaErr);
+                    // Continue if stamina check fails (backward compatibility)
+                }
+
+                // 5. Start combat session (backend will also check and consume stamina)
+                try {
+                    const combat = await CombatAPI.start({
+                        worldId: battleWorldId,
+                        stage: initialStage,
+                        monsterId: targetMonsterId,
+                    });
+                    setCombatId(combat.combatId);
+                    
+                    // Refresh stamina after successful battle start
+                    // The useRealtimeUser hook will update automatically, but we can also manually refresh
+                    if (user) {
+                        try {
+                            await UsersAPI.getStamina(user.uid);
+                        } catch (err) {
+                            console.warn("Could not refresh stamina:", err);
+                        }
+                    }
+                } catch (combatErr: any) {
+                    // Handle stamina errors from backend
+                    if (combatErr.response?.status === 403 || combatErr.message?.includes('stamina')) {
+                        const errorData = combatErr.response?.data || {};
+                        const monsterTier = errorData.monsterTier || 'normal';
+                        
+                        // Get stamina cost from game config based on tier, or use errorData.required, or fallback to max
+                        const getStaminaCostForTier = (tier: string): number => {
+                            if (errorData.required) return errorData.required;
+                            if (!gameConfig?.stamina?.battleCost) {
+                                // Fallback to default costs if config not available
+                                switch (tier) {
+                                    case 'boss': return 20;
+                                    case 'miniBoss': return 12;
+                                    case 'elite': return 8;
+                                    case 'normal': return 5;
+                                    default: return 20; // Default to max if unknown tier
+                                }
+                            }
+                            const costs = gameConfig.stamina.battleCost;
+                            switch (tier) {
+                                case 'boss': return costs.boss || 20;
+                                case 'miniBoss': return costs.miniBoss || 12;
+                                case 'elite': return costs.elite || 8;
+                                case 'normal': return costs.normal || 5;
+                                default: return costs.boss || 20; // Default to max if unknown tier
+                            }
+                        };
+                        
+                        const requiredStamina = getStaminaCostForTier(monsterTier);
+                        setError(`You need at least ${requiredStamina} stamina to fight this ${monsterTier} monster. Treat this like a test — review before retrying. ${errorData.deficit ? `You need ${errorData.deficit} more stamina.` : ''}`);
+                        setLoading(false);
+                        return;
+                    }
+                    throw combatErr; // Re-throw other errors
+                }
+
+                // 5. Get monster stats WITH user level and equipped items for scaling
                 const userLevel = user.stats?.level || 1;
                 
                 // Count equipped items
@@ -174,19 +356,23 @@ export default function AutoBattlePage() {
                 if (equippedItems.pets && Object.keys(equippedItems.pets).length > 0) equippedItemsCount += Object.keys(equippedItems.pets).length;
                 if (equippedItems.accessoiries && Object.keys(equippedItems.accessoiries).length > 0) equippedItemsCount += Object.keys(equippedItems.accessoiries).length;
                 
-                // 5. Fetch the specific monster that was clicked
+                // 6. Determine which monster to fight (round 1 = first monster, round 2 = second monster)
+                const currentMonsterId = stageMonsters.length > 0 ? stageMonsters[0] : targetMonsterId;
+                console.log(`🎯 Round 1: Fighting monster ${currentMonsterId} (${stageMonsters.length} total monsters in stage)`);
+                
+                // Fetch the monster for round 1
                 let selectedMonster;
                 try {
-                    selectedMonster = await MonstersAPI.get(targetMonsterId);
-                    console.log(`✅ Found specific monster: ${selectedMonster.name} (${selectedMonster.monsterId})`);
+                    selectedMonster = await MonstersAPI.get(currentMonsterId);
+                    console.log(`✅ Found monster for round 1: ${selectedMonster.name} (${selectedMonster.monsterId})`);
                     
                     // Update tier based on actual monster tier
                     if (selectedMonster.tier) {
                         setMonsterTier(selectedMonster.tier as 'normal' | 'elite' | 'miniBoss' | 'boss');
                     }
                 } catch (monsterErr) {
-                    console.error(`Failed to fetch monster ${targetMonsterId}:`, monsterErr);
-                    setError(`Monster not found: ${stateMonsterName || targetMonsterId}`);
+                    console.error(`Failed to fetch monster ${currentMonsterId}:`, monsterErr);
+                    setError(`Monster not found: ${stateMonsterName || currentMonsterId}`);
                     setLoading(false);
                     return;
                 }
@@ -200,7 +386,7 @@ export default function AutoBattlePage() {
                     speed: number;
                     magic: number;
                     magicResist: number;
-                }>(`/combat/monster-stats/${battleWorldId}/${initialStage}/${userLevel}?monsterId=${selectedMonster.monsterId}&equippedItemsCount=${equippedItemsCount}`);
+                }>(`/combat/monster-stats/${battleWorldId}/${initialStage}/${userLevel}?monsterId=${currentMonsterId}&equippedItemsCount=${equippedItemsCount}`);
 
                 // Use monster's tier for animation
                 const monsterTierForAnimation = selectedMonster.tier || 'normal';
@@ -223,6 +409,9 @@ export default function AutoBattlePage() {
                 };
                 setEnemy(newEnemy);
                 setBattleState(prev => ({ ...prev, enemyHP: newEnemy.maxHP }));
+                
+                // Initialize round rewards array
+                setRoundRewards([]);
 
                 // Show boss animation if it's a boss or miniBoss (based on monster tier)
                 if (monsterTierForAnimation === 'boss' || monsterTierForAnimation === 'miniBoss') {
@@ -301,7 +490,8 @@ export default function AutoBattlePage() {
         addLog(`A wild ${enemy.name} appears!`, 'info');
         addLog('Auto-battle started!', 'info');
 
-        let currentPlayerHP = player.hp;
+        // Use battleState.playerHP if available (for round 2+), otherwise use player.hp
+        let currentPlayerHP = battleState.playerHP > 0 ? battleState.playerHP : player.hp;
         let currentEnemyHP = enemy.hp;
         let turn = 0;
         const battleLog: Array<{ type: string; attacker: string; defender: string; damage: number; hitType: string }> = [];
@@ -333,8 +523,9 @@ export default function AutoBattlePage() {
                 setTimeout(() => {
                     setEnemyHit(true);
                     if (damage > 0) {
+                        damageNumberIdCounter.current += 1;
                         setDamageNumbers(prev => [...prev, { 
-                            id: Date.now(), 
+                            id: damageNumberIdCounter.current, 
                             damage, 
                             x: 65, // Right side (enemy position)
                             y: 50, 
@@ -383,8 +574,9 @@ export default function AutoBattlePage() {
                     setTimeout(() => {
                         setPlayerHit(true);
                         if (enemyDamage > 0) {
+                            damageNumberIdCounter.current += 1;
                             setDamageNumbers(prev => [...prev, { 
-                                id: Date.now() + 1, 
+                                id: damageNumberIdCounter.current, 
                                 damage: enemyDamage, 
                                 x: 30, // Left side (player position)
                                 y: 0, 
@@ -432,8 +624,9 @@ export default function AutoBattlePage() {
                 setTimeout(() => {
                     setPlayerHit(true);
                     if (enemyDamage > 0) {
+                        damageNumberIdCounter.current += 1;
                         setDamageNumbers(prev => [...prev, { 
-                            id: Date.now(), 
+                            id: damageNumberIdCounter.current, 
                             damage: enemyDamage, 
                             x: 30, 
                             y: 0, 
@@ -482,8 +675,9 @@ export default function AutoBattlePage() {
                     setTimeout(() => {
                         setEnemyHit(true);
                         if (damage > 0) {
+                            damageNumberIdCounter.current += 1;
                             setDamageNumbers(prev => [...prev, { 
-                                id: Date.now() + 1, 
+                                id: damageNumberIdCounter.current, 
                                 damage, 
                                 x: 70, 
                                 y: 0, 
@@ -514,10 +708,185 @@ export default function AutoBattlePage() {
         }, 1500); // Battle speed: 1.5 seconds per turn
     };
 
+    // Process final rewards after all rounds are complete
+    const processFinalRewards = async (totalXp: number, totalGold: number, battleLogs: Array<{ type: string; attacker: string; defender: string; damage: number; hitType: string }>) => {
+        addLog(`🎊 All rounds complete! Total: ${totalXp} XP and ${totalGold} Gold!`, 'victory');
+        
+        // Update user stats in database with accumulated battle rewards
+        if (user?.uid && worldId) {
+            try {
+                const response = await apiFetch<{
+                    xpGained: number;
+                    newXp: number;
+                    newLevel: number;
+                    leveledUp: boolean;
+                    levelUpRewards?: any;
+                    rewardMultipliers?: any;
+                }>(`/users/${user.uid}/battle-rewards`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        xp: totalXp,
+                        gold: totalGold,
+                        worldId,
+                        stage,
+                        monsterName: enemy?.name,
+                        battleLogs,
+                        monstersDefeated: monstersInStage.length // Send count of monsters defeated
+                    })
+                });
+
+                // Check if level up occurred
+                if (response.leveledUp) {
+                    addLog(`⭐ LEVEL UP! You are now level ${response.newLevel}!`, 'levelup');
+                    addLog(`💰 Rewards (${response.rewardMultipliers?.totalMultiplier?.toFixed(2)}x multiplier)`, 'levelup');
+                    setBattleRewards({ 
+                        xp: response.xpGained, 
+                        gold: totalGold,
+                        leveledUp: true,
+                        newLevel: response.newLevel,
+                        levelUpRewards: response.levelUpRewards
+                    });
+                } else {
+                    setBattleRewards({ 
+                        xp: response.xpGained, 
+                        gold: totalGold,
+                        leveledUp: false
+                    });
+                }
+            } catch (statsErr) {
+                console.error("Failed to update user stats:", statsErr);
+                // Still show rewards even if database update fails
+                setBattleRewards({ xp: totalXp, gold: totalGold, leveledUp: false });
+            }
+        }
+        
+        // If user wins against a boss, show world completion animation
+        if (worldId && monsterTier === 'boss') {
+            try {
+                const world = await WorldsAPI.get(worldId);
+                setCompletedWorldName((world as any).name || worldId);
+                setShowWorldCompletion(true);
+                console.log(`🎉 Boss defeated! Showing world completion animation for ${worldId}`);
+            } catch (checkErr) {
+                console.error("Could not fetch world name:", checkErr);
+                // Still show animation with worldId as fallback
+                setCompletedWorldName(worldId);
+                setShowWorldCompletion(true);
+            }
+        }
+    };
+
+    // Start next round (round 2) - called after transition
+    const startNextRound = async () => {
+        if (!user || !worldId || monstersInStage.length < 2 || currentRound >= monstersInStage.length) {
+            return;
+        }
+
+        const nextRound = currentRound + 1;
+        const nextMonsterId = monstersInStage[nextRound - 1]; // Array is 0-indexed, rounds are 1-indexed
+        
+        console.log(`🔄 Starting Round ${nextRound} with monster: ${nextMonsterId}`);
+        setCurrentRound(nextRound);
+        setShowRoundTransition(false); // Hide transition screen
+        addLog(`--- Round ${nextRound} ---`, 'info');
+        addLog(`Preparing to fight the next monster...`, 'info');
+
+        try {
+            const userLevel = user.stats?.level || 1;
+            
+            // Count equipped items
+            const equippedItems = user?.inventory?.equiped || {};
+            let equippedItemsCount = 0;
+            if (equippedItems.weapon) equippedItemsCount++;
+            if (equippedItems.armor && Object.keys(equippedItems.armor).length > 0) equippedItemsCount += Object.keys(equippedItems.armor).length;
+            if (equippedItems.pets && Object.keys(equippedItems.pets).length > 0) equippedItemsCount += Object.keys(equippedItems.pets).length;
+            if (equippedItems.accessoiries && Object.keys(equippedItems.accessoiries).length > 0) equippedItemsCount += Object.keys(equippedItems.accessoiries).length;
+
+            // Fetch the next monster
+            const nextMonster = await MonstersAPI.get(nextMonsterId);
+            console.log(`✅ Found monster for round ${nextRound}: ${nextMonster.name} (${nextMonster.monsterId})`);
+
+            // Get monster stats
+            const monsterStats = await apiFetch<{
+                worldId: string;
+                stage: number;
+                attack: number;
+                hp: number;
+                defense: number;
+                speed: number;
+                magic: number;
+                magicResist: number;
+            }>(`/combat/monster-stats/${worldId}/${stage}/${userLevel}?monsterId=${nextMonsterId}&equippedItemsCount=${equippedItemsCount}`);
+
+            // Update tier
+            const nextMonsterTier = nextMonster.tier || 'normal';
+            setMonsterTier(nextMonsterTier as 'normal' | 'elite' | 'miniBoss' | 'boss');
+
+            // Create new combat session for round 2
+            const newCombat = await CombatAPI.start({
+                worldId: worldId!,
+                stage: stage,
+                monsterId: nextMonsterId,
+            });
+            setCombatId(newCombat.combatId);
+            console.log(`🆕 Created new combat session for round ${nextRound}: ${newCombat.combatId}`);
+
+            // Create new enemy for round 2
+            const newEnemy: BattleEnemy = {
+                id: nextMonster.monsterId,
+                name: nextMonster.name,
+                level: stage,
+                element: (nextMonster.elementType as any) || 'fire',
+                hp: monsterStats.hp,
+                maxHP: monsterStats.hp,
+                attack: monsterStats.attack,
+                defense: monsterStats.defense,
+                speed: monsterStats.speed,
+                emoji: "👾",
+                realmId: worldId,
+                levelId: stage,
+                tier: nextMonsterTier as 'normal' | 'elite' | 'miniBoss' | 'boss',
+            };
+
+            setEnemy(newEnemy);
+            
+            // Update player object to reflect current HP from battle state
+            setPlayer(prev => prev ? {
+                ...prev,
+                hp: battleState.playerHP, // Keep HP from previous round
+            } : null);
+            
+            // Reset battle state for new round (keep player HP from previous round)
+            setBattleState(prev => ({
+                ...prev,
+                enemyHP: newEnemy.maxHP,
+                isActive: false,
+                winner: null,
+                turn: 0,
+                // Keep playerHP from previous round - don't reset it
+            }));
+
+            // Show boss animation if needed
+            if (nextMonsterTier === 'boss' || nextMonsterTier === 'miniBoss') {
+                setShowBossAnimation(true);
+            } else {
+                // Start battle after a short delay
+                setTimeout(() => {
+                    runBattle();
+                }, 1000);
+            }
+        } catch (err) {
+            console.error("Failed to start next round:", err);
+            addLog("Error starting next round.", 'defeat');
+        }
+    };
+
     // End battle
     const endBattle = async (winner: 'player' | 'enemy', battleLogs: Array<{ type: string; attacker: string; defender: string; damage: number; hitType: string }> = []) => {
         console.log('🏁 EndBattle called with winner:', winner);
         console.log('📜 Battle logs:', battleLogs);
+        console.log(`📊 Current round: ${currentRound}, Total monsters: ${monstersInStage.length}`);
+        
         if (battleInterval.current) {
             clearInterval(battleInterval.current);
         }
@@ -534,7 +903,7 @@ export default function AutoBattlePage() {
         if (winner === 'player') {
             addLog(`Victory! ${enemy?.name} has been defeated!`, 'victory');
 
-            // Resolve on backend
+            // Resolve on backend to get rewards for this round
             if (combatId) {
                 try {
                     addLog("Saving progress...", 'info');
@@ -544,69 +913,44 @@ export default function AutoBattlePage() {
                         const xp = (result.reward as any).xp || (result.reward as any).xpGained || 0;
                         const gold = (result.reward as any).gold || (result.reward as any).goldGained || 0;
                         
-                        addLog(`🎉 You earned ${xp} XP and ${gold} Gold!`, 'victory');
-                        
-                        // Update user stats in database with battle rewards
-                        if (user?.uid) {
-                            try {
-                                const response = await apiFetch<{
-                                    xpGained: number;
-                                    newXp: number;
-                                    newLevel: number;
-                                    leveledUp: boolean;
-                                    levelUpRewards?: any;
-                                    rewardMultipliers?: any;
-                                }>(`/users/${user.uid}/battle-rewards`, {
-                                    method: 'POST',
-                                    body: JSON.stringify({
-                                        xp,
-                                        gold,
-                                        worldId,
-                                        stage,
-                                        monsterName: enemy?.name,
-                                        battleLogs
-                                    })
-                                });
-
-                                // Check if level up occurred
-                                if (response.leveledUp) {
-                                    addLog(`⭐ LEVEL UP! You are now level ${response.newLevel}!`, 'levelup');
-                                    addLog(`💰 Rewards (${response.rewardMultipliers?.totalMultiplier?.toFixed(2)}x multiplier)`, 'levelup');
-                                    setBattleRewards({ 
-                                        xp: response.xpGained, 
-                                        gold,
-                                        leveledUp: true,
-                                        newLevel: response.newLevel,
-                                        levelUpRewards: response.levelUpRewards
-                                    });
-                                } else {
-                                    setBattleRewards({ 
-                                        xp: response.xpGained, 
-                                        gold,
-                                        leveledUp: false
-                                    });
+                        // Store rewards for this round and check for next round
+                        setRoundRewards(prev => {
+                            const updated = [...prev, { xp, gold }];
+                            addLog(`🎉 Round ${currentRound} complete! Earned ${xp} XP and ${gold} Gold!`, 'victory');
+                            
+                            // Check if there's a next round using functional state update
+                            setCurrentRound(currentRoundValue => {
+                                const nextRound = currentRoundValue + 1;
+                                
+                                // Check if there's a next round
+                                if (monstersInStage.length >= nextRound) {
+                                    // Show round rewards (not final) - buttons will be disabled
+                                    setRoundRewardDisplay({ xp, gold });
+                                    
+                                    // After showing rewards, show transition screen
+                                    setTimeout(() => {
+                                        setRoundRewardDisplay(null);
+                                        setShowRoundTransition(true);
+                                    }, 3000); // Show rewards for 3 seconds
+                                    
+                                    return currentRoundValue; // Don't change round yet (will be updated in startNextRound)
                                 }
-                            } catch (statsErr) {
-                                console.error("Failed to update user stats:", statsErr);
-                                // Still show rewards even if database update fails
-                                setBattleRewards({ xp, gold, leveledUp: false });
-                            }
-                        }
+                                
+                                // All rounds complete - process final rewards
+                                const totalXp = updated.reduce((sum, r) => sum + r.xp, 0);
+                                const totalGold = updated.reduce((sum, r) => sum + r.gold, 0);
+                                
+                                // Process final rewards asynchronously
+                                setTimeout(() => {
+                                    processFinalRewards(totalXp, totalGold, battleLogs);
+                                }, 100);
+                                
+                                return currentRoundValue; // Keep current round
+                            });
+                            
+                            return updated;
+                        });
                         
-                        // If user wins against a boss, show world completion animation
-                        if (worldId && monsterTier === 'boss') {
-                            try {
-                                const world = await WorldsAPI.get(worldId);
-                                setCompletedWorldName((world as any).name || worldId);
-                                setShowWorldCompletion(true);
-                                console.log(`🎉 Boss defeated! Showing world completion animation for ${worldId}`);
-                            } catch (checkErr) {
-                                console.error("Could not fetch world name:", checkErr);
-                                // Still show animation with worldId as fallback
-                                setCompletedWorldName(worldId);
-                                setShowWorldCompletion(true);
-                            }
-                        }
                     }
                 } catch (err) {
                     console.error("Failed to resolve combat:", err);
@@ -614,12 +958,7 @@ export default function AutoBattlePage() {
                 }
             }
         } else {
-            // Calculate HP lost
-            if (player) {
-                const lost = player.maxHP - battleState.playerHP;
-                setHpLost(lost);
-                addLog(`💔 You lost ${lost} HP!`, 'defeat');
-            }
+            // No HP loss on defeat
             addLog(`Defeat! ${player?.name} has been defeated!`, 'defeat');
         }
     };
@@ -631,7 +970,6 @@ export default function AutoBattlePage() {
         }
         setCombatId(null);
         setBattleRewards(null);
-        setHpLost(0);
         setBattleState({
             playerHP: player?.hp || 100,
             enemyHP: enemy?.maxHP || 100,
@@ -1146,7 +1484,7 @@ export default function AutoBattlePage() {
                             </div>
 
                             {/* Battle Results Display - Pixel Style */}
-                            {battleState.winner && (
+                            {battleState.winner && !showRoundTransition && (
                                 <motion.div
                                     initial={{ scale: 0.8, opacity: 0 }}
                                     animate={{ scale: 1, opacity: 1 }}
@@ -1164,7 +1502,29 @@ export default function AutoBattlePage() {
                                             }}
                                         >
                                             <h3 className="text-4xl font-bold text-green-500 mb-6" style={{ textShadow: '3px 3px 0px #000' }}>VICTORY!</h3>
-                                            {battleRewards ? (
+                                            {/* Show round rewards if there's a next round, otherwise show final rewards */}
+                                            {roundRewardDisplay ? (
+                                                <>
+                                                    <p className="text-white mb-4 text-lg">Round {currentRound} Complete!</p>
+                                                    <div className="flex items-center justify-center gap-8">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-4xl">⭐</span>
+                                                            <div>
+                                                                <p className="text-sm text-white mb-1">XP</p>
+                                                                <p className="text-3xl font-bold text-green-500" style={{ textShadow: '2px 2px 0px #000' }}>+{roundRewardDisplay.xp}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-4xl">🪙</span>
+                                                            <div>
+                                                                <p className="text-sm text-white mb-1">GOLD</p>
+                                                                <p className="text-3xl font-bold text-yellow-500" style={{ textShadow: '2px 2px 0px #000' }}>+{roundRewardDisplay.gold}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-white mt-6 text-sm opacity-75">Preparing for next round...</p>
+                                                </>
+                                            ) : battleRewards ? (
                                                 <div className="flex items-center justify-center gap-8">
                                                     <div className="flex items-center gap-3">
                                                         <span className="text-4xl">⭐</span>
@@ -1184,28 +1544,31 @@ export default function AutoBattlePage() {
                                             ) : (
                                                 <p className="text-white mb-6">Loading rewards...</p>
                                             )}
-                                            <div className="mt-6 flex gap-4 justify-center">
-                                                <button
-                                                    onClick={resetBattle}
-                                                    className="px-6 py-3 font-bold text-white border-2 border-white"
-                                                    style={{
-                                                        background: '#333',
-                                                        fontFamily: 'monospace',
-                                                    }}
-                                                >
-                                                    RETRY
-                                                </button>
-                                                <button
-                                                    onClick={() => navigate('/student/world-map')}
-                                                    className="px-6 py-3 font-bold text-white border-2 border-white"
-                                                    style={{
-                                                        background: accentColor,
-                                                        fontFamily: 'monospace',
-                                                    }}
-                                                >
-                                                    EXIT
-                                                </button>
-                                            </div>
+                                            {/* Only show buttons if it's final rewards (not round rewards) */}
+                                            {!roundRewardDisplay && (
+                                                <div className="mt-6 flex gap-4 justify-center">
+                                                    <button
+                                                        onClick={resetBattle}
+                                                        className="px-6 py-3 font-bold text-white border-2 border-white"
+                                                        style={{
+                                                            background: '#333',
+                                                            fontFamily: 'monospace',
+                                                        }}
+                                                    >
+                                                        RETRY
+                                                    </button>
+                                                    <button
+                                                        onClick={() => navigate('/student/world-map')}
+                                                        className="px-6 py-3 font-bold text-white border-2 border-white"
+                                                        style={{
+                                                            background: accentColor,
+                                                            fontFamily: 'monospace',
+                                                        }}
+                                                    >
+                                                        EXIT
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                     {battleState.winner === 'enemy' && (
@@ -1217,15 +1580,10 @@ export default function AutoBattlePage() {
                                             }}
                                         >
                                             <h3 className="text-4xl font-bold text-red-500 mb-6" style={{ textShadow: '3px 3px 0px #000' }}>DEFEAT!</h3>
-                                            {hpLost > 0 && (
-                                                <div className="flex items-center justify-center gap-3 mb-6">
-                                                    <span className="text-4xl">❤️</span>
-                                                    <div>
-                                                        <p className="text-sm text-white mb-1">HP LOST</p>
-                                                        <p className="text-3xl font-bold text-red-500" style={{ textShadow: '2px 2px 0px #000' }}>-{hpLost}</p>
-                                                    </div>
-                                                </div>
-                                            )}
+                                            <div className="mb-6 space-y-2">
+                                                <p className="text-white text-lg opacity-90">Stamina will return.</p>
+                                                <p className="text-white text-lg opacity-90">Knowledge makes you stronger.</p>
+                                            </div>
                                             <div className="mt-6 flex gap-4 justify-center">
                                                 <button
                                                     onClick={resetBattle}
@@ -1255,6 +1613,24 @@ export default function AutoBattlePage() {
                         </div>
                     </div>
 
+                    {/* Round Transition Screen */}
+                    <AnimatePresence>
+                        {showRoundTransition && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="fixed inset-0 flex items-center justify-center"
+                                style={{
+                                    background: 'rgba(0, 0, 0, 0.98)',
+                                    zIndex: 9999,
+                                }}
+                            >
+                                <RoundTransitionScreen onComplete={() => startNextRound()} />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
                     {/* Battle Log - Below Fight */}
                     <div>
                         <div
@@ -1275,7 +1651,7 @@ export default function AutoBattlePage() {
                                 ) : (
                                     battleState.logs.map((log, index) => (
                                         <div
-                                            key={index}
+                                            key={`${log.timestamp}-${index}`}
                                             className={`p-3 rounded-lg text-sm ${log.type === 'victory' ? 'bg-green-500/20 text-green-600' :
                                                 log.type === 'defeat' ? 'bg-red-500/20 text-red-600' :
                                                     log.type === 'attack' ? `${theme.inputBg}` :

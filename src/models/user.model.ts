@@ -13,6 +13,12 @@ export interface User {
   stats: UserStats;
   settings?: UserSettings;
   worldMapProgress?: WorldMapProgress;
+  progression?: {
+    monstersDefeated?: number;
+    bossesDefeated?: number;
+    currentStage?: number;
+    currentWorldId?: string;
+  };
   inventory?: {
     inventory?: {
       items?: any[];
@@ -51,6 +57,9 @@ export interface UserStats {
   battlesPlayed?: number; // Total battles played
   monstersDefeated?: number; // Monsters defeated
   lootboxesOpened?: number; // Lootboxes opened
+  stamina?: number; // Current stamina (0 to maxStamina)
+  maxStamina?: number; // Maximum stamina (cached from config)
+  lastStaminaRegen?: number; // Timestamp (ms) of last regeneration calculation
 }
 
 export interface UserSettings {

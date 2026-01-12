@@ -37,6 +37,8 @@ export function useRealtimeUser() {
               gold: 0,
               hp: 100,
               streak: 0,
+              battlesWon: 0,
+              battlesPlayed: 0,
             } as any;
           }
           if (userData.stats.level === undefined) userData.stats.level = 1 as any;
@@ -44,6 +46,9 @@ export function useRealtimeUser() {
           if (userData.stats.gold === undefined) userData.stats.gold = 0 as any;
           if (userData.stats.hp === undefined) userData.stats.hp = 100 as any;
           if (userData.stats.streak === undefined) userData.stats.streak = 0 as any;
+          if (userData.stats.battlesWon === undefined) userData.stats.battlesWon = 0 as any;
+          if (userData.stats.battlesPlayed === undefined) userData.stats.battlesPlayed = 0 as any;
+          if (userData.stats.lootboxesOpened === undefined) userData.stats.lootboxesOpened = 0 as any;
 
           // Set default values for streak-related fields if they don't exist
           if (userData.stats.pomodoroStreak === undefined || userData.stats.pomodoroStreak === null) {

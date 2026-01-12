@@ -188,4 +188,31 @@ export const UsersAPI = {
       body: JSON.stringify({ durationMinutes }),
     });
   },
+
+  // Stamina
+  getStamina(uid: string): Promise<{
+    currentStamina: number;
+    maxStamina: number;
+    regenerationRate: number;
+    nextRegenIn: number;
+    timeUntilFull: number;
+    canBattle: boolean;
+  }> {
+    return apiFetch(`/users/${uid}/stamina`);
+  },
+
+  consumeStamina(
+    uid: string,
+    amount: number
+  ): Promise<{
+    success: boolean;
+    staminaBefore: number;
+    staminaAfter: number;
+    currentStamina: number;
+  }> {
+    return apiFetch(`/users/${uid}/stamina/consume`, {
+      method: "POST",
+      body: JSON.stringify({ amount }),
+    });
+  },
 };

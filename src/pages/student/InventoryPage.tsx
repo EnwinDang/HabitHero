@@ -9,6 +9,8 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "@/firebase";
 import type { StatBlock } from "@/models/item.model";
 import "./lootbox-animation.css";
+import { UsersAPI } from "@/api/users.api";
+import { StaminaBar } from "@/components/StaminaBar";
 import {
     Package,
     Sword,
@@ -95,6 +97,36 @@ export default function InventoryPage() {
     const [rerollConfirm, setRerollConfirm] = useState(false);
     const [sortRarity, setSortRarity] = useState<'none' | 'asc' | 'desc'>('none');
     const [rarityFilter, setRarityFilter] = useState<ItemRarity | 'all'>('all');
+    
+    // Stamina state
+    const [staminaData, setStaminaData] = useState<{
+        currentStamina: number;
+        maxStamina: number;
+        nextRegenIn: number;
+    } | null>(null);
+
+    // Fetch stamina data
+    useEffect(() => {
+        const fetchStamina = async () => {
+            if (!user) return;
+            
+            try {
+                const data = await UsersAPI.getStamina(user.uid);
+                setStaminaData({
+                    currentStamina: data.currentStamina,
+                    maxStamina: data.maxStamina,
+                    nextRegenIn: data.nextRegenIn,
+                });
+            } catch (err) {
+                console.warn("Failed to fetch stamina:", err);
+            }
+        };
+
+        fetchStamina();
+        // Update stamina every 60 seconds
+        const interval = setInterval(fetchStamina, 60000);
+        return () => clearInterval(interval);
+    }, [user]);
     const [showChestOpening, setShowChestOpening] = useState(false);
     const [openingLootboxData, setOpeningLootboxData] = useState<any | null>(null);
     const [revealedItems, setRevealedItems] = useState<any[]>([]);

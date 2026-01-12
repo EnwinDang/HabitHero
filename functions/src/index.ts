@@ -256,6 +256,297 @@ async function getUserRole(uid: string): Promise<string> {
   }
 }
 
+/**
+ * Helper: Achievement targets (fallback if not available from achievement catalog)
+ */
+const ACHIEVEMENT_TARGETS: Record<string, number> = {
+  first_task: 1,
+  task_master_10: 10,
+  task_master_50: 50,
+  task_master_100: 100,
+  focus_first: 1,
+  focus_10: 10,
+  streak_3: 3,
+  streak_7: 7,
+  streak_30: 30,
+  level_5: 5,
+  level_10: 10,
+  level_25: 25,
+  monster_first: 1,
+  monster_10: 10,
+  monster_50: 50,
+  monster_100: 100,
+};
+
+/**
+ * Helper: Update achievement progress for a user
+ */
+async function updateAchievementProgress(
+  uid: string,
+  achievementId: string,
+  newProgress: number
+): Promise<void> {
+  try {
+    // Get target from hardcoded list (fallback)
+    const target = ACHIEVEMENT_TARGETS[achievementId] || 1;
+    const isUnlocked = newProgress >= target;
+
+    const achievementRef = db.collection("users").doc(uid).collection("achievements").doc(achievementId);
+    
+    // Check if document exists
+    const existingDoc = await achievementRef.get();
+    const existingData = existingDoc.exists ? existingDoc.data() : {};
+    
+    // Don't decrease progress or lock an already unlocked achievement
+    const currentProgress = existingData.progress || 0;
+    const currentUnlocked = existingData.isUnlocked || false;
+    
+    const updateData: any = {
+      achievementId,
+      progress: Math.max(newProgress, currentProgress), // Never decrease progress
+      isUnlocked: currentUnlocked || isUnlocked, // Once unlocked, stay unlocked
+      updatedAt: Date.now(),
+    };
+    
+    // Set unlockedAt if just unlocked
+    if (isUnlocked && !currentUnlocked) {
+      updateData.unlockedAt = Date.now();
+    } else if (existingData.unlockedAt) {
+      updateData.unlockedAt = existingData.unlockedAt; // Preserve existing unlockedAt
+    }
+
+    await achievementRef.set(updateData, { merge: true });
+    
+    if (isUnlocked && !currentUnlocked) {
+      console.log(`🏆 Achievement unlocked: ${uid} - ${achievementId}!`);
+    }
+  } catch (error) {
+    console.error(`❌ Failed to update achievement ${achievementId} for user ${uid}:`, error);
+    // Don't throw - achievement updates shouldn't break main flow
+  }
+}
+
+/**
+ * Helper: Update level-related achievements
+ */
+async function updateLevelAchievements(uid: string, currentLevel: number): Promise<void> {
+  try {
+    // Query catalog for all level achievements
+    const achievementsRef = db.collection("achievements");
+    const snapshot = await achievementsRef.get();
+    
+    const levelAchievements = snapshot.docs
+      .map(doc => ({
+        achievementId: doc.id,
+        ...doc.data()
+      }))
+      .filter((achievement: any) => {
+        const category = (achievement.category || "").toLowerCase();
+        const id = (achievement.achievementId || "").toLowerCase();
+        return category === "level" || id.includes("level");
+      });
+
+    // Update all level achievements
+    await Promise.all(
+      levelAchievements.map(async (achievement: any) => {
+        await updateAchievementProgress(uid, achievement.achievementId, currentLevel);
+      })
+    );
+  } catch (error) {
+    console.error("Error updating level achievements:", error);
+  }
+}
+
+/**
+ * Helper: Update task-related achievements
+ * Queries catalog for all task achievements and updates them
+ */
+async function updateTaskAchievements(uid: string, totalCompletedTasks: number): Promise<void> {
+  try {
+    // Query catalog for all task-related achievements
+    const achievementsRef = db.collection("achievements");
+    const snapshot = await achievementsRef.get();
+    
+    const taskAchievements = snapshot.docs
+      .map(doc => ({
+        achievementId: doc.id,
+        ...doc.data()
+      }))
+      .filter((achievement: any) => {
+        const category = (achievement.category || "").toLowerCase();
+        const id = (achievement.achievementId || "").toLowerCase();
+        return category === "tasks" || category === "difficulty" || category === "task" ||
+               id.includes("task") || id.includes("easy") || id.includes("medium") ||
+               id.includes("hard") || id.includes("extreme");
+      });
+
+    // Update all task achievements
+    await Promise.all(
+      taskAchievements.map(async (achievement: any) => {
+        const target = achievement.condition?.value || 1;
+        await updateAchievementProgress(uid, achievement.achievementId, totalCompletedTasks);
+      })
+    );
+  } catch (error) {
+    console.error("Error updating task achievements:", error);
+  }
+}
+
+/**
+ * Helper: Update monster defeat achievements
+ * Queries catalog for all monster/combat achievements and updates them
+ */
+/**
+ * Calculate current stamina with regeneration
+ */
+/**
+ * Get stamina configuration from gameConfig/main
+ * Returns maxStamina, regenerationRate (in minutes), and battle costs by tier
+ */
+async function getStaminaConfig(): Promise<{ 
+  maxStamina: number; 
+  regenRateMinutes: number;
+  battleCosts: {
+    normal: number;
+    elite: number;
+    miniBoss: number;
+    boss: number;
+  };
+}> {
+  try {
+    const gameConfigSnap = await db.collection("gameConfig").doc("main").get();
+    const gameConfig = gameConfigSnap.exists ? (gameConfigSnap.data() || {}) : {};
+    
+    // Map gameConfig structure to our expected format
+    const staminaConfig = gameConfig.stamina || {};
+    const maxStamina = staminaConfig.max || 100;
+    const regenPerHour = staminaConfig.regenPerHour || 10;
+    
+    // Convert regenPerHour to regenRateMinutes (e.g., 10/hour = 6 minutes per point)
+    const regenRateMinutes = regenPerHour > 0 ? 60 / regenPerHour : 5;
+    
+    // Get battle costs by tier
+    const battleCost = staminaConfig.battleCost || {};
+    const battleCosts = {
+      normal: battleCost.normal || 5,
+      elite: battleCost.elite || 8,
+      miniBoss: battleCost.miniBoss || 12,
+      boss: battleCost.boss || 20,
+    };
+    
+    return { maxStamina, regenRateMinutes, battleCosts };
+  } catch (error) {
+    console.warn("Failed to get stamina config from gameConfig, using defaults:", error);
+    return { 
+      maxStamina: 100, 
+      regenRateMinutes: 5,
+      battleCosts: {
+        normal: 5,
+        elite: 8,
+        miniBoss: 12,
+        boss: 20,
+      }
+    };
+  }
+}
+
+/**
+ * Determine monster tier from stage number or monster data
+ */
+async function getMonsterTier(
+  worldId: string | undefined,
+  stage: number | undefined,
+  monsterId: string | undefined
+): Promise<'normal' | 'elite' | 'miniBoss' | 'boss'> {
+  // First, try to get tier from monster document if monsterId is provided
+  if (monsterId) {
+    try {
+      const monsterSnap = await db.collection("monsters").doc(monsterId).get();
+      if (monsterSnap.exists) {
+        const monsterData = monsterSnap.data();
+        const tier = monsterData?.tier;
+        if (tier === 'normal' || tier === 'elite' || tier === 'miniBoss' || tier === 'boss') {
+          return tier;
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to get monster tier from monster document:", error);
+    }
+  }
+  
+  // Fallback: determine tier from stage number using worldConfig
+  if (worldId && stage !== undefined) {
+    try {
+      const stageStructureSnap = await db.collection("worldConfig").doc("stageStructure").get();
+      if (stageStructureSnap.exists) {
+        const config = stageStructureSnap.data() || {};
+        const bossStage = config.bossStage || 10;
+        const miniBossStage = config.miniBossStage || 5;
+        const eliteStages = config.eliteStages || [];
+        
+        if (stage === bossStage) {
+          return 'boss';
+        } else if (stage === miniBossStage) {
+          return 'miniBoss';
+        } else if (eliteStages.includes(stage)) {
+          return 'elite';
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to get tier from stage structure:", error);
+    }
+  }
+  
+  // Default to normal
+  return 'normal';
+}
+
+async function calculateCurrentStamina(
+  currentStamina: number,
+  maxStamina: number,
+  lastRegen: number | undefined,
+  regenRateMinutes: number
+): Promise<{ stamina: number; lastRegen: number }> {
+  const now = Date.now();
+  const lastRegenTime = lastRegen || now;
+  const minutesPassed = (now - lastRegenTime) / 60000;
+  const pointsToAdd = Math.floor(minutesPassed / regenRateMinutes);
+  
+  const newStamina = Math.min(maxStamina, Math.max(0, currentStamina + pointsToAdd));
+  const newLastRegen = lastRegenTime + (pointsToAdd * regenRateMinutes * 60000);
+  
+  return { stamina: newStamina, lastRegen: newLastRegen };
+}
+
+async function updateMonsterDefeatAchievements(uid: string, totalMonstersDefeated: number): Promise<void> {
+  try {
+    // Query catalog for all monster/combat achievements
+    const achievementsRef = db.collection("achievements");
+    const snapshot = await achievementsRef.get();
+    
+    const monsterAchievements = snapshot.docs
+      .map(doc => ({
+        achievementId: doc.id,
+        ...doc.data()
+      }))
+      .filter((achievement: any) => {
+        const category = (achievement.category || "").toLowerCase();
+        const id = (achievement.achievementId || "").toLowerCase();
+        return category === "monster" || category === "combat" ||
+               id.includes("monster") || id.includes("monsters");
+      });
+
+    // Update all monster achievements
+    await Promise.all(
+      monsterAchievements.map(async (achievement: any) => {
+        await updateAchievementProgress(uid, achievement.achievementId, totalMonstersDefeated);
+      })
+    );
+  } catch (error) {
+    console.error("Error updating monster achievements:", error);
+  }
+}
+
 // ============ AUTH ============
 
 /**
@@ -283,6 +574,10 @@ app.get("/auth/me", requireAuth, async (req, res) => {
       const templateSnap = await db.collection("templates").doc("defaultPlayer").get();
       const defaultPlayer = templateSnap.data()?.player || {};
 
+      // Get stamina config for new users
+      const { maxStamina } = await getStaminaConfig();
+      const now = Date.now();
+
       const newUser = {
         uid,
         email: decoded.email,
@@ -305,6 +600,12 @@ app.get("/auth/me", requireAuth, async (req, res) => {
           loginStreak: 1,
           maxLoginStreak: 1,
           lastLoginDate: todayDateString, // Same format for consistency
+          stamina: maxStamina, // Start with full stamina
+          maxStamina: maxStamina,
+          lastStaminaRegen: now, // Initialize regeneration timestamp
+          battlesWon: 0, // Initialize battle tracking
+          battlesPlayed: 0, // Initialize battle tracking
+          lootboxesOpened: 0, // Initialize lootbox tracking
         },
       };
       await userRef.set(newUser);
@@ -330,6 +631,17 @@ app.get("/auth/me", requireAuth, async (req, res) => {
       updates["stats.totalXP"] = initTotalXP;
       updates["stats.nextLevelXP"] = levelData.nextLevelXP;
       console.log(`🔧 [Auth Init] Initialized stats for user ${uid}: level ${levelData.level}, totalXP ${initTotalXP}`);
+    }
+    
+    // Initialize battle tracking fields if missing
+    if (user.stats?.battlesWon === undefined || user.stats?.battlesWon === null) {
+      updates["stats.battlesWon"] = 0;
+    }
+    if (user.stats?.battlesPlayed === undefined || user.stats?.battlesPlayed === null) {
+      updates["stats.battlesPlayed"] = 0;
+    }
+    if (user.stats?.lootboxesOpened === undefined || user.stats?.lootboxesOpened === null) {
+      updates["stats.lootboxesOpened"] = 0;
     }
     
     // Calculate new login streak
@@ -367,6 +679,35 @@ app.get("/auth/me", requireAuth, async (req, res) => {
     updates["stats.loginStreak"] = loginStreak;
     updates["stats.maxLoginStreak"] = maxLoginStreak;
     updates["stats.lastLoginDate"] = todayDateString;
+
+    // Initialize stamina if missing (for existing users)
+    if (user.stats?.stamina === undefined || user.stats?.maxStamina === undefined) {
+      const { maxStamina } = await getStaminaConfig();
+      const now = Date.now();
+      
+      updates["stats.stamina"] = maxStamina;
+      updates["stats.maxStamina"] = maxStamina;
+      updates["stats.lastStaminaRegen"] = now;
+      console.log(`🔧 [Auth Init] Initialized stamina for user ${uid}: ${maxStamina}/${maxStamina}`);
+    } else {
+      // Update stamina with regeneration on login
+      const { maxStamina, regenRateMinutes } = await getStaminaConfig();
+      const currentStamina = user.stats?.stamina ?? maxStamina;
+      const lastRegen = user.stats?.lastStaminaRegen;
+
+      const { stamina, lastRegen: newLastRegen } = await calculateCurrentStamina(
+        currentStamina,
+        maxStamina,
+        lastRegen,
+        regenRateMinutes
+      );
+
+      if (stamina !== currentStamina || !user.stats?.maxStamina) {
+        updates["stats.stamina"] = stamina;
+        updates["stats.lastStaminaRegen"] = newLastRegen;
+        updates["stats.maxStamina"] = maxStamina;
+      }
+    }
 
     await userRef.update(updates);
 
@@ -1037,6 +1378,47 @@ app.post("/tasks/:taskId/claim", requireAuth, async (req, res) => {
       { merge: true }
     );
 
+    // Create or update a task document in user's tasks collection to track this claimed task
+    // This allows us to count completed tasks for achievements
+    // Use a unique ID that includes courseId and moduleId to avoid conflicts
+    const userTaskId = `${courseId}_${moduleId}_${taskId}`;
+    const userTaskRef = userRef.collection("tasks").doc(userTaskId);
+    const existingUserTask = await userTaskRef.get();
+    
+    // Only create/update if this task hasn't been tracked yet (to avoid double counting)
+    if (!existingUserTask.exists || !existingUserTask.data()?.claimedAt) {
+      await userTaskRef.set({
+        taskId,
+        courseId: String(courseId),
+        moduleId: String(moduleId),
+        isActive: false, // Mark as completed
+        completedAt: now,
+        claimedAt: now,
+        difficulty: difficulty,
+        name: taskData.name || "Task",
+      }, { merge: true });
+    }
+
+    // Count total completed tasks (from user's tasks collection) and update task achievements
+    // Note: Only count tasks WITH difficulty (exclude personal tasks without difficulty)
+    try {
+      const tasksSnapshot = await userRef.collection("tasks").where("isActive", "==", false).get();
+      const totalCompletedTasks = tasksSnapshot.docs.filter((doc) => {
+        const task = doc.data();
+        // Only count tasks that have a difficulty field (exclude personal tasks)
+        return task.difficulty && task.difficulty !== null && task.difficulty !== undefined;
+      }).length;
+      await updateTaskAchievements(uid, totalCompletedTasks);
+    } catch (error) {
+      console.error("Error updating task achievements on claim:", error);
+      // Don't fail the request if achievement update fails
+    }
+
+    // Update level achievements if leveled up
+    if (leveledUp) {
+      await updateLevelAchievements(uid, levelData.level);
+    }
+
     return res.status(200).json({
       success: true,
       xpGained,
@@ -1106,6 +1488,21 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
       completedAt: Date.now(),
     });
 
+    // Count total completed tasks and update task achievements
+    // Note: Only count tasks WITH difficulty (exclude personal tasks without difficulty)
+    const tasksSnapshot = await userRef.collection("tasks").where("isActive", "==", false).get();
+    const totalCompletedTasks = tasksSnapshot.docs.filter((doc) => {
+      const task = doc.data();
+      // Only count tasks that have a difficulty field (exclude personal tasks)
+      return task.difficulty && task.difficulty !== null && task.difficulty !== undefined;
+    }).length;
+    await updateTaskAchievements(uid, totalCompletedTasks);
+
+    // Update level achievements if leveled up
+    if (leveledUp) {
+      await updateLevelAchievements(uid, levelData.level);
+    }
+
     const response: any = {
       success: true,
       reward: {
@@ -1147,27 +1544,80 @@ app.post("/users/:uid/achievements/:achievementId/claim", requireAuth, async (re
     }
 
     const userRef = db.collection("users").doc(uid);
+    
+    // Use the achievement ID directly (same in both collections)
     const achievementRef = db.collection("users").doc(uid).collection("achievements").doc(achievementId);
+    const achievementSnap = await achievementRef.get();
 
-    // Get user and achievement data
-    const [userSnap, achievementSnap] = await Promise.all([
-      userRef.get(),
-      achievementRef.get()
-    ]);
-
+    // Get user data
+    const userSnap = await userRef.get();
     if (!userSnap.exists) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    if (!achievementSnap.exists) {
-      return res.status(404).json({ error: "Achievement not found" });
+    // Get catalog achievement for rewards (needed to get reward amounts)
+    const catalogRef = db.collection("achievements").doc(achievementId);
+    const catalogSnap = await catalogRef.get();
+    
+    if (!catalogSnap.exists) {
+      return res.status(404).json({ error: "Achievement catalog entry not found" });
     }
+    
+    const catalogData = catalogSnap.data() || {};
+    const target = catalogData.condition?.value || 1;
 
     const user = userSnap.data() || {};
-    const achievement = achievementSnap.data() || {};
+    
+    // If progress document doesn't exist, we need to check user stats to determine progress
+    let achievement = achievementSnap.exists ? achievementSnap.data() || {} : {};
+    let progress = achievement.progress || 0;
+    let isUnlocked = achievement.isUnlocked || false;
+    
+    // If document doesn't exist, try to determine progress from user stats based on achievement category/ID
+    if (!achievementSnap.exists) {
+      // Try to get progress from user stats based on achievement type
+      const achievementIdLower = achievementId.toLowerCase();
+      
+      if (achievementIdLower.includes('pomodoro') || achievementIdLower.includes('focus')) {
+        progress = user.stats?.focusSessionsCompleted || 0;
+      } else if (achievementIdLower.includes('monster')) {
+        progress = user.progression?.monstersDefeated || user.stats?.monstersDefeated || 0;
+      } else if (achievementIdLower.includes('streak')) {
+        progress = user.stats?.streak || 0;
+      } else if (achievementIdLower.includes('level')) {
+        progress = user.stats?.level || 1;
+      } else if (achievementIdLower.includes('task') || achievementIdLower.includes('easy') || 
+                 achievementIdLower.includes('medium') || achievementIdLower.includes('hard') || 
+                 achievementIdLower.includes('extreme')) {
+        // For task achievements, we'd need to count completed tasks
+        // For now, set to 0 and let the frontend handle it
+        progress = 0;
+      }
+      
+      isUnlocked = progress >= target;
+      
+      // Create the progress document
+      await achievementRef.set({
+        achievementId,
+        progress,
+        isUnlocked,
+        claimed: false,
+        updatedAt: Date.now(),
+      }, { merge: true });
+      achievement = { ...achievement, isUnlocked, progress };
+    } else {
+      // Document exists, but recalculate isUnlocked to ensure it's correct
+      isUnlocked = progress >= target;
+      if (achievement.isUnlocked !== isUnlocked) {
+        await achievementRef.update({
+          isUnlocked,
+          updatedAt: Date.now(),
+        });
+      }
+    }
 
     // Check if achievement is unlocked
-    if (!achievement.isUnlocked) {
+    if (!isUnlocked) {
       return res.status(400).json({ error: "Achievement is not unlocked yet" });
     }
 
@@ -1176,9 +1626,9 @@ app.post("/users/:uid/achievements/:achievementId/claim", requireAuth, async (re
       return res.status(400).json({ error: "Achievement already claimed" });
     }
 
-    // Calculate rewards
-    const xpReward = achievement.reward?.xp || 0;
-    const goldReward = achievement.reward?.gold || 0;
+    // Calculate rewards - use catalog data if available, fallback to progress document
+    const xpReward = catalogData.reward?.xp || achievement.reward?.xp || 0;
+    const goldReward = catalogData.reward?.gold || achievement.reward?.gold || 0;
 
     // Update user stats (use totalXP for level calculation)
     const currentTotalXP = user.stats?.totalXP ?? user.stats?.xp ?? 0;
@@ -1235,7 +1685,7 @@ app.post("/users/:uid/achievements/:achievementId/claim", requireAuth, async (re
 app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
   try {
     const { uid } = req.params;
-    const { xp, gold, worldId, stage, monsterName, battleLogs } = req.body;
+    const { xp, gold, worldId, stage, monsterName, battleLogs, monstersDefeated } = req.body;
 
     if (!uid) {
       return res.status(400).json({ error: "Missing uid" });
@@ -1327,15 +1777,44 @@ app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
     console.log(`🎮 Battle Reward: ${uid} earned ${scaledXp} XP and ${scaledGold} gold`);
     console.log(`📊 Level Check: Current=${currentLevel}, New=${levelData.level}, LeveledUp=${leveledUp}`);
 
-    // Update user stats
+    // Increment monstersDefeated counter (check both progression and stats for backwards compatibility)
+    // If monstersDefeated is provided in request (for multi-round battles), use it; otherwise default to 1
+    const monstersDefeatedCount = monstersDefeated || 1;
+    const fullUserData = userDoc.data() || {};
+    const currentMonstersDefeated = fullUserData.progression?.monstersDefeated || currentStats.monstersDefeated || 0;
+    const newMonstersDefeated = currentMonstersDefeated + monstersDefeatedCount;
+
+    // Increment battlesWon when battle rewards are given (battle was won)
+    const currentBattlesWon = currentStats.battlesWon || 0;
+    const currentBattlesPlayed = currentStats.battlesPlayed || 0;
+
+    // Update user stats and progression
     await userRef.update({
       "stats.level": levelData.level,
       "stats.xp": levelData.currentXP,
       "stats.nextLevelXP": levelData.nextLevelXP,
       "stats.totalXP": newTotalXP,
       "stats.gold": newGold,
+      "stats.battlesWon": currentBattlesWon + 1, // Increment battles won
+      "stats.battlesPlayed": Math.max(currentBattlesPlayed, currentBattlesWon + 1), // Ensure battlesPlayed is at least equal to battlesWon
+      "progression.monstersDefeated": newMonstersDefeated, // Update progression.monstersDefeated (primary)
+      "stats.monstersDefeated": newMonstersDefeated, // Also update stats.monstersDefeated for backwards compatibility
       updatedAt: Date.now(),
     });
+
+    // Update achievements
+    try {
+      // Update level achievements if leveled up
+      if (leveledUp) {
+        await updateLevelAchievements(uid, levelData.level);
+      }
+      
+      // Update monster defeat achievements
+      await updateMonsterDefeatAchievements(uid, newMonstersDefeated);
+    } catch (achievementError) {
+      console.error("Error updating achievements after battle reward:", achievementError);
+      // Don't fail the request if achievement update fails
+    }
 
     // Log battle in user's battle history if needed
     if (worldId && stage && monsterName) {
@@ -2631,6 +3110,137 @@ app.get("/users/:uid/stats", requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * GET /users/{uid}/stamina
+ * Get current stamina with regeneration calculated
+ */
+app.get("/users/:uid/stamina", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Get stamina system config
+    const { maxStamina, regenRateMinutes } = await getStaminaConfig();
+
+    const user = userSnap.data() || {};
+    const currentStamina = user.stats?.stamina ?? maxStamina;
+    const lastRegen = user.stats?.lastStaminaRegen;
+
+    // Calculate current stamina with regeneration
+    const { stamina, lastRegen: newLastRegen } = await calculateCurrentStamina(
+      currentStamina,
+      maxStamina,
+      lastRegen,
+      regenRateMinutes
+    );
+
+    // Update lastRegen if stamina changed
+    if (stamina !== currentStamina) {
+      await userRef.update({
+        "stats.stamina": stamina,
+        "stats.lastStaminaRegen": newLastRegen,
+        "stats.maxStamina": maxStamina
+      });
+    } else if (!user.stats?.maxStamina) {
+      // Ensure maxStamina is set
+      await userRef.update({
+        "stats.maxStamina": maxStamina
+      });
+    }
+
+    // Calculate time until next regeneration
+    const now = Date.now();
+    const minutesUntilNext = regenRateMinutes - ((now - newLastRegen) / 60000) % regenRateMinutes;
+    const nextRegenIn = Math.ceil(minutesUntilNext * 60000);
+
+    // Calculate time until full stamina
+    const pointsNeeded = maxStamina - stamina;
+    const timeUntilFull = pointsNeeded * regenRateMinutes * 60000;
+
+    return res.status(200).json({
+      currentStamina: stamina,
+      maxStamina,
+      regenerationRate: regenRateMinutes,
+      nextRegenIn,
+      timeUntilFull: stamina >= maxStamina ? 0 : timeUntilFull,
+      canBattle: stamina > 0
+    });
+  } catch (e: any) {
+    console.error("Error in GET /users/:uid/stamina:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
+ * POST /users/{uid}/stamina/consume
+ * Consume stamina (called internally by combat/start)
+ */
+app.post("/users/:uid/stamina/consume", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { amount } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: "Amount must be a positive number" });
+    }
+
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Get stamina system config
+    const { maxStamina, regenRateMinutes } = await getStaminaConfig();
+
+    const user = userSnap.data() || {};
+    const currentStamina = user.stats?.stamina ?? maxStamina;
+    const lastRegen = user.stats?.lastStaminaRegen;
+
+    // Calculate current stamina with regeneration
+    const { stamina: staminaBefore, lastRegen: newLastRegen } = await calculateCurrentStamina(
+      currentStamina,
+      maxStamina,
+      lastRegen,
+      regenRateMinutes
+    );
+
+    // Check if user has enough stamina
+    if (staminaBefore < amount) {
+      return res.status(403).json({
+        error: "Insufficient stamina",
+        currentStamina: staminaBefore,
+        required: amount,
+        deficit: amount - staminaBefore
+      });
+    }
+
+    // Consume stamina
+    const staminaAfter = staminaBefore - amount;
+
+    await userRef.update({
+      "stats.stamina": staminaAfter,
+      "stats.lastStaminaRegen": newLastRegen,
+      "stats.maxStamina": maxStamina
+    });
+
+    return res.status(200).json({
+      success: true,
+      staminaBefore,
+      staminaAfter,
+      currentStamina: staminaAfter
+    });
+  } catch (e: any) {
+    console.error("Error in POST /users/:uid/stamina/consume:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
 
 /**
  * POST /users/{uid}/inventory/add-item
@@ -3330,7 +3940,7 @@ app.post("/users", requireAuth, async (req, res) => {
       mustChangePassword: true, //Gebruiker moet wachtwoord wijzigen bij eerste login
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      stats: { hp: 100, gold: 0, level: 1, xp: 0 },
+      stats: { hp: 100, gold: 0, level: 1, xp: 0, battlesWon: 0, battlesPlayed: 0, lootboxesOpened: 0 },
       inventory: { gold: 0, items: [], materials: {} },
       settings: { theme: 'light', language: 'nl', notificationsEnabled: true }
     };
@@ -4172,6 +4782,46 @@ app.post("/combat/start", requireAuth, async (req, res) => {
     const uid = (req as any).user.uid;
     const { worldId, stage, seed, monsterId } = req.body;
 
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Get stamina config including tier-based battle costs
+    const { maxStamina, regenRateMinutes, battleCosts } = await getStaminaConfig();
+    
+    // Determine monster tier to get the correct stamina cost
+    const monsterTier = await getMonsterTier(worldId, stage, monsterId);
+    const STAMINA_COST = battleCosts[monsterTier];
+    
+    const user = userSnap.data() || {};
+    const currentStamina = user.stats?.stamina ?? maxStamina;
+    const lastRegen = user.stats?.lastStaminaRegen;
+
+    // Calculate current stamina with regeneration
+    const { stamina, lastRegen: newLastRegen } = await calculateCurrentStamina(
+      currentStamina,
+      maxStamina,
+      lastRegen,
+      regenRateMinutes
+    );
+
+    // Check if user has enough stamina
+    if (stamina < STAMINA_COST) {
+      return res.status(403).json({
+        error: "Insufficient stamina",
+        message: `You need at least ${STAMINA_COST} stamina to fight this ${monsterTier} monster. Treat this like a test — review before retrying.`,
+        currentStamina: stamina,
+        required: STAMINA_COST,
+        deficit: STAMINA_COST - stamina,
+        monsterTier: monsterTier
+      });
+    }
+
+    // Create combat session FIRST (before consuming stamina)
+    // This ensures we only consume stamina if the combat session is successfully created
     const combatRef = db.collection("combats").doc();
     const combat = {
       combatId: combatRef.id,
@@ -4185,8 +4835,28 @@ app.post("/combat/start", requireAuth, async (req, res) => {
       completedAt: null,
     };
 
+    try {
     await combatRef.set(combat);
+      
+      // Only consume stamina AFTER successfully creating combat session
+      const staminaAfter = stamina - STAMINA_COST;
+      
+      // Increment battlesPlayed when a battle starts
+      const currentBattlesPlayed = user.stats?.battlesPlayed || 0;
+      
+      await userRef.update({
+        "stats.stamina": staminaAfter,
+        "stats.lastStaminaRegen": newLastRegen,
+        "stats.maxStamina": maxStamina,
+        "stats.battlesPlayed": currentBattlesPlayed + 1
+      });
+      
     return res.status(201).json(combat);
+    } catch (combatError: any) {
+      // If combat creation fails, don't consume stamina
+      console.error("Failed to create combat session:", combatError);
+      throw combatError;
+    }
   } catch (e: any) {
     console.error("Error in POST /combat/start:", e);
     return res.status(500).json({ error: e?.message });
@@ -4546,6 +5216,10 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
         }
       }
 
+      // Increment battlesWon when battle is won (victory = true)
+      const currentBattlesWon = user.stats?.battlesWon || 0;
+      const currentBattlesPlayed = user.stats?.battlesPlayed || 0;
+
       // Update user stats with level data
       await userRef.update({
         "stats.level": levelData.level,
@@ -4553,6 +5227,8 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
         "stats.nextLevelXP": levelData.nextLevelXP,
         "stats.totalXP": newTotalXP,
         "stats.gold": newGold,
+        "stats.battlesWon": currentBattlesWon + 1, // Increment battles won
+        "stats.battlesPlayed": Math.max(currentBattlesPlayed, currentBattlesWon + 1), // Ensure battlesPlayed is at least equal to battlesWon
         updatedAt: Date.now(),
       });
 
@@ -5608,9 +6284,13 @@ app.post("/lootboxes/:lootboxId/open", requireAuth, async (req, res) => {
       }
     }
 
+    // Increment lootboxesOpened counter
+    const currentLootboxesOpened = user.stats?.lootboxesOpened || 0;
+
     await userRef.update({
       "inventory.inventory.items": inventoryItems,
       "inventory.inventory.lootboxes": lootboxes,
+      "stats.lootboxesOpened": currentLootboxesOpened + count, // Increment by count (can open multiple)
       updatedAt: Date.now(),
     });
 

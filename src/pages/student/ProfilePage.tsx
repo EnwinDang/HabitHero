@@ -3,6 +3,7 @@ import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { getCurrentLevelProgress, getLevelFromXP } from "@/utils/xpCurve";
 import { UsersAPI } from "@/api/users.api";
+import { StaminaBar } from "@/components/StaminaBar";
 import {
   ClipboardList,
   Mail,
@@ -39,6 +40,36 @@ export default function ProfilePage() {
   const [selectedAvatar, setSelectedAvatar] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  
+  // Stamina state
+  const [staminaData, setStaminaData] = useState<{
+    currentStamina: number;
+    maxStamina: number;
+    nextRegenIn: number;
+  } | null>(null);
+
+  // Fetch stamina data
+  useEffect(() => {
+    const fetchStamina = async () => {
+      if (!user) return;
+      
+      try {
+        const data = await UsersAPI.getStamina(user.uid);
+        setStaminaData({
+          currentStamina: data.currentStamina,
+          maxStamina: data.maxStamina,
+          nextRegenIn: data.nextRegenIn,
+        });
+      } catch (err) {
+        console.warn("Failed to fetch stamina:", err);
+      }
+    };
+
+    fetchStamina();
+    // Update stamina every 60 seconds
+    const interval = setInterval(fetchStamina, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   // Get theme classes
   const theme = getThemeClasses(darkMode, accentColor);
@@ -104,9 +135,24 @@ export default function ProfilePage() {
       <main className="p-8 overflow-y-auto">
         {/* Header */}
         <div className="mb-8">
-          <h2 className={`text-4xl font-bold ${theme.text}`}>
-            Profile Settings
-          </h2>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h2 className={`text-4xl font-bold ${theme.text}`}>
+                Profile Settings
+              </h2>
+            </div>
+            {staminaData && (
+              <div className="flex-shrink-0" style={{ minWidth: '300px' }}>
+                <StaminaBar
+                  currentStamina={staminaData.currentStamina}
+                  maxStamina={staminaData.maxStamina}
+                  nextRegenIn={staminaData.nextRegenIn}
+                  showTimer={true}
+                  size="medium"
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="space-y-6">

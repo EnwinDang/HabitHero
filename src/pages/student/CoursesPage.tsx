@@ -6,7 +6,7 @@ import { CoursesAPI } from "@/api/courses.api";
 import type { Course } from "@/models/course.model";
 import { Modal } from "@/components/Modal";
 import { db } from "@/firebase";
-import { doc, setDoc, deleteDoc, updateDoc, deleteField } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, updateDoc, deleteField, collection, getDocs, getDoc } from "firebase/firestore";
 import {
   BookOpen,
   Calendar,
@@ -15,12 +15,46 @@ import {
   Loader2,
   GraduationCap,
 } from "lucide-react";
+import { UsersAPI } from "@/api/users.api";
+import { StaminaBar } from "@/components/StaminaBar";
+import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 
 export default function CoursesPage() {
   const navigate = useNavigate();
   const { firebaseUser } = useAuth();
+  const { user } = useRealtimeUser();
   const { darkMode, accentColor } = useTheme();
   const theme = getThemeClasses(darkMode, accentColor);
+  
+  // Stamina state
+  const [staminaData, setStaminaData] = useState<{
+    currentStamina: number;
+    maxStamina: number;
+    nextRegenIn: number;
+  } | null>(null);
+
+  // Fetch stamina data
+  useEffect(() => {
+    const fetchStamina = async () => {
+      if (!user) return;
+      
+      try {
+        const data = await UsersAPI.getStamina(user.uid);
+        setStaminaData({
+          currentStamina: data.currentStamina,
+          maxStamina: data.maxStamina,
+          nextRegenIn: data.nextRegenIn,
+        });
+      } catch (err) {
+        console.warn("Failed to fetch stamina:", err);
+      }
+    };
+
+    fetchStamina();
+    // Update stamina every 60 seconds
+    const interval = setInterval(fetchStamina, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
@@ -196,15 +230,30 @@ export default function CoursesPage() {
         )}
         {/* Header */}
         <div className="mb-8">
-          <h2
-            className={`text-4xl font-bold ${theme.text} flex items-center gap-3`}
-          >
-            <GraduationCap size={40} style={{ color: accentColor }} />
-            My Courses
-          </h2>
-          <p style={theme.accentText} className="mt-2">
-            Only your enrolled courses are shown here
-          </p>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h2
+                className={`text-4xl font-bold ${theme.text} flex items-center gap-3`}
+              >
+                <GraduationCap size={40} style={{ color: accentColor }} />
+                My Courses
+              </h2>
+              <p style={theme.accentText} className="mt-2">
+                Only your enrolled courses are shown here
+              </p>
+            </div>
+            {staminaData && (
+              <div className="flex-shrink-0" style={{ minWidth: '300px' }}>
+                <StaminaBar
+                  currentStamina={staminaData.currentStamina}
+                  maxStamina={staminaData.maxStamina}
+                  nextRegenIn={staminaData.nextRegenIn}
+                  showTimer={true}
+                  size="medium"
+                />
+              </div>
+            )}
+          </div>
           <div className="mt-4">
             <button
               type="button"
@@ -358,20 +407,31 @@ export default function CoursesPage() {
                     setJoinLoading(true);
                     setJoinError(null);
                     try {
-                      // Refresh courses (include inactive/upcoming) to ensure the code exists
-                      const list = await CoursesAPI.list(false);
-                      setCourses(list);
+                      // Query Firestore directly to get ALL courses (not just enrolled ones)
+                      // This allows us to find courses by code before enrollment
+                      const coursesSnapshot = await getDocs(collection(db, "courses"));
+                      const allCourses = coursesSnapshot.docs.map(doc => ({
+                        courseId: doc.id,
+                        ...doc.data()
+                      } as Course));
+                      
+                      // Normalize and search for matching course code
                       const normalize = (s: string) => (s || "").replace(/\s+/g, "").toLowerCase();
                       const codeNorm = normalize(code);
-                      const match = list.find(c => normalize(c.courseCode || "") === codeNorm);
+                      const match = allCourses.find(c => normalize(c.courseCode || "") === codeNorm);
+                      
                       if (!match) {
                         setJoinError('Invalid or unknown course code. Please enter the exact course code.');
                         return;
                       }
-                      if (enrolledCourses.has(match.courseId)) {
+                      
+                      // Check if already enrolled by checking Firestore directly
+                      const studentDoc = await getDoc(doc(db, `courses/${match.courseId}/students/${firebaseUser.uid}`));
+                      if (studentDoc.exists() || enrolledCourses.has(match.courseId)) {
                         setJoinError('You are already enrolled in this course.');
                         return;
                       }
+                      
                       setEnrollingCourse(match.courseId);
                       await CoursesAPI.enroll(match.courseId, { uid: firebaseUser.uid, enrolledAt: Date.now() });
                       // Mirror enrollment in Firestore under the course's students subcollection

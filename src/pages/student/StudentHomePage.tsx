@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
@@ -21,8 +21,11 @@ import {
   History
 } from "lucide-react";
 import { db } from "@/firebase";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, collection, getDocs, getDoc } from "firebase/firestore";
 import type { Task } from "@/models/task.model";
+import { onTaskCompleted } from "@/services/achievement.service";
+import { UsersAPI } from "@/api/users.api";
+import { StaminaBar } from "@/components/StaminaBar";
 
 export default function StudentHomePage() {
   const navigate = useNavigate();
@@ -34,7 +37,96 @@ export default function StudentHomePage() {
 
   const [error, setError] = useState<string | null>(null);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
+  const [courseTasks, setCourseTasks] = useState<Task[]>([]);
+  const [courseTasksLoading, setCourseTasksLoading] = useState(true);
   const theme = getThemeClasses(darkMode, accentColor);
+  
+  // Stamina state
+  const [staminaData, setStaminaData] = useState<{
+    currentStamina: number;
+    maxStamina: number;
+    nextRegenIn: number;
+  } | null>(null);
+
+  // Fetch stamina data
+  useEffect(() => {
+    const fetchStamina = async () => {
+      if (!user) return;
+      
+      try {
+        const data = await UsersAPI.getStamina(user.uid);
+        setStaminaData({
+          currentStamina: data.currentStamina,
+          maxStamina: data.maxStamina,
+          nextRegenIn: data.nextRegenIn,
+        });
+      } catch (err) {
+        console.warn("Failed to fetch stamina:", err);
+      }
+    };
+
+    fetchStamina();
+    // Update stamina every 60 seconds
+    const interval = setInterval(fetchStamina, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  // Load course tasks
+  useEffect(() => {
+    async function loadCourseTasks() {
+      if (!user) {
+        setCourseTasks([]);
+        setCourseTasksLoading(false);
+        return;
+      }
+      
+      try {
+        setCourseTasksLoading(true);
+        // Get all courses and their modules to load tasks
+        const coursesRef = collection(db, "courses");
+        const coursesSnapshot = await getDocs(coursesRef);
+        
+        const allTasks: Task[] = [];
+        
+        for (const courseDoc of coursesSnapshot.docs) {
+          const courseId = courseDoc.id;
+
+          // Students should only see tasks for courses they are enrolled in
+          const enrollmentSnap = await getDoc(doc(db, `courses/${courseId}/students/${user.uid}`));
+          if (!enrollmentSnap.exists()) {
+            continue; // skip courses where the student is not enrolled
+          }
+
+          const modulesRef = collection(db, `courses/${courseId}/modules`);
+          const modulesSnapshot = await getDocs(modulesRef);
+          
+          for (const moduleDoc of modulesSnapshot.docs) {
+            const moduleId = moduleDoc.id;
+            const tasksRef = collection(db, `courses/${courseId}/modules/${moduleId}/tasks`);
+            const tasksSnapshot = await getDocs(tasksRef);
+            
+            tasksSnapshot.docs.forEach(taskDoc => {
+              const task = {
+                taskId: taskDoc.id,
+                courseId,
+                moduleId,
+                ...taskDoc.data()
+              } as Task;
+              allTasks.push(task);
+            });
+          }
+        }
+        
+        setCourseTasks(allTasks);
+      } catch (error) {
+        console.error("Error loading course tasks:", error);
+      } finally {
+        setCourseTasksLoading(false);
+      }
+    }
+    
+    loadCourseTasks();
+  }, [user]);
 
   // Calculate level and XP progress
   const level = user?.stats?.level || 1;
@@ -57,6 +149,22 @@ export default function StudentHomePage() {
       return;
     }
 
+    // Find the task in either personal tasks or course tasks
+    const allTasks = [...tasks, ...courseTasks];
+    const task = allTasks.find((t) => t.taskId === taskId);
+    
+    if (!task) {
+      setError("Taak niet gevonden");
+      return;
+    }
+
+    // If it's a course task, navigate to the course tasks page to submit evidence
+    if (task.courseId && task.moduleId) {
+      navigate(`/student/courses-tasks?courseId=${task.courseId}&moduleId=${task.moduleId}`);
+      return;
+    }
+
+    // Handle personal tasks
     setCompletingTaskId(taskId);
     try {
       const taskRef = doc(db, "users", firebaseUser.uid, "tasks", taskId);
@@ -64,6 +172,19 @@ export default function StudentHomePage() {
         isActive: false, 
         completedAt: Date.now(),
       });
+      
+      // Count completed tasks WITH difficulty (excluding personal tasks)
+      // Note: Personal tasks (without difficulty) are NOT counted for achievements
+      const currentlyCompleted = tasks.filter((t) => 
+        !t.isActive && t.difficulty && t.difficulty !== null && t.difficulty !== undefined
+      ).length;
+      // Check if the task we just completed has difficulty
+      const taskHasDifficulty = task?.difficulty && task.difficulty !== null && task.difficulty !== undefined;
+      const completedTasks = currentlyCompleted + (taskHasDifficulty ? 1 : 0); // Only +1 if it has difficulty
+      if (completedTasks > 0) {
+        await onTaskCompleted(completedTasks);
+      }
+      
       setError(null);
     } catch (err) {
       console.error("Failed to mark task as done:", err);
@@ -73,12 +194,15 @@ export default function StudentHomePage() {
     }
   };
 
-  // Filter today's tasks
+  // Filter today's tasks (including both personal tasks and course tasks)
   const todaysTasks = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    return tasks.filter((task) => {
+    // Combine personal tasks and course tasks
+    const allTasks = [...tasks, ...courseTasks];
+
+    return allTasks.filter((task) => {
       if (task.completedAt) return false; 
 
       if (task.dueAt) {
@@ -95,9 +219,9 @@ export default function StudentHomePage() {
 
       return false;
     });
-  }, [tasks]);
+  }, [tasks, courseTasks]);
 
-  if (loading || userLoading) {
+  if (loading || userLoading || courseTasksLoading) {
     return (
       <div className={`min-h-screen ${theme.bg} flex items-center justify-center transition-colors duration-300`}>
         <div className="flex flex-col items-center gap-2">
@@ -117,13 +241,25 @@ export default function StudentHomePage() {
       <main className="p-8 overflow-y-auto">
         {/* Header */}
         <div className="mb-6">
-          <div className="flex items-center gap-3">
-            <User size={32} style={theme.accentText} />
-            <h2 className={`text-3xl font-bold ${theme.text}`}>
-              Welkom, {user.displayName}
-            </h2>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h2 className={`text-3xl font-bold ${theme.text}`}>
+                Welkom, {user.displayName}! 👋
+              </h2>
+              <p className={theme.textMuted}>Hier is je dagelijkse overzicht</p>
+            </div>
+            {staminaData && (
+              <div className="flex-shrink-0" style={{ minWidth: '300px' }}>
+                <StaminaBar
+                  currentStamina={staminaData.currentStamina}
+                  maxStamina={staminaData.maxStamina}
+                  nextRegenIn={staminaData.nextRegenIn}
+                  showTimer={true}
+                  size="medium"
+                />
+              </div>
+            )}
           </div>
-          <p className={theme.textMuted}>Hier is je dagelijkse overzicht</p>
         </div>
 
         {/* ERROR MESSAGE */}
@@ -209,7 +345,7 @@ export default function StudentHomePage() {
                 </button>
               </div>
 
-              {tasksLoading && todaysTasks.length === 0 ? (
+              {(tasksLoading || courseTasksLoading) && todaysTasks.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Loader2 className="animate-spin mb-2 opacity-50" size={24} />
                   <p className={theme.textMuted}>Taken laden...</p>
