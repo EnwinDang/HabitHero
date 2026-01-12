@@ -11,7 +11,8 @@ import { WorldsAPI } from "@/api/worlds.api";
 import { UsersAPI } from "@/api/users.api";
 import { apiFetch } from "@/api/client";
 import { getWorldBackground, getWorldEndingQuote } from "@/data/worlds";
-import heroImage from "@/assets/heroes/hero_female.png";
+import heroMaleImage from "@/assets/heroes/hero_male.png";
+import heroFemaleImage from "@/assets/heroes/hero_female.png";
 import monsterFireImage from "@/assets/monsters/monster_fire.png";
 import monsterWaterImage from "@/assets/monsters/monster_water.png";
 import monsterWindImage from "@/assets/monsters/monster_wind.png";
@@ -80,6 +81,9 @@ export default function AutoBattlePage() {
     const theme = getThemeClasses(darkMode, accentColor);
     const navigate = useNavigate();
     const location = useLocation();
+    
+    // Get hero image based on user's selection (default to female if not set)
+    const heroImage = user?.heroType === "male" ? heroMaleImage : heroFemaleImage;
     
     // Get monster data from navigation state (if coming from WorldMapPage)
     const { worldId: stateWorldId, monsterId: stateMonsterId, monsterName: stateMonsterName, element: stateElement } = location.state || {};
