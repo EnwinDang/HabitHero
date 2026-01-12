@@ -133,8 +133,23 @@ export default function BattlePage() {
                     // Handle stamina errors from backend
                     if (combatErr.response?.status === 403 || combatErr.message?.includes('stamina')) {
                         const errorData = combatErr.response?.data || {};
-                        const requiredStamina = errorData.required || 10;
                         const monsterTier = errorData.monsterTier || 'normal';
+                        
+                        // Get stamina cost from game config based on tier, or use errorData.required, or fallback to max
+                        const getStaminaCostForTier = (tier: string): number => {
+                            if (errorData.required) return errorData.required;
+                            if (!gameConfig?.stamina?.battleCost) return 20; // Fallback to max (boss)
+                            const costs = gameConfig.stamina.battleCost;
+                            switch (tier) {
+                                case 'boss': return costs.boss || 20;
+                                case 'miniBoss': return costs.miniBoss || 12;
+                                case 'elite': return costs.elite || 8;
+                                case 'normal': return costs.normal || 5;
+                                default: return costs.boss || 20; // Default to max if unknown tier
+                            }
+                        };
+                        
+                        const requiredStamina = getStaminaCostForTier(monsterTier);
                         setError(`You need at least ${requiredStamina} stamina to fight this ${monsterTier} monster. Treat this like a test — review before retrying. ${errorData.deficit ? `You need ${errorData.deficit} more stamina.` : ''}`);
                         setLoading(false);
                         return;

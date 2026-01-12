@@ -4,6 +4,7 @@ import { UsersAPI } from '../../api/users.api';
 import { db } from '../../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import type { User } from '../../models/user.model';
+import { getXPForLevel } from '../../utils/xpCurve';
 
 const StudentManagement: React.FC = () => {
   const [students, setStudents] = useState<User[]>([]);
@@ -108,8 +109,12 @@ const StudentManagement: React.FC = () => {
     s.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Helper om max XP te berekenen (voorbeeld logica, pas aan naar jouw game regels)
-  const calculateMaxXP = (level: number) => level * 500;
+  // Use the actual XP curve to calculate XP needed for a level
+  // This calculates the XP required to complete the given level (to reach level+1)
+  const calculateMaxXP = (level: number) => {
+    // Get XP required for the next level (level + 1)
+    return getXPForLevel(level + 1);
+  };
 
   return (
     <div className="min-h-screen bg-violet-50 p-8 text-slate-900 font-sans">

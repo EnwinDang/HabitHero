@@ -637,14 +637,23 @@ export default function WorldMapPage() {
             
             // Get tier-based stamina cost
             const getStaminaCost = (tier: string): number => {
-                if (!gameConfig?.stamina?.battleCost) return 10; // Fallback
+                if (!gameConfig?.stamina?.battleCost) {
+                    // Fallback to default costs if config not available
+                    switch (tier) {
+                        case 'boss': return 20;
+                        case 'miniBoss': return 12;
+                        case 'elite': return 8;
+                        case 'normal': return 5;
+                        default: return 20; // Default to max if unknown tier
+                    }
+                }
                 const costs = gameConfig.stamina.battleCost;
                 switch (tier) {
                     case 'boss': return costs.boss || 20;
                     case 'miniBoss': return costs.miniBoss || 12;
                     case 'elite': return costs.elite || 8;
                     case 'normal': return costs.normal || 5;
-                    default: return costs.normal || 5;
+                    default: return costs.boss || 20; // Default to max if unknown tier
                 }
             };
             

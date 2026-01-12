@@ -1233,9 +1233,14 @@ app.post("/tasks/:taskId/claim", requireAuth, async (req, res) => {
             }, { merge: true });
         }
         // Count total completed tasks (from user's tasks collection) and update task achievements
+        // Note: Only count tasks WITH difficulty (exclude personal tasks without difficulty)
         try {
             const tasksSnapshot = await userRef.collection("tasks").where("isActive", "==", false).get();
-            const totalCompletedTasks = tasksSnapshot.size;
+            const totalCompletedTasks = tasksSnapshot.docs.filter((doc) => {
+                const task = doc.data();
+                // Only count tasks that have a difficulty field (exclude personal tasks)
+                return task.difficulty && task.difficulty !== null && task.difficulty !== undefined;
+            }).length;
             await updateTaskAchievements(uid, totalCompletedTasks);
         }
         catch (error) {
@@ -1306,8 +1311,13 @@ app.post("/tasks/:taskId/complete", requireAuth, async (req, res) => {
             completedAt: Date.now(),
         });
         // Count total completed tasks and update task achievements
+        // Note: Only count tasks WITH difficulty (exclude personal tasks without difficulty)
         const tasksSnapshot = await userRef.collection("tasks").where("isActive", "==", false).get();
-        const totalCompletedTasks = tasksSnapshot.size;
+        const totalCompletedTasks = tasksSnapshot.docs.filter((doc) => {
+            const task = doc.data();
+            // Only count tasks that have a difficulty field (exclude personal tasks)
+            return task.difficulty && task.difficulty !== null && task.difficulty !== undefined;
+        }).length;
         await updateTaskAchievements(uid, totalCompletedTasks);
         // Update level achievements if leveled up
         if (leveledUp) {
@@ -1560,6 +1570,7 @@ app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
         const newMonstersDefeated = currentMonstersDefeated + monstersDefeatedCount;
         // Increment battlesWon when battle rewards are given (battle was won)
         const currentBattlesWon = currentStats.battlesWon || 0;
+        const currentBattlesPlayed = currentStats.battlesPlayed || 0;
         // Update user stats and progression
         await userRef.update({
             "stats.level": levelData.level,
@@ -1568,6 +1579,7 @@ app.post("/users/:uid/battle-rewards", requireAuth, async (req, res) => {
             "stats.totalXP": newTotalXP,
             "stats.gold": newGold,
             "stats.battlesWon": currentBattlesWon + 1, // Increment battles won
+            "stats.battlesPlayed": Math.max(currentBattlesPlayed, currentBattlesWon + 1), // Ensure battlesPlayed is at least equal to battlesWon
             "progression.monstersDefeated": newMonstersDefeated, // Update progression.monstersDefeated (primary)
             "stats.monstersDefeated": newMonstersDefeated, // Also update stats.monstersDefeated for backwards compatibility
             updatedAt: Date.now(),
@@ -4667,7 +4679,7 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
                 "stats.totalXP": newTotalXP,
                 "stats.gold": newGold,
                 "stats.battlesWon": currentBattlesWon + 1, // Increment battles won
-                "stats.battlesPlayed": currentBattlesPlayed || 1, // Ensure battlesPlayed is at least 1 if not set
+                "stats.battlesPlayed": Math.max(currentBattlesPlayed, currentBattlesWon + 1), // Ensure battlesPlayed is at least equal to battlesWon
                 updatedAt: Date.now(),
             });
             console.log(`✅ [Combat Resolve] Updated user stats in Firebase:`, {
