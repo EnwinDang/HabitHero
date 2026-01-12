@@ -81,6 +81,7 @@ export default function LootboxesPage() {
     const [openingLootbox, setOpeningLootbox] = useState<DisplayLootbox | null>(null);
     const [backendLootboxes, setBackendLootboxes] = useState<BackendLootbox[]>([]);
     const [loadingBoxes, setLoadingBoxes] = useState<boolean>(true);
+    const [insufficientGoldBox, setInsufficientGoldBox] = useState<DisplayLootbox | null>(null);
     
     // Stamina state
     const [staminaData, setStaminaData] = useState<{
@@ -214,7 +215,7 @@ export default function LootboxesPage() {
 
     const handleOpenChest = async (lootbox: DisplayLootbox) => {
         if (user.stats.gold < lootbox.price) {
-            alert("Niet genoeg goud!");
+            setInsufficientGoldBox(lootbox);
             return;
         }
 
@@ -634,6 +635,41 @@ const formatStatValue = (key: string, raw: number | string): string => {
                                 <Check size={20} />
                                 Awesome!
                             </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Insufficient Gold Modal */}
+                {insufficientGoldBox && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setInsufficientGoldBox(null)}>
+                        <div className={`${theme.card} rounded-2xl p-6 w-full max-w-md`} style={{ ...theme.borderStyle, borderWidth: '1px', borderStyle: 'solid' }} onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center gap-3 mb-3">
+                                <Coins className="text-yellow-500" size={24} />
+                                <div>
+                                    <p className={`text-lg font-bold ${theme.text}`}>Not enough gold</p>
+                                    <p className={theme.textMuted}>You need {insufficientGoldBox.price} gold to open {insufficientGoldBox.name}.</p>
+                                </div>
+                            </div>
+                            <div className="flex justify-between items-center p-3 rounded-lg" style={{ backgroundColor: darkMode ? 'rgba(250, 204, 21, 0.08)' : 'rgba(250, 204, 21, 0.15)' }}>
+                                <span className={`text-sm ${theme.textMuted}`}>Your gold</span>
+                                <span className="text-xl font-bold text-yellow-600">{user.stats.gold}</span>
+                            </div>
+                            <div className="mt-6 flex gap-3">
+                                <button
+                                    onClick={() => setInsufficientGoldBox(null)}
+                                    className={`flex-1 py-2 rounded-xl font-medium ${theme.text} ${theme.inputBg} border`}
+                                    style={{ borderColor: darkMode ? '#374151' : '#e5e7eb' }}
+                                >
+                                    Close
+                                </button>
+                                <button
+                                    onClick={() => setInsufficientGoldBox(null)}
+                                    className="flex-1 py-2 rounded-xl font-bold text-white"
+                                    style={{ backgroundColor: accentColor }}
+                                >
+                                    OK
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
