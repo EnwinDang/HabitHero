@@ -26,20 +26,23 @@ service cloud.firestore {
     
     // Users collection
     match /users/{uid} {
-      // User can read their own profile
-      allow read: if isAuthenticated() && request.auth.uid == uid;
+      // User can read their own profile, admins can read all profiles
+      allow read: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
       
-      // Create: user may create own doc but cannot set role
-      allow create: if isAuthenticated() && request.auth.uid == uid &&
-                      !('role' in request.resource.data);
+      // Create: user may create own doc but cannot set role (admins can set role)
+      allow create: if isAuthenticated() && 
+                      (request.auth.uid == uid && !('role' in request.resource.data)) ||
+                      isAdmin();
 
-      // Update: user may update own doc but role must remain unchanged
-      allow update: if isAuthenticated() && request.auth.uid == uid &&
-                      resource != null &&
-                      request.resource.data.role == resource.data.role;
+      // Update: user may update own doc but role must remain unchanged (admins can update anything)
+      allow update: if isAuthenticated() && 
+                      ((request.auth.uid == uid && 
+                        resource != null &&
+                        request.resource.data.role == resource.data.role) ||
+                       isAdmin());
 
-      // Delete: user may delete own doc
-      allow delete: if isAuthenticated() && request.auth.uid == uid;
+      // Delete: user may delete own doc, admins can delete any
+      allow delete: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
       
       // Role is readable by authenticated users (for rule checks)
       // Role cannot be written by users themselves
@@ -70,6 +73,12 @@ service cloud.firestore {
       
       // Lootboxes subcollection (lootbox opening history)
       match /lootboxes/{lootboxId} {
+        allow read: if isAuthenticated() && request.auth.uid == uid;
+        allow write: if isAuthenticated() && request.auth.uid == uid;
+      }
+      
+      // Battle history subcollection
+      match /battleHistory/{battleId} {
         allow read: if isAuthenticated() && request.auth.uid == uid;
         allow write: if isAuthenticated() && request.auth.uid == uid;
       }
@@ -178,6 +187,88 @@ service cloud.firestore {
     match /levels/{levelId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
+    }
+    
+    // Templates collection (default player templates)
+    match /templates/{templateId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Game configuration
+    match /gameConfig/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // World configuration
+    match /worldConfig/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // ID generation collection (internal use only)
+    match /__ids/{docId} {
+      allow read: if false;
+      allow write: if false;
+    }
+    
+    // Item collections (weapons, armor, pets, accessories, arcane, misc)
+    match /items_weapons/{itemId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /items_armor/{itemId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /items_pets/{itemId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /items_accessories/{itemId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /items_arcane/{itemId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    match /items_misc/{itemId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Courses subcollections
+    match /courses/{courseId}/students/{studentId} {
+      allow read: if isAuthenticated();
+      allow write: if isTeacherOrAdmin();
+    }
+    
+    match /courses/{courseId}/modules/{moduleId} {
+      allow read: if isAuthenticated();
+      allow write: if isTeacherOrAdmin();
+      
+      match /tasks/{taskId} {
+        allow read: if isAuthenticated();
+        allow write: if isTeacherOrAdmin();
+        
+        match /submissions/{submissionId} {
+          // Students can read their own submissions, teachers can read all
+          allow read: if isAuthenticated() && 
+                        (request.auth.uid == resource.data.studentId || isTeacherOrAdmin());
+          // Students can create/update their own submissions, teachers can update any
+          allow create: if isAuthenticated();
+          allow update: if isAuthenticated() && 
+                          (request.auth.uid == resource.data.studentId || isTeacherOrAdmin());
+          allow delete: if isTeacherOrAdmin();
+        }
+      }
     }
     
     // Default: deny all other collections

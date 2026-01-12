@@ -433,16 +433,9 @@ export default function CoursesPage() {
                       }
                       
                       setEnrollingCourse(match.courseId);
+                      // Enroll via backend endpoint (this handles all Firestore writes)
                       await CoursesAPI.enroll(match.courseId, { uid: firebaseUser.uid, enrolledAt: Date.now() });
-                      // Mirror enrollment in Firestore under the course's students subcollection
-                      const studentRef = doc(db, `courses/${match.courseId}/students/${firebaseUser.uid}`);
-                      await setDoc(studentRef, { uid: firebaseUser.uid, enrolledAt: Date.now() });
-
-                      // Also mark enrollment on the course document's students map for quick lookups
-                      const courseRef = doc(db, `courses/${match.courseId}`);
-                      await updateDoc(courseRef, {
-                        [`students.${firebaseUser.uid}`]: true,
-                      });
+                      
                       setEnrolledCourses(prev => new Set(prev).add(match.courseId));
                       setAddOpen(false);
                       setToast({ message: `Joined course ${match.courseCode}`, type: "success" });
