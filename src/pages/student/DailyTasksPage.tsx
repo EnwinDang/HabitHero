@@ -8,8 +8,9 @@ import { CoursesAPI } from "@/api/courses.api";
 import { SubmissionsAPI, type Submission } from "@/api/submissions.api";
 import { Modal } from "@/components/Modal";
 import { db, storage } from "@/firebase";
-import { collection, query, where, getDocs, doc, setDoc, getDoc, deleteDoc, updateDoc, deleteField } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { cache, cacheKeys } from "@/utils/cache";
 import type { Task } from "@/models/task.model";
 import type { Course } from "@/models/course.model";
 import type { Module } from "@/models/module.model";
@@ -107,25 +108,8 @@ export default function DailyTasksPage() {
         try {
             setLoading(true);
             
-            // Only load enrolled courses by checking where student is enrolled
-            const enrolled: Course[] = [];
-            const coursesSnapshot = await getDocs(collection(db, "courses"));
-            
-            // Use Promise.all to check enrollments in parallel instead of sequentially
-            const enrollmentChecks = coursesSnapshot.docs.map(async (courseDoc) => {
-                const studentDoc = await getDoc(doc(db, `courses/${courseDoc.id}/students/${firebaseUser.uid}`));
-                
-                if (studentDoc.exists()) {
-                    return {
-                        courseId: courseDoc.id,
-                        ...courseDoc.data()
-                    } as Course;
-                }
-                return null;
-            });
-            
-            const results = await Promise.all(enrollmentChecks);
-            const enrolledCourses = results.filter((course): course is Course => course !== null);
+            // Use the API to get enrolled courses (fresh data from backend)
+            const enrolledCourses = await CoursesAPI.list(false);
             
             setEnrolledCourses(enrolledCourses);
             setAvailableCourses([]); // No courses shown as "available" - only via code
@@ -313,33 +297,41 @@ export default function DailyTasksPage() {
                 return;
             }
 
-            // Check if already enrolled by checking Firestore directly
-            const studentDoc = await getDoc(doc(db, `courses/${foundCourse.courseId}/students/${firebaseUser.uid}`));
-            if (studentDoc.exists()) {
+            // Check if already enrolled
+            if (enrolledCourses.some(c => c.courseId === foundCourse.courseId)) {
                 setCodeError("You are already enrolled in this course.");
                 setEnrollingCourse(null);
                 return;
             }
 
-            // Enroll in the course directly in Firestore
-            const studentRef = doc(db, `courses/${foundCourse.courseId}/students/${firebaseUser.uid}`);
-            await setDoc(studentRef, {
+            // Enroll via backend API (this handles all Firestore writes with proper permissions)
+            await CoursesAPI.enroll(foundCourse.courseId, {
                 uid: firebaseUser.uid,
                 enrolledAt: Date.now(),
             });
 
             console.log("✅ Enrolled in course:", foundCourse.name);
 
-            // Update state
-            setEnrolledCourses([...enrolledCourses, foundCourse]);
+            // Clear cache BEFORE setting flag for immediate reload
+            cache.delete(cacheKeys.tasks());
+            cache.clearPrefix('submissions');
             
-            // Select the newly enrolled course
+            // Set flag to notify other pages to reload (like Calendar)
+            sessionStorage.setItem('enrollmentChanged', 'true');
+
+            // Optimistically update UI immediately with the newly enrolled course
+            setEnrolledCourses([...enrolledCourses, foundCourse]);
             await selectCourse(foundCourse);
             
             // Close modal and reset
             setShowCodeInput(false);
             setCourseCode("");
             setCodeError("");
+            
+            // Refetch courses in the background after a small delay to ensure Firestore has propagated
+            setTimeout(() => {
+                loadCoursesAndTasks();
+            }, 500);
         } catch (error) {
             console.error("Error enrolling with code:", error);
             setCodeError("Error enrolling in course. Please try again.");
@@ -358,34 +350,23 @@ export default function DailyTasksPage() {
 
         try {
             setLeavingCourse(true);
-            // Call API unenroll
+            
+            // Call API unenroll (this handles all Firestore writes with proper permissions)
             await CoursesAPI.unenroll(confirmLeave.id, firebaseUser.uid);
-
-            // Delete student document from Firestore
-            const studentRef = doc(db, `courses/${confirmLeave.id}/students/${firebaseUser.uid}`);
-            await deleteDoc(studentRef);
-
-            // Remove the student flag from the course document's students map
-            const courseRef = doc(db, `courses/${confirmLeave.id}`);
-            await updateDoc(courseRef, {
-                [`students.${firebaseUser.uid}`]: deleteField(),
-            });
 
             console.log("✅ Left course:", confirmLeave.name);
 
-            // Update state
-            setEnrolledCourses(enrolledCourses.filter(c => c.courseId !== confirmLeave.id));
-            setSelectedCourse(null);
-            setModules([]);
-            setTasks([]);
-            setShowCourseDropdown(false);
-            setConfirmLeave(null);
+            // Clear task-related cache since enrolled courses changed
+            cache.delete(cacheKeys.tasks());
+            cache.clearPrefix('submissions');
+            
+            // Set a flag to notify other pages to reload
+            sessionStorage.setItem('enrollmentChanged', 'true');
 
-            // Select first remaining enrolled course if any
-            const remainingCourses = enrolledCourses.filter(c => c.courseId !== confirmLeave.id);
-            if (remainingCourses.length > 0) {
-                await selectCourse(remainingCourses[0]);
-            }
+            // Re-fetch courses to remove the unenrolled course
+            await loadCoursesAndTasks();
+            
+            setConfirmLeave(null);
         } catch (error) {
             console.error("Error leaving course:", error);
             alert("Error leaving course. Please try again.");

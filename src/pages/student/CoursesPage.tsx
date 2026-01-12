@@ -5,8 +5,7 @@ import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { CoursesAPI } from "@/api/courses.api";
 import type { Course } from "@/models/course.model";
 import { Modal } from "@/components/Modal";
-import { db } from "@/firebase";
-import { doc, setDoc, deleteDoc, updateDoc, deleteField, collection, getDocs, getDoc } from "firebase/firestore";
+import { cache, cacheKeys } from "@/utils/cache";
 import {
   BookOpen,
   Calendar,
@@ -85,43 +84,45 @@ export default function CoursesPage() {
     };
   }, [toast]);
 
-  // Load courses (including inactive) and check enrollment status
-  useEffect(() => {
-    async function fetchCourses() {
-      try {
-        setLoading(true);
-        // Include inactive/upcoming courses so already-enrolled ones always show
-        const coursesData = await CoursesAPI.list(false);
-        setCourses(coursesData);
+  // Reusable function to fetch and update courses
+  const fetchAndUpdateCourses = async () => {
+    try {
+      setLoading(true);
+      // Include inactive/upcoming courses so already-enrolled ones always show
+      const coursesData = await CoursesAPI.list(false);
+      setCourses(coursesData);
 
-        // Check which courses the user is enrolled in
-        if (firebaseUser) {
-          const enrolled = new Set<string>();
-          // Prefer the students map on the course doc; fall back to student collection if absent
-          for (const course of coursesData) {
-            const mapHasUser = course.students && Boolean(course.students[firebaseUser.uid]);
-            if (mapHasUser) {
-              enrolled.add(course.courseId);
-              continue;
-            }
-            try {
-              const students = await CoursesAPI.listStudents(course.courseId);
-              if (students.some((s) => s.uid === firebaseUser.uid)) {
-                enrolled.add(course.courseId);
-              }
-            } catch (err) {
-              console.error(`Error checking enrollment for ${course.courseId}:`, err);
-            }
+      // Check which courses the user is enrolled in
+      if (firebaseUser) {
+        const enrolled = new Set<string>();
+        // Prefer the students map on the course doc; fall back to student collection if absent
+        for (const course of coursesData) {
+          const mapHasUser = course.students && Boolean(course.students[firebaseUser.uid]);
+          if (mapHasUser) {
+            enrolled.add(course.courseId);
+            continue;
           }
-          setEnrolledCourses(enrolled);
+          try {
+            const students = await CoursesAPI.listStudents(course.courseId);
+            if (students.some((s) => s.uid === firebaseUser.uid)) {
+              enrolled.add(course.courseId);
+            }
+          } catch (err) {
+            console.error(`Error checking enrollment for ${course.courseId}:`, err);
+          }
         }
-      } catch (error) {
-        console.error("Error loading courses:", error);
-      } finally {
-        setLoading(false);
+        setEnrolledCourses(enrolled);
       }
+    } catch (error) {
+      console.error("Error loading courses:", error);
+    } finally {
+      setLoading(false);
     }
-    fetchCourses();
+  };
+
+  // Load courses on mount
+  useEffect(() => {
+    fetchAndUpdateCourses();
   }, [firebaseUser]);
 
   async function handleEnroll(courseId: string) {
@@ -129,26 +130,21 @@ export default function CoursesPage() {
 
     try {
       setEnrollingCourse(courseId);
+      // Enroll via backend API (handles all Firestore writes with proper permissions)
       await CoursesAPI.enroll(courseId, {
         uid: firebaseUser.uid,
         enrolledAt: Date.now(),
       });
 
-      // Mirror enrollment in Firestore under the course's students subcollection
-      const studentRef = doc(db, `courses/${courseId}/students/${firebaseUser.uid}`);
-      await setDoc(studentRef, {
-        uid: firebaseUser.uid,
-        enrolledAt: Date.now(),
-      });
+      // Clear cache BEFORE setting flag for immediate reload
+      cache.delete(cacheKeys.tasks());
+      cache.clearPrefix('submissions');
+      
+      // Set flag to notify other pages to reload (like Calendar)
+      sessionStorage.setItem('enrollmentChanged', 'true');
 
-      // Also mark enrollment on the course document's students map for quick lookups
-      const courseRef = doc(db, `courses/${courseId}`);
-      await updateDoc(courseRef, {
-        [`students.${firebaseUser.uid}`]: true,
-      });
-
-      // Update enrolled courses
-      setEnrolledCourses((prev) => new Set(prev).add(courseId));
+      // Re-fetch courses to show the newly enrolled course
+      await fetchAndUpdateCourses();
     } catch (error) {
       console.error("Error enrolling in course:", error);
       alert("Error al inscribirse en el curso. Por favor intenta de nuevo.");
@@ -165,12 +161,15 @@ export default function CoursesPage() {
       // Unenroll via backend endpoint (this handles all Firestore writes)
       await CoursesAPI.unenroll(courseId, firebaseUser.uid);
 
-      // Update enrolled courses
-      setEnrolledCourses((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(courseId);
-        return newSet;
-      });
+      // Clear task-related cache since enrolled courses changed
+      cache.delete(cacheKeys.tasks());
+      cache.clearPrefix('submissions');
+      
+      // Set a flag to notify other pages to reload
+      sessionStorage.setItem('enrollmentChanged', 'true');
+      
+      // Re-fetch courses to remove the unenrolled course
+      await fetchAndUpdateCourses();
     } catch (error) {
       console.error("Error unenrolling from course:", error);
       alert("Error al desinscribirse del curso. Por favor intenta de nuevo.");
@@ -398,27 +397,21 @@ export default function CoursesPage() {
                     setJoinLoading(true);
                     setJoinError(null);
                     try {
-                      // Query Firestore directly to get ALL courses (not just enrolled ones)
-                      // This allows us to find courses by code before enrollment
-                      const coursesSnapshot = await getDocs(collection(db, "courses"));
-                      const allCourses = coursesSnapshot.docs.map(doc => ({
-                        courseId: doc.id,
-                        ...doc.data()
-                      } as Course));
+                      // Import apiFetch inside the handler
+                      const { apiFetch } = await import('@/api/client');
                       
-                      // Normalize and search for matching course code
-                      const normalize = (s: string) => (s || "").replace(/\s+/g, "").toLowerCase();
-                      const codeNorm = normalize(code);
-                      const match = allCourses.find(c => normalize(c.courseCode || "") === codeNorm);
+                      // Use the dedicated search endpoint
+                      const matchingCourses = await apiFetch<any[]>(`/courses/search/by-code?code=${encodeURIComponent(code)}`);
                       
-                      if (!match) {
+                      if (!matchingCourses || matchingCourses.length === 0) {
                         setJoinError('Invalid or unknown course code. Please enter the exact course code.');
                         return;
                       }
                       
-                      // Check if already enrolled by checking Firestore directly
-                      const studentDoc = await getDoc(doc(db, `courses/${match.courseId}/students/${firebaseUser.uid}`));
-                      if (studentDoc.exists() || enrolledCourses.has(match.courseId)) {
+                      const match = matchingCourses[0];
+                      
+                      // Check if already enrolled
+                      if (enrolledCourses.has(match.courseId)) {
                         setJoinError('You are already enrolled in this course.');
                         return;
                       }
@@ -427,6 +420,15 @@ export default function CoursesPage() {
                       // Enroll via backend endpoint (this handles all Firestore writes)
                       await CoursesAPI.enroll(match.courseId, { uid: firebaseUser.uid, enrolledAt: Date.now() });
                       
+                      // Clear cache BEFORE setting flag for immediate reload
+                      cache.delete(cacheKeys.tasks());
+                      cache.clearPrefix('submissions');
+                      
+                      // Set flag to notify other pages to reload (like Calendar)
+                      sessionStorage.setItem('enrollmentChanged', 'true');
+                      
+                      // Optimistically update UI - add course to list and mark as enrolled
+                      setCourses(prev => [...prev, match]);
                       setEnrolledCourses(prev => new Set(prev).add(match.courseId));
                       setAddOpen(false);
                       setToast({ message: `Joined course ${match.courseCode}`, type: "success" });

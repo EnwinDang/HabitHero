@@ -3804,6 +3804,40 @@ app.get("/courses", requireAuth, async (req, res) => {
     }
 });
 /**
+ * GET /courses/search/by-code
+ * Search for courses by course code (for joining)
+ * Returns all active courses matching the code (for students to discover and join)
+ */
+app.get("/courses/search/by-code", requireAuth, async (req, res) => {
+    try {
+        const code = req.query.code?.trim();
+        if (!code) {
+            return res.status(400).json({ error: "Course code is required" });
+        }
+        // Search all active courses for matching code
+        const coursesSnap = await db
+            .collection("courses")
+            .where("isActive", "==", true)
+            .get();
+        const normalize = (s) => (s || "").replace(/\s+/g, "").toLowerCase();
+        const codeNorm = normalize(code);
+        const matching = coursesSnap.docs
+            .filter(doc => {
+            const courseCode = doc.data().courseCode || "";
+            return normalize(courseCode) === codeNorm;
+        })
+            .map(doc => ({
+            courseId: doc.id,
+            ...doc.data(),
+        }));
+        return res.status(200).json(matching);
+    }
+    catch (e) {
+        console.error("Error in GET /courses/search/by-code:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
  * POST /courses
  * Automatically set createdBy to the authenticated user's uid
  */

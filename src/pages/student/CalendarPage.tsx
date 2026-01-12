@@ -46,6 +46,7 @@ export default function CalendarPage() {
   const [submissions, setSubmissions] = useState<Record<string, Submission>>({});
   const [courseTasks, setCourseTasks] = useState<Task[]>([]);
   const [courseTasksLoaded, setCourseTasksLoaded] = useState(false);
+  const [enrollmentRefreshKey, setEnrollmentRefreshKey] = useState(0);
   
   // Submission modal state
   const [submissionModal, setSubmissionModal] = useState<Task | null>(null);
@@ -53,17 +54,34 @@ export default function CalendarPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
 
+  // Listen for enrollment changes and trigger reload
+  useEffect(() => {
+    const checkEnrollmentChange = () => {
+      if (sessionStorage.getItem('enrollmentChanged')) {
+        setEnrollmentRefreshKey(prev => prev + 1);
+      }
+    };
+
+    // Check immediately and then every 50ms for faster response
+    checkEnrollmentChange();
+    const interval = setInterval(checkEnrollmentChange, 50);
+    return () => clearInterval(interval);
+  }, []);
+
   // Load course tasks and submissions
   useEffect(() => {
     async function loadCourseTasks() {
       if (!user) return;
       
       try {
-        // Check cache first
+        // Check if enrollment was recently changed (unenroll/enroll)
+        const enrollmentChanged = sessionStorage.getItem('enrollmentChanged');
+        
+        // Check cache first (but skip if enrollment just changed)
         const cacheKey = cacheKeys.tasks();
         const cachedTasks = cache.get(cacheKey);
         
-        if (cachedTasks && Array.isArray(cachedTasks)) {
+        if (cachedTasks && Array.isArray(cachedTasks) && !enrollmentChanged) {
           console.log('📦 Using cached course tasks');
           setCourseTasks(cachedTasks as Task[]);
           
@@ -120,6 +138,9 @@ export default function CalendarPage() {
         setCourseTasks(allTasks);
         cache.set(cacheKey, allTasks);
         
+        // Clear the enrollment change flag since we've reloaded
+        sessionStorage.removeItem('enrollmentChanged');
+        
         // Load submissions for all these tasks
         if (taskIds.length > 0) {
           const allSubmissions: Record<string, Submission> = {};
@@ -159,7 +180,7 @@ export default function CalendarPage() {
     }
     
     loadCourseTasks();
-  }, [user]);
+  }, [user, enrollmentRefreshKey]);
 
   // Ensure UI updates when course tasks load
   useEffect(() => {
