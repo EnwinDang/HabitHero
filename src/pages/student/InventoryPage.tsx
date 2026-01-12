@@ -165,6 +165,12 @@ export default function InventoryPage() {
             return;
         }
 
+        if (!item.rarity || !['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(item.rarity)) {
+            setMergeMessage({ type: 'error', text: 'This item has an invalid rarity and cannot be rerolled.' });
+            setTimeout(() => setMergeMessage(null), 2500);
+            return;
+        }
+
         const already = rerollSelection.find((sel) => sel.id === item.id);
         if (already) {
             setRerollSelection((prev) => prev.filter((sel) => sel.id !== item.id));
@@ -274,12 +280,18 @@ export default function InventoryPage() {
                 // Generate unique ID per item instance (include bonus hash for separation)
                 const bonusHash = item.bonus ? JSON.stringify(item.bonus).substring(0, 8) : '';
                 const uniqueId = `${item.id || `item_${index}`}${bonusHash ? '_' + bonusHash : ''}`;
+                // Ensure rarity is always set (default to "common" if missing)
+                let rarity = item.rarity as ItemRarity;
+                if (!rarity || !['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(rarity)) {
+                    console.warn(`⚠️ Item ${item.itemId} has invalid rarity: ${item.rarity}, defaulting to "common"`);
+                    rarity = "common";
+                }
                 return {
                     id: uniqueId,
                     itemId: item.itemId,
                     name: displayName,
                     type: displayType,
-                    rarity: (item.rarity || "common") as ItemRarity,
+                    rarity,
                     icon,
                     isEquipped: false,
                     level: item.level || 1,
@@ -1030,10 +1042,28 @@ export default function InventoryPage() {
                                     <button
                                         onClick={async () => {
                                             if (!user) return;
+                                            
+                                            // Validate all selected items have valid rarities
+                                            const rarities = rerollSelection.map(i => i.rarity);
+                                            console.log('🔍 Reroll validation:', { 
+                                                count: rerollSelection.length, 
+                                                itemIds: rerollSelection.map(i => i.itemId),
+                                                rarities,
+                                                items: rerollSelection.map(i => ({ name: i.name, rarity: i.rarity, itemId: i.itemId }))
+                                            });
+                                            
+                                            if (rarities.some(r => !r || !['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(r as string))) {
+                                                setMergeMessage({ type: 'error', text: 'One or more items have invalid rarity. Please reselect.' });
+                                                setTimeout(() => setMergeMessage(null), 2500);
+                                                setRerollConfirm(false);
+                                                return;
+                                            }
+                                            
                                             setRerollLoading(true);
                                             setRerollResult(null);
                                             try {
-                                                const res = await InventoryAPI.reroll(rerollSelection.map((i) => i.itemId));
+                                                const rarity = rerollSelection[0].rarity;
+                                                const res = await InventoryAPI.reroll(rerollSelection.map((i) => i.itemId), rarity);
                                                 setMergeMessage({ type: 'success', text: `Rerolled ${rerollSelection[0].rarity} items!` });
                                                 setTimeout(() => setMergeMessage(null), 2500);
                                                 setRerollResult(res?.result || null);
@@ -1131,7 +1161,7 @@ export default function InventoryPage() {
                                         {Object.entries(statsItem.bonus).map(([k, v]) => (
                                             <div key={k} className="flex items-center justify-between border rounded-md px-2 py-1">
                                                 <span className="text-gray-600">{formatStatKey(k)}</span>
-                                                <span className="font-semibold">{v}</span>
+                                                <span className="font-semibold">{formatStatValue(k, Number(v))}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -1524,31 +1554,49 @@ function renderStatBadges(stats: StatBlock = {}, darkMode: boolean) {
     ));
 }
 
+const normalizeStatKey = (key: string): string => key.replace(/[^a-zA-Z]/g, '').toLowerCase();
+
 function formatStatKey(key: string) {
-    switch (key) {
+    const normalized = normalizeStatKey(key);
+    switch (normalized) {
         case "hp": return "HP";
         case "attack": return "ATK";
-        case "magicAttack": return "MAG ATK";
-        case "defense": return "DEF";
-        case "magicResist": return "MAG RES";
+        case "magicattack":
+        case "magicpower":
+        case "magattack":
+        case "magpower":
+            return "MAG ATK";
+        case "defense":
+        case "defence":
+            return "DEF";
+        case "magicresist":
+        case "magresist":
+        case "magicres":
+            return "MAG RES";
         case "crit": return "CRIT";
-        case "critChance": return "CRIT CH";
-        case "critDamage": return "CRIT DMG";
+        case "critchance": return "CRIT CH";
+        case "critdamage": return "CRIT DMG";
         case "speed": return "SPD";
-        case "goldBonus": return "GOLD";
-        case "xpBonus": return "XP";
+        case "goldbonus": return "GOLD";
+        case "xpbonus": return "XP";
         default: return key.toUpperCase();
     }
 }
 
-function formatStatValue(key: string, value: number): string {
-    // Treat crit stats as percentages; handle both fraction (0.15) and percent (15)
-    if (key === 'critChance' || key === 'critDamage' || key === 'goldBonus' || key === 'xpBonus') {
-        const scaled = value <= 1 ? value * 100 : value; // scale fractions to percent
+function formatStatValue(key: string, value: number | string): string {
+    const normalized = normalizeStatKey(key);
+    const numericValue = typeof value === 'number' ? value : Number(value);
+    if (Number.isNaN(numericValue)) return String(value);
+
+    const isPercentStat = ["critchance", "critdamage", "goldbonus", "xpbonus"].includes(normalized);
+    if (isPercentStat) {
+        const scaled = numericValue <= 1 ? numericValue * 100 : numericValue; // scale fractions to percent
         const rounded = Math.round(scaled * 10) / 10; // 1 decimal
         return `${rounded}%`;
     }
-    return `${value}`;
+
+    const rounded = Number.isInteger(numericValue) ? numericValue : Math.round(numericValue * 10) / 10;
+    return `${rounded}`;
 }
 
 function renderFullStats(item: InventoryItem) {

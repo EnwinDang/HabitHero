@@ -330,6 +330,52 @@ const formatStatName = (stat: string): string => {
         .trim();
 };
 
+// Normalize and format stat keys/values so bonus stats match standard stat displays
+const normalizeStatKey = (key: string): string => key.replace(/[^a-zA-Z]/g, '').toLowerCase();
+
+const formatStatKey = (key: string): string => {
+    const normalized = normalizeStatKey(key);
+    switch (normalized) {
+        case "hp": return "HP";
+        case "attack": return "ATK";
+        case "magicattack":
+        case "magicpower":
+        case "magattack":
+        case "magpower":
+            return "MAG ATK";
+        case "defense":
+        case "defence":
+            return "DEF";
+        case "magicresist":
+        case "magresist":
+        case "magicres":
+            return "MAG RES";
+        case "crit": return "CRIT";
+        case "critchance": return "CRIT CH";
+        case "critdamage": return "CRIT DMG";
+        case "speed": return "SPD";
+        case "goldbonus": return "GOLD";
+        case "xpbonus": return "XP";
+        default: return formatStatName(key);
+    }
+};
+
+const formatStatValue = (key: string, raw: number | string): string => {
+    const normalized = normalizeStatKey(key);
+    const numericValue = typeof raw === 'number' ? raw : Number(raw);
+    if (Number.isNaN(numericValue)) return String(raw);
+
+    const isPercentStat = ["critchance", "critdamage", "goldbonus", "xpbonus"].includes(normalized);
+    if (isPercentStat) {
+        const scaled = numericValue <= 1 ? numericValue * 100 : numericValue;
+        const rounded = Math.round(scaled * 10) / 10;
+        return `${rounded}%`;
+    }
+
+    const rounded = Number.isInteger(numericValue) ? numericValue : Math.round(numericValue * 10) / 10;
+    return `${rounded}`;
+};
+
     return (
         <div className={`min-h-screen ${theme.bg} transition-colors duration-300`}>
             <main className="p-8 overflow-y-auto">
@@ -559,25 +605,11 @@ const formatStatName = (stat: string): string => {
                                                     {hasBonus && (
                                                         <div className="mt-2 text-xs space-y-1">
                                                             {Object.entries(item.bonus || {}).map(([stat, value]) => {
-                                                                const isPercentage = stat.toLowerCase().includes('chance') || stat.toLowerCase().includes('damage') || stat.toLowerCase().includes('bonus');
-                                                                const displayValue = typeof value === 'number' ? value.toFixed(isPercentage ? 1 : 0) : value;
-                                                                const statKeyLabels: Record<string, string> = {
-                                                                    'hp': 'HP',
-                                                                    'attack': 'ATK',
-                                                                    'magicAttack': 'MAG ATK',
-                                                                    'defense': 'DEF',
-                                                                    'magicResist': 'MAG RES',
-                                                                    'crit': 'CRIT',
-                                                                    'critChance': 'CRIT CH',
-                                                                    'critDamage': 'CRIT DMG',
-                                                                    'speed': 'SPD',
-                                                                    'goldBonus': 'GOLD',
-                                                                    'xpBonus': 'XP',
-                                                                };
-                                                                const displayLabel = statKeyLabels[stat] || formatStatName(stat);
+                                                                const displayValue = formatStatValue(stat, value as number | string);
+                                                                const displayLabel = formatStatKey(stat);
                                                                 return (
                                                                     <div key={stat} className="text-yellow-600 font-medium">
-                                                                        +{displayValue}{isPercentage ? '%' : ''} {displayLabel}
+                                                                        +{displayValue} {displayLabel}
                                                                     </div>
                                                                 );
                                                             })}

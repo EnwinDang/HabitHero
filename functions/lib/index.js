@@ -3047,7 +3047,7 @@ app.delete("/users/:uid/inventory/item/:itemId", requireAuth, async (req, res) =
 app.post("/users/:uid/reroll", requireAuth, async (req, res) => {
     try {
         const { uid } = req.params;
-        const { itemIds } = req.body; // Array of 3 itemIds
+        const { itemIds, rarity } = req.body; // Array of 3 itemIds + optional rarity from frontend
         // Validate input
         if (!itemIds || !Array.isArray(itemIds) || itemIds.length !== 3) {
             return res.status(400).json({ error: "Must provide exactly 3 items to reroll" });
@@ -3061,25 +3061,40 @@ app.post("/users/:uid/reroll", requireAuth, async (req, res) => {
         const inventory = user.inventory || {};
         const items = inventory.inventory?.items || [];
         const currentGold = user.stats?.gold || 0;
-        // Find the 3 items in inventory
-        const itemsToReroll = [];
-        const rarities = new Set();
+        // Verify items exist in inventory
         for (const itemId of itemIds) {
             const item = items.find((i) => i.itemId === itemId);
             if (!item) {
                 return res.status(404).json({ error: `Item ${itemId} not found in inventory` });
             }
-            itemsToReroll.push(item);
-            rarities.add(item.rarity);
         }
-        // Validate all items have same rarity
-        if (rarities.size !== 1) {
-            return res.status(400).json({
-                error: "All 3 items must have the same rarity",
-                rarities: Array.from(rarities)
-            });
+        console.log(`🔍 [Reroll] User ${uid} attempting to reroll items:`, itemIds);
+        console.log(`💾 [Reroll] Frontend provided rarity: ${rarity}`);
+        // If frontend provided rarity, use it (it's already validated)
+        let baseRarity = rarity;
+        // Otherwise, fetch from Firestore (fallback)
+        if (!baseRarity) {
+            console.log(`⚠️ [Reroll] No rarity provided by frontend, fetching from collections...`);
+            for (const itemId of itemIds) {
+                let itemDetail = null;
+                for (const collection of ITEM_COLLECTIONS) {
+                    const itemSnap = await db.collection(collection).doc(itemId).get();
+                    if (itemSnap.exists) {
+                        itemDetail = itemSnap.data();
+                        console.log(`✅ [Reroll] Found ${itemId} in collection ${collection}, rarity: ${itemDetail?.rarity}`);
+                        baseRarity = itemDetail?.rarity;
+                        break;
+                    }
+                }
+                if (baseRarity)
+                    break;
+            }
         }
-        const baseRarity = itemsToReroll[0].rarity;
+        if (!baseRarity) {
+            console.error(`❌ [Reroll] Could not determine rarity for items`, itemIds);
+            return res.status(400).json({ error: "Could not determine item rarity" });
+        }
+        console.log(`✅ [Reroll] Using rarity: ${baseRarity}`);
         // Get reroll rules
         const rerollRulesSnap = await db.collection("rerollRules").get();
         const rerollRules = {};

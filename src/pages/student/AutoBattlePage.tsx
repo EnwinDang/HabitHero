@@ -246,7 +246,28 @@ export default function AutoBattlePage() {
                 setPlayer(newPlayer);
                 setBattleState(prev => ({ ...prev, playerHP: newPlayer.hp }));
 
-                // 3. Fetch monster data to determine tier for stamina check
+                // Count equipped items (for monster scaling)
+                const equippedItems = user?.inventory?.equiped || {};
+                let equippedItemsCount = 0;
+                if (equippedItems.weapon) equippedItemsCount++;
+                if (equippedItems.armor && Object.keys(equippedItems.armor).length > 0) equippedItemsCount += Object.keys(equippedItems.armor).length;
+                if (equippedItems.pets && Object.keys(equippedItems.pets).length > 0) equippedItemsCount += Object.keys(equippedItems.pets).length;
+                if (equippedItems.accessoiries && Object.keys(equippedItems.accessoiries).length > 0) equippedItemsCount += Object.keys(equippedItems.accessoiries).length;
+
+                // 3. Fetch initial monster data and build enemy
+                const monsterData = await MonstersAPI.get(targetMonsterId);
+                const monsterStats = await apiFetch<{
+                    worldId: string;
+                    stage: number;
+                    attack: number;
+                    hp: number;
+                    defense: number;
+                    speed: number;
+                    magic: number;
+                    magicResist: number;
+                }>(`/combat/monster-stats/${battleWorldId}/${initialStage}/${newPlayer.level}?monsterId=${targetMonsterId}&equippedItemsCount=${equippedItemsCount}`);
+
+
                 let monsterTierForStamina: string = 'normal';
                 try {
                     const currentMonsterId = stageMonsters[0] || targetMonsterId;
@@ -352,14 +373,6 @@ export default function AutoBattlePage() {
                 // 5. Get monster stats WITH user level and equipped items for scaling
                 const userLevel = user.stats?.level || 1;
                 
-                // Count equipped items
-                const equippedItems = user?.inventory?.equiped || {};
-                let equippedItemsCount = 0;
-                if (equippedItems.weapon) equippedItemsCount++;
-                if (equippedItems.armor && Object.keys(equippedItems.armor).length > 0) equippedItemsCount += Object.keys(equippedItems.armor).length;
-                if (equippedItems.pets && Object.keys(equippedItems.pets).length > 0) equippedItemsCount += Object.keys(equippedItems.pets).length;
-                if (equippedItems.accessoiries && Object.keys(equippedItems.accessoiries).length > 0) equippedItemsCount += Object.keys(equippedItems.accessoiries).length;
-                
                 // 6. Determine which monster to fight (round 1 = first monster, round 2 = second monster)
                 const currentMonsterId = stageMonsters.length > 0 ? stageMonsters[0] : targetMonsterId;
                 console.log(`🎯 Round 1: Fighting monster ${currentMonsterId} (${stageMonsters.length} total monsters in stage)`);
@@ -381,17 +394,6 @@ export default function AutoBattlePage() {
                     return;
                 }
 
-                const monsterStats = await apiFetch<{
-                    worldId: string;
-                    stage: number;
-                    attack: number;
-                    hp: number;
-                    defense: number;
-                    speed: number;
-                    magic: number;
-                    magicResist: number;
-                }>(`/combat/monster-stats/${battleWorldId}/${initialStage}/${userLevel}?monsterId=${currentMonsterId}&equippedItemsCount=${equippedItemsCount}`);
-
                 // Use monster's tier for animation
                 const monsterTierForAnimation = selectedMonster.tier || 'normal';
                 setMonsterTier(monsterTierForAnimation as 'normal' | 'elite' | 'miniBoss' | 'boss');
@@ -412,7 +414,7 @@ export default function AutoBattlePage() {
                     tier: monsterTierForAnimation as 'normal' | 'elite' | 'miniBoss' | 'boss',
                 };
                 setEnemy(newEnemy);
-                setBattleState(prev => ({ ...prev, enemyHP: newEnemy.maxHP }));
+                setBattleState(prev => ({ ...prev, enemyHP: newEnemy.maxHP, playerHP: prev.playerHP || (player?.hp ?? 100) }));
                 
                 // Initialize round rewards array
                 setRoundRewards([]);
@@ -792,6 +794,13 @@ export default function AutoBattlePage() {
         console.log(`🔄 Starting Round ${nextRound} with monster: ${nextMonsterId}`);
         setCurrentRound(nextRound);
         setShowRoundTransition(false); // Hide transition screen
+        setRoundRewardDisplay(null); // Ensure round reward popup is cleared
+        setBattleState(prev => ({
+            ...prev,
+            winner: null,
+            isActive: false,
+            logs: [],
+        }));
         addLog(`--- Round ${nextRound} ---`, 'info');
         addLog(`Preparing to fight the next monster...`, 'info');
 
@@ -1505,7 +1514,14 @@ export default function AutoBattlePage() {
                             </div>
 
                             {/* Battle Results Display - Pixel Style */}
-                            {battleState.winner && !showRoundTransition && (
+                            {(() => {
+                                // Show overlay when: defeat, mid-round reward popup, or final victory.
+                                const isFinalRound = monstersInStage.length > 0 && currentRound >= monstersInStage.length;
+                                const isDefeat = battleState.winner === 'enemy';
+                                const isMidRoundReward = !!roundRewardDisplay; // allow reward popup after first battle
+                                const isFinalVictory = !roundRewardDisplay && battleState.winner === 'player' && isFinalRound;
+                                return battleState.winner && !showRoundTransition && (isDefeat || isMidRoundReward || isFinalVictory);
+                            })() && (
                                 <motion.div
                                     initial={{ scale: 0.8, opacity: 0 }}
                                     animate={{ scale: 1, opacity: 1 }}
