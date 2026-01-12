@@ -63,8 +63,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               console.log("👤 AuthContext User Loaded:", userData.displayName);
               setUser(userData);
             } else {
-              console.log("❌ No user document found in Firestore");
-              setUser(null);
+              // User document doesn't exist - this can happen if:
+              // 1. User just registered and document hasn't been created yet (will be created by /auth/me)
+              // 2. Account was deleted but auth session is still active (will be cleared by auth state change)
+              // 3. Document was manually deleted
+              
+              // Check if user is still authenticated before trying to create document
+              // If auth state is about to change (user being logged out), don't create document
+              const currentAuthUser = auth.currentUser;
+              if (!currentAuthUser || currentAuthUser.uid !== fbUser.uid) {
+                // User is no longer authenticated or different user - don't create document
+                console.log("⚠️ User document not found, but user is no longer authenticated - skipping document creation");
+                setUser(null);
+                return;
+              }
+              
+              // Try to create it via /auth/me endpoint (which creates the document if missing)
+              console.log("⚠️ User document not found, attempting to create via /auth/me...");
+              updateUserFromBackend().catch((err) => {
+                console.warn("Could not create user document:", err);
+                // If /auth/me fails, the user might have been deleted - clear the state
+                setUser(null);
+              });
             }
             setLoading(false);
           },

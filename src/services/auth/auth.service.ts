@@ -5,14 +5,13 @@ import {
   GoogleAuthProvider,
   signOut,
   updateProfile,
-  deleteUser,
   reauthenticateWithCredential,
   reauthenticateWithPopup,
   EmailAuthProvider,
   User,
 } from "firebase/auth";
-import { auth, db } from "../../firebase";
-import { doc, deleteDoc } from "firebase/firestore";
+import { auth } from "../../firebase";
+import { UsersAPI } from "../../api/users.api";
 
 const googleProvider = new GoogleAuthProvider();
 
@@ -71,42 +70,51 @@ export async function reauthenticateUser(
   }
 }
 
+/**
+ * Delete user account with cascading deletion
+ * This calls the backend API which handles:
+ * - Course enrollments
+ * - User subcollections (tasks, achievements, inventory, notifications)
+ * - User document
+ * - Firebase Auth account
+ */
 export async function deleteAccount(password?: string): Promise<void> {
   const user = auth.currentUser;
   if (!user) {
     throw new Error("No user logged in");
   }
 
-  // Try to delete, and if it requires recent login, re-authenticate first
+  // IMPORTANT: Re-authenticate FIRST to validate password before deletion
+  // This ensures password is correct before we proceed with deletion
   try {
-    // Delete Firestore user document
-    try {
-      await deleteDoc(doc(db, "users", user.uid));
-    } catch (error) {
-      console.error("Error deleting user document:", error);
-      // Continue with auth deletion even if Firestore deletion fails
-    }
-
-    // Delete Firebase Auth account
-    await deleteUser(user);
+    await reauthenticateUser(user, password);
   } catch (error: any) {
-    // Check if error is due to requiring recent login
-    if (error.code === "auth/requires-recent-login") {
-      // Re-authenticate the user
-      await reauthenticateUser(user, password);
-      
-      // Retry deletion after re-authentication
-      try {
-        await deleteDoc(doc(db, "users", user.uid));
-      } catch (firestoreError) {
-        console.error("Error deleting user document:", firestoreError);
-        // Continue with auth deletion even if Firestore deletion fails
-      }
-      
-      await deleteUser(user);
-    } else {
-      // Re-throw other errors
-      throw error;
+    // If re-authentication fails, the password is wrong or user cancelled
+    if (error.code === "auth/wrong-password" || error.code === "auth/invalid-credential") {
+      throw new Error("Incorrect password. Please try again.");
     }
+    if (error.code === "auth/popup-closed-by-user" || error.code === "auth/cancelled-popup-request") {
+      throw new Error("Authentication cancelled. Please try again.");
+    }
+    // Re-throw other auth errors
+    throw error;
+  }
+
+  // Now that we've validated the password, proceed with deletion
+  try {
+    // Call the backend API to delete everything
+    // The backend will handle all cascading deletion including Firebase Auth
+    await UsersAPI.delete(user.uid);
+    
+    // IMPORTANT: Immediately sign out to prevent AuthContext from recreating the user document
+    // The Firebase Auth account is deleted, but we need to clear the local session immediately
+    // This prevents the race condition where AuthContext tries to recreate the document
+    await signOut(auth);
+    
+    // Wait a moment to ensure auth state has updated
+    await new Promise(resolve => setTimeout(resolve, 100));
+  } catch (error: any) {
+    // If deletion fails, re-throw the error
+    throw error;
   }
 }

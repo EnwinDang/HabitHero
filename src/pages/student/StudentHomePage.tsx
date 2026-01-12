@@ -23,7 +23,7 @@ import {
 import { db } from "@/firebase";
 import { doc, updateDoc, collection, getDocs, getDoc } from "firebase/firestore";
 import type { Task } from "@/models/task.model";
-import { onTaskCompleted } from "@/services/achievement.service";
+// Note: Task achievement updates are handled by backend in /tasks/{taskId}/complete endpoint
 import { UsersAPI } from "@/api/users.api";
 import { StaminaBar } from "@/components/StaminaBar";
 
@@ -39,6 +39,7 @@ export default function StudentHomePage() {
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
   const [courseTasks, setCourseTasks] = useState<Task[]>([]);
   const [courseTasksLoading, setCourseTasksLoading] = useState(true);
+  const [completedCourseTaskIds, setCompletedCourseTaskIds] = useState<Set<string>>(new Set());
   const theme = getThemeClasses(darkMode, accentColor);
   
   // Stamina state
@@ -90,11 +91,22 @@ export default function StudentHomePage() {
         
         for (const courseDoc of coursesSnapshot.docs) {
           const courseId = courseDoc.id;
+          const courseData = courseDoc.data();
 
-          // Students should only see tasks for courses they are enrolled in
-          const enrollmentSnap = await getDoc(doc(db, `courses/${courseId}/students/${user.uid}`));
-          if (!enrollmentSnap.exists()) {
-            continue; // skip courses where the student is not enrolled
+          // Check enrollment in two places:
+          // 1. Check the students map field on the course document (faster)
+          const mapHasUser = courseData.students && Boolean(courseData.students[user.uid]);
+          
+          // 2. Check the students subcollection (fallback)
+          let subcollectionHasUser = false;
+          if (!mapHasUser) {
+            const enrollmentSnap = await getDoc(doc(db, `courses/${courseId}/students/${user.uid}`));
+            subcollectionHasUser = enrollmentSnap.exists();
+          }
+
+          // Skip courses where the student is not enrolled
+          if (!mapHasUser && !subcollectionHasUser) {
+            continue;
           }
 
           const modulesRef = collection(db, `courses/${courseId}/modules`);
@@ -117,6 +129,7 @@ export default function StudentHomePage() {
           }
         }
         
+        console.log(`📚 Loaded ${allTasks.length} course tasks from ${coursesSnapshot.docs.length} courses`);
         setCourseTasks(allTasks);
       } catch (error) {
         console.error("Error loading course tasks:", error);
@@ -127,6 +140,113 @@ export default function StudentHomePage() {
     
     loadCourseTasks();
   }, [user]);
+
+  // Load completed course task IDs from user's tasks collection
+  useEffect(() => {
+    async function loadCompletedCourseTasks() {
+      if (!firebaseUser) {
+        setCompletedCourseTaskIds(new Set());
+        return;
+      }
+
+      try {
+        // Get all completed tasks from user's tasks collection
+        const userTasksRef = collection(db, "users", firebaseUser.uid, "tasks");
+        const userTasksSnapshot = await getDocs(userTasksRef);
+        
+        const completedIds = new Set<string>();
+        userTasksSnapshot.docs.forEach((doc) => {
+          const task = doc.data();
+          // Check if it's a completed course task (has courseId, moduleId, and isActive: false or claimedAt)
+          if (task.courseId && task.moduleId && (!task.isActive || task.claimedAt)) {
+            // Create the same ID format used when storing: `${courseId}_${moduleId}_${taskId}`
+            const taskId = task.taskId || doc.id.split('_').slice(2).join('_'); // Extract taskId from doc ID if needed
+            const key = `${task.courseId}_${task.moduleId}_${taskId}`;
+            completedIds.add(key);
+            // Also add just the taskId for matching
+            if (task.taskId) {
+              completedIds.add(task.taskId);
+            }
+          }
+        });
+        
+        setCompletedCourseTaskIds(completedIds);
+      } catch (error) {
+        console.error("Error loading completed course tasks:", error);
+      }
+    }
+
+    loadCompletedCourseTasks();
+  }, [firebaseUser, tasks]); // Re-check when tasks change
+
+  // Calculate tasks by difficulty (all course tasks from enrolled courses)
+  const tasksByDifficulty = useMemo(() => {
+    const difficultyCounts: Record<string, { total: number; completed: number }> = {
+      personal: { total: 0, completed: 0 },
+      easy: { total: 0, completed: 0 },
+      medium: { total: 0, completed: 0 },
+      hard: { total: 0, completed: 0 },
+      extreme: { total: 0, completed: 0 },
+    };
+
+    // Count total tasks by difficulty from all course tasks
+    courseTasks.forEach((task) => {
+      const difficulty = (task.difficulty || "personal").toLowerCase();
+      if (difficulty in difficultyCounts) {
+        difficultyCounts[difficulty].total += 1;
+      } else {
+        difficultyCounts.personal.total += 1;
+      }
+    });
+
+    // Count completed course tasks by difficulty from user's tasks collection
+    // Only count tasks that have courseId and moduleId (course tasks)
+    tasks.forEach((task) => {
+      if (task.courseId && task.moduleId) {
+        // This is a course task
+        const difficulty = (task.difficulty || "personal").toLowerCase();
+        if (difficulty in difficultyCounts && (!task.isActive || task.completedAt || task.claimedAt)) {
+          difficultyCounts[difficulty].completed += 1;
+        }
+      }
+    });
+
+    // Also check completedCourseTaskIds for course tasks that might not be in tasks collection yet
+    courseTasks.forEach((task) => {
+      if (task.courseId && task.moduleId) {
+        const taskKey = `${task.courseId}_${task.moduleId}_${task.taskId}`;
+        const isCompleted = completedCourseTaskIds.has(taskKey) || completedCourseTaskIds.has(task.taskId);
+        if (isCompleted) {
+          const difficulty = (task.difficulty || "personal").toLowerCase();
+          if (difficulty in difficultyCounts) {
+            // Only increment if not already counted from tasks collection
+            // This prevents double counting
+            const alreadyCounted = tasks.some(
+              (t) => t.courseId === task.courseId && 
+                     t.moduleId === task.moduleId && 
+                     t.taskId === task.taskId && 
+                     (!t.isActive || t.completedAt || t.claimedAt)
+            );
+            if (!alreadyCounted) {
+              difficultyCounts[difficulty].completed += 1;
+            }
+          }
+        }
+      }
+    });
+
+    // Debug logging
+    console.log('📊 Tasks by Difficulty:', {
+      totalCourseTasks: courseTasks.length,
+      breakdown: Object.entries(difficultyCounts).map(([difficulty, counts]) => ({
+        difficulty,
+        total: counts.total,
+        completed: counts.completed
+      }))
+    });
+
+    return difficultyCounts;
+  }, [courseTasks, tasks, completedCourseTaskIds]);
 
   // Calculate level and XP progress
   const level = user?.stats?.level || 1;
@@ -173,17 +293,8 @@ export default function StudentHomePage() {
         completedAt: Date.now(),
       });
       
-      // Count completed tasks WITH difficulty (excluding personal tasks)
-      // Note: Personal tasks (without difficulty) are NOT counted for achievements
-      const currentlyCompleted = tasks.filter((t) => 
-        !t.isActive && t.difficulty && t.difficulty !== null && t.difficulty !== undefined
-      ).length;
-      // Check if the task we just completed has difficulty
-      const taskHasDifficulty = task?.difficulty && task.difficulty !== null && task.difficulty !== undefined;
-      const completedTasks = currentlyCompleted + (taskHasDifficulty ? 1 : 0); // Only +1 if it has difficulty
-      if (completedTasks > 0) {
-        await onTaskCompleted(completedTasks);
-      }
+      // Note: Task achievement updates are handled by backend in /tasks/{taskId}/complete endpoint
+      // No need to update achievements here - backend already does it
       
       setError(null);
     } catch (err) {
@@ -195,6 +306,7 @@ export default function StudentHomePage() {
   };
 
   // Filter today's tasks (including both personal tasks and course tasks)
+  // Include completed tasks so we can show them with a checkmark
   const todaysTasks = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -203,8 +315,7 @@ export default function StudentHomePage() {
     const allTasks = [...tasks, ...courseTasks];
 
     return allTasks.filter((task) => {
-      if (task.completedAt) return false; 
-
+      // Include tasks that are due today (both completed and incomplete)
       if (task.dueAt) {
         const dueDate = new Date(task.dueAt);
         dueDate.setHours(0, 0, 0, 0);
@@ -358,37 +469,69 @@ export default function StudentHomePage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {todaysTasks.map((task: Task) => (
-                    <div key={task.taskId} className={`rounded-lg p-4 border ${theme.border} ${theme.hoverAccent} transition`}>
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1">
-                          <h3 className={`font-semibold text-lg ${theme.text}`}>{task.title}</h3>
-                          {task.description && <p className={`text-sm ${theme.textMuted} mt-1`}>{task.description}</p>}
-                          <div className="flex items-center gap-3 mt-3 flex-wrap">
-                            {(task.courseId || task.moduleId) && (
-                              <>
-                                <span className={`text-xs px-2 py-1 rounded-full border`} style={{ backgroundColor: `${accentColor}20`, borderColor: `${accentColor}40`, color: accentColor }}>
-                                  {task.difficulty}
-                                </span>
-                                <span className="text-xs font-semibold" style={{ color: accentColor }}>+{task.xp} XP</span>
-                                <span className={`text-xs font-semibold flex items-center gap-1 ${theme.textMuted}`}>
-                                  +{task.gold} <Coins size={12} />
-                                </span>
-                              </>
-                            )}
+                  {todaysTasks.map((task: Task) => {
+                    // Check if task is completed
+                    // For personal tasks: check isActive and completedAt
+                    // For course tasks: check if they exist in user's tasks collection with isActive: false or claimedAt
+                    let isCompleted = false;
+                    if (task.courseId && task.moduleId) {
+                      // Course task: check if it's in completedCourseTaskIds
+                      const taskKey = `${task.courseId}_${task.moduleId}_${task.taskId}`;
+                      isCompleted = completedCourseTaskIds.has(taskKey) || completedCourseTaskIds.has(task.taskId);
+                    } else {
+                      // Personal task: check isActive and completedAt
+                      isCompleted = !task.isActive || (task.completedAt !== null && task.completedAt !== undefined);
+                    }
+                    return (
+                      <div key={task.taskId} className={`rounded-lg p-4 border ${theme.border} ${theme.hoverAccent} transition ${isCompleted ? 'opacity-75' : ''}`}>
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              {isCompleted && (
+                                <CheckCircle2 
+                                  size={20} 
+                                  className="flex-shrink-0" 
+                                  style={{ color: '#22c55e' }}
+                                />
+                              )}
+                              <h3 className={`font-semibold text-lg ${theme.text} ${isCompleted ? 'line-through' : ''}`}>
+                                {task.title}
+                              </h3>
+                            </div>
+                            {task.description && <p className={`text-sm ${theme.textMuted} mt-1`}>{task.description}</p>}
+                            <div className="flex items-center gap-3 mt-3 flex-wrap">
+                              {(task.courseId || task.moduleId) && (
+                                <>
+                                  <span className={`text-xs px-2 py-1 rounded-full border`} style={{ backgroundColor: `${accentColor}20`, borderColor: `${accentColor}40`, color: accentColor }}>
+                                    {task.difficulty}
+                                  </span>
+                                  <span className="text-xs font-semibold" style={{ color: accentColor }}>+{task.xp} XP</span>
+                                  <span className={`text-xs font-semibold flex items-center gap-1 ${theme.textMuted}`}>
+                                    +{task.gold} <Coins size={12} />
+                                  </span>
+                                </>
+                              )}
+                            </div>
                           </div>
+                          {!isCompleted ? (
+                            <button 
+                              onClick={() => handleMarkAsDone(task.taskId)} 
+                              disabled={completingTaskId === task.taskId} 
+                              className="px-4 py-2 rounded-lg text-sm font-semibold transition whitespace-nowrap text-white disabled:opacity-50" 
+                              style={{ backgroundColor: accentColor }}
+                            >
+                              {completingTaskId === task.taskId ? "Bezig..." : "Mark as Done"}
+                            </button>
+                          ) : (
+                            <div className="px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap flex items-center gap-2" style={{ color: '#22c55e', backgroundColor: 'rgba(34, 197, 94, 0.1)' }}>
+                              <CheckCircle2 size={16} />
+                              Voltooid
+                            </div>
+                          )}
                         </div>
-                        <button 
-                          onClick={() => handleMarkAsDone(task.taskId)} 
-                          disabled={completingTaskId === task.taskId} 
-                          className="px-4 py-2 rounded-lg text-sm font-semibold transition whitespace-nowrap text-white disabled:opacity-50" 
-                          style={{ backgroundColor: accentColor }}
-                        >
-                          {completingTaskId === task.taskId ? "Bezig..." : "Mark as Done"}
-                        </button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

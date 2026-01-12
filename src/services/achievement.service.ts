@@ -105,6 +105,8 @@ export async function incrementAchievementProgress(achievementId: AchievementId)
  * Check and update task-related achievements
  * Call this when a task is completed
  * Updates all task achievements from the catalog
+ * NOTE: This function is deprecated - backend handles task achievement updates now
+ * Keeping for backwards compatibility but it should not be called
  */
 export async function onTaskCompleted(totalCompletedTasks: number) {
     const user = auth.currentUser;
@@ -113,41 +115,11 @@ export async function onTaskCompleted(totalCompletedTasks: number) {
         return;
     }
 
-    console.log(`📊 onTaskCompleted called with count: ${totalCompletedTasks}`);
-
-    try {
-        // Query catalog for all task-related achievements
-        // Get all achievements and filter by category (more flexible than `in` query)
-        const achievementsRef = collection(db, "achievements");
-        const snapshot = await getDocs(achievementsRef);
-        
-        const taskAchievements = snapshot.docs
-            .map(doc => ({
-                achievementId: doc.id,
-                ...doc.data()
-            }))
-            .filter((achievement: any) => {
-                const category = (achievement.category || "").toLowerCase();
-                return category === "tasks" || category === "difficulty" || category === "task" ||
-                       achievement.achievementId?.toLowerCase().includes("task") ||
-                       achievement.achievementId?.toLowerCase().includes("easy") ||
-                       achievement.achievementId?.toLowerCase().includes("medium") ||
-                       achievement.achievementId?.toLowerCase().includes("hard") ||
-                       achievement.achievementId?.toLowerCase().includes("extreme");
-            });
-
-        // Update all task achievements
-        await Promise.all(
-            taskAchievements.map(async (achievement) => {
-                const target = (achievement as any).condition?.value || 1;
-                await updateTaskAchievementDirect(user.uid, achievement.achievementId, totalCompletedTasks, target);
-            })
-        );
-
-        console.log(`✅ Task achievements updated successfully in Firestore`);
-    } catch (error) {
-        console.error("❌ Failed to update task achievements:", error);
-    }
+    console.warn(`⚠️ onTaskCompleted called - this should be handled by backend now. Count: ${totalCompletedTasks}`);
+    
+    // Note: Backend now handles task achievement updates in /tasks/{taskId}/claim and /tasks/{taskId}/complete
+    // This function is kept for backwards compatibility but should not be used
+    // If you need to update achievements, use the backend endpoints instead
 }
 
 /**
@@ -290,24 +262,27 @@ async function updateStreakAchievementDirect(
 
 /**
  * Check and update streak achievements
- * Call this when focus streak is updated (from Pomodoro sessions)
- * Updates all streak achievements from the catalog
+ * Call this when streak is updated (from Pomodoro sessions or login)
+ * Updates streak achievements from the catalog based on streak type
+ * @param currentStreak - Current streak value
+ * @param streakType - 'pomodoro' for pomodoro streak, 'login' for login streak
  */
-export async function onStreakUpdated(currentStreak: number) {
+export async function onStreakUpdated(currentStreak: number, streakType?: 'pomodoro' | 'login') {
     const user = auth.currentUser;
     if (!user) {
         console.error("No authenticated user for streak achievement update");
         return;
     }
 
-    console.log(`📊 onStreakUpdated called with streak: ${currentStreak}`);
+    const streakTypeToUse = streakType || 'pomodoro'; // Default to pomodoro for backwards compatibility
+    console.log(`📊 onStreakUpdated called with streak: ${currentStreak}, type: ${streakTypeToUse}`);
 
     try {
         // Query catalog for all streak achievements
         const achievementsRef = collection(db, "achievements");
         const snapshot = await getDocs(achievementsRef);
         
-        const streakAchievements = snapshot.docs
+        const allStreakAchievements = snapshot.docs
             .map(doc => ({
                 achievementId: doc.id,
                 ...doc.data()
@@ -315,10 +290,29 @@ export async function onStreakUpdated(currentStreak: number) {
             .filter((achievement: any) => {
                 const category = (achievement.category || "").toLowerCase();
                 const id = (achievement.achievementId || "").toLowerCase();
+                const title = (achievement.title || "").toLowerCase();
                 return category === "streak" || id.includes("streak");
             });
 
-        // Update all streak achievements
+        // Filter achievements based on streak type
+        // Login streak achievements: "consistent hero", "login", or achievement IDs with "login"
+        // Pomodoro streak achievements: everything else
+        const streakAchievements = allStreakAchievements.filter((achievement: any) => {
+            if (streakTypeToUse === 'login') {
+                const id = (achievement.achievementId || "").toLowerCase();
+                const title = (achievement.title || "").toLowerCase();
+                return id.includes("login") || id.includes("consistent") || 
+                       title.includes("consistent") || title.includes("hero");
+            } else {
+                // Pomodoro streak: exclude login-specific achievements
+                const id = (achievement.achievementId || "").toLowerCase();
+                const title = (achievement.title || "").toLowerCase();
+                return !(id.includes("login") || id.includes("consistent") || 
+                        title.includes("consistent") || title.includes("hero"));
+            }
+        });
+
+        // Update filtered streak achievements
         await Promise.all(
             streakAchievements.map(async (achievement) => {
                 const target = (achievement as any).condition?.value || 1;
@@ -326,7 +320,7 @@ export async function onStreakUpdated(currentStreak: number) {
             })
         );
 
-        console.log(`✅ Streak achievements updated successfully in Firestore`);
+        console.log(`✅ ${streakTypeToUse} streak achievements updated successfully in Firestore (${streakAchievements.length} achievements)`);
     } catch (error) {
         console.error("❌ Failed to update streak achievements:", error);
     }
