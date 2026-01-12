@@ -20,6 +20,8 @@ import {
   Check,
   X,
 } from "lucide-react";
+import heroMaleImage from "@/assets/heroes/hero_male.png";
+import heroFemaleImage from "@/assets/heroes/hero_female.png";
 
 // Avatar options - Lucide React icons
 const avatarIcons = [
@@ -38,6 +40,7 @@ export default function ProfilePage() {
   const { darkMode, accentColor } = useTheme();
 
   const [selectedAvatar, setSelectedAvatar] = useState(0);
+  const [selectedHero, setSelectedHero] = useState<"male" | "female">("female");
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   
@@ -84,6 +87,13 @@ export default function ProfilePage() {
     }
   }, [user]);
 
+  // Load saved hero type
+  useEffect(() => {
+    if (user?.heroType) {
+      setSelectedHero(user.heroType);
+    }
+  }, [user]);
+
   // Save avatar to Firebase
   const handleSaveAvatar = async () => {
     if (!user) return;
@@ -101,6 +111,29 @@ export default function ProfilePage() {
     } catch (error) {
       console.error("Error saving avatar:", error);
       setSaveMessage({ type: 'error', text: 'Error saving avatar' });
+      setTimeout(() => setSaveMessage(null), 3000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Save hero selection to Firebase
+  const handleSaveHero = async () => {
+    if (!user) return;
+
+    setIsSaving(true);
+    setSaveMessage(null);
+
+    try {
+      await UsersAPI.patch(user.uid, {
+        heroType: selectedHero,
+      });
+
+      setSaveMessage({ type: 'success', text: 'Hero selection saved successfully!' });
+      setTimeout(() => setSaveMessage(null), 3000);
+    } catch (error) {
+      console.error("Error saving hero selection:", error);
+      setSaveMessage({ type: 'error', text: 'Error saving hero selection' });
       setTimeout(() => setSaveMessage(null), 3000);
     } finally {
       setIsSaving(false);
@@ -320,6 +353,153 @@ export default function ProfilePage() {
               }}
             >
               {isSaving ? 'Saving...' : 'Save Avatar'}
+            </button>
+          </div>
+
+          {/* Choose Hero Section */}
+          <div
+            className={`${theme.card} border ${theme.border} rounded-3xl p-8 ${theme.shadow} hover:${theme.borderHover} transition-all duration-300`}
+          >
+            <h3
+              className={`text-xl font-bold ${theme.text} mb-4 flex items-center gap-2`}
+            >
+              <Sword size={24} style={{ color: accentColor }} />
+              Choose Battle Hero
+            </h3>
+            <p className={`${theme.textMuted} text-sm mb-4`}>
+              Select your hero character that will appear in battles
+            </p>
+
+            {/* Success/Error Message */}
+            {saveMessage && (
+              <div
+                className={`mb-4 p-3 rounded-xl flex items-center gap-2 ${saveMessage.type === 'success' ? 'bg-green-500/20 text-green-600 dark:text-green-400' : 'bg-red-500/20 text-red-600 dark:text-red-400'}`}
+              >
+                {saveMessage.type === 'success' ? <Check size={20} /> : <X size={20} />}
+                <span className="text-sm font-semibold">{saveMessage.text}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* Male Hero */}
+              <button
+                onClick={() => setSelectedHero("male")}
+                className="p-4 rounded-xl transition-all border-2 hover:scale-105 relative overflow-hidden"
+                style={{
+                  backgroundColor:
+                    selectedHero === "male"
+                      ? darkMode
+                        ? `${accentColor}20`
+                        : `${accentColor}10`
+                      : darkMode
+                        ? "rgba(55, 65, 81, 0.3)"
+                        : "rgba(243, 244, 246, 1)",
+                  borderColor:
+                    selectedHero === "male" ? accentColor : "transparent",
+                  boxShadow:
+                    selectedHero === "male"
+                      ? `0 0 15px ${accentColor}40`
+                      : "none",
+                }}
+              >
+                <img
+                  src={heroMaleImage}
+                  alt="Male Hero"
+                  className="w-full h-48 object-contain"
+                  style={{
+                    imageRendering: 'pixelated',
+                    filter: selectedHero === "male" ? 'drop-shadow(0 0 8px rgba(0,0,0,0.3))' : 'opacity(0.7)',
+                  }}
+                />
+                <p
+                  className={`mt-2 text-center font-semibold ${
+                    selectedHero === "male"
+                      ? darkMode
+                        ? "text-white"
+                        : "text-gray-900"
+                      : darkMode
+                        ? "text-gray-400"
+                        : "text-gray-500"
+                  }`}
+                >
+                  Male Hero
+                </p>
+                {selectedHero === "male" && (
+                  <div className="absolute top-2 right-2">
+                    <Check
+                      size={24}
+                      style={{ color: accentColor }}
+                      className="bg-white rounded-full p-1"
+                    />
+                  </div>
+                )}
+              </button>
+
+              {/* Female Hero */}
+              <button
+                onClick={() => setSelectedHero("female")}
+                className="p-4 rounded-xl transition-all border-2 hover:scale-105 relative overflow-hidden"
+                style={{
+                  backgroundColor:
+                    selectedHero === "female"
+                      ? darkMode
+                        ? `${accentColor}20`
+                        : `${accentColor}10`
+                      : darkMode
+                        ? "rgba(55, 65, 81, 0.3)"
+                        : "rgba(243, 244, 246, 1)",
+                  borderColor:
+                    selectedHero === "female" ? accentColor : "transparent",
+                  boxShadow:
+                    selectedHero === "female"
+                      ? `0 0 15px ${accentColor}40`
+                      : "none",
+                }}
+              >
+                <img
+                  src={heroFemaleImage}
+                  alt="Female Hero"
+                  className="w-full h-48 object-contain"
+                  style={{
+                    imageRendering: 'pixelated',
+                    filter: selectedHero === "female" ? 'drop-shadow(0 0 8px rgba(0,0,0,0.3))' : 'opacity(0.7)',
+                  }}
+                />
+                <p
+                  className={`mt-2 text-center font-semibold ${
+                    selectedHero === "female"
+                      ? darkMode
+                        ? "text-white"
+                        : "text-gray-900"
+                      : darkMode
+                        ? "text-gray-400"
+                        : "text-gray-500"
+                  }`}
+                >
+                  Female Hero
+                </p>
+                {selectedHero === "female" && (
+                  <div className="absolute top-2 right-2">
+                    <Check
+                      size={24}
+                      style={{ color: accentColor }}
+                      className="bg-white rounded-full p-1"
+                    />
+                  </div>
+                )}
+              </button>
+            </div>
+
+            {/* Save Button */}
+            <button
+              onClick={handleSaveHero}
+              disabled={isSaving}
+              className="w-full mt-6 px-6 py-3 rounded-xl font-bold text-white transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: isSaving ? '#9ca3af' : accentColor,
+              }}
+            >
+              {isSaving ? 'Saving...' : 'Save Hero Selection'}
             </button>
           </div>
         </div>

@@ -1,6 +1,6 @@
 export interface Achievement {
   achievementId: string;
-  progressId?: string; // Explicit mapping to progress document ID (e.g., "first_task", "monster_10")
+  progressId?: string; // Explicit mapping to progress document ID 
   title: string;
   description?: string | null;
   category?: string | null;

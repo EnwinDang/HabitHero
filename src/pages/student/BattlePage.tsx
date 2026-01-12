@@ -8,6 +8,8 @@ import { CombatAPI } from "@/api/combat.api";
 import { MonstersAPI } from "@/api/monsters.api";
 import { UsersAPI } from "@/api/users.api";
 import { apiFetch } from "@/api/client";
+import heroMaleImage from "@/assets/heroes/hero_male.png";
+import heroFemaleImage from "@/assets/heroes/hero_female.png";
 
 export default function BattlePage() {
     const { darkMode, accentColor } = useTheme();
@@ -603,7 +605,7 @@ export default function BattlePage() {
                                 {/* Player */}
                                 <div className="text-center">
                                     <div
-                                        className="w-32 h-32 rounded-2xl flex items-center justify-center mb-4 mx-auto"
+                                        className="w-32 h-32 rounded-2xl flex items-center justify-center mb-4 mx-auto overflow-hidden"
                                         style={{
                                             backgroundColor: darkMode ? "rgba(100, 116, 139, 0.5)" : "rgba(148, 163, 184, 0.3)",
                                             borderWidth: "2px",
@@ -611,7 +613,20 @@ export default function BattlePage() {
                                             borderColor: `${accentColor}80`,
                                         }}
                                     >
-                                        <span className="text-6xl">{player.emoji}</span>
+                                        {(() => {
+                                            const heroImage = user?.heroType === "male" ? heroMaleImage : heroFemaleImage;
+                                            return (
+                                                <img
+                                                    src={heroImage}
+                                                    alt={player.name}
+                                                    className="w-full h-full object-contain"
+                                                    style={{
+                                                        imageRendering: 'pixelated',
+                                                        filter: 'drop-shadow(2px 2px 4px rgba(0,0,0,0.3))',
+                                                    }}
+                                                />
+                                            );
+                                        })()}
                                     </div>
                                     <h3 className={`text-2xl font-bold ${theme.text} mb-1`}>
                                         {player.name}

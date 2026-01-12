@@ -6,6 +6,7 @@ import { deleteAccount } from "@/services/auth/auth.service";
 import { useRealtimeUser } from "@/hooks/useRealtimeUser";
 import { UsersAPI } from "@/api/users.api";
 import { StaminaBar } from "@/components/StaminaBar";
+import { auth } from "@/firebase";
 import {
   Sword,
   Scroll,
@@ -46,6 +47,8 @@ export default function SettingsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [battleNotifications, setBattleNotifications] = useState(true);
   const [achievementAlerts, setAchievementAlerts] = useState(true);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Get theme classes
   const theme = getThemeClasses(darkMode, accentColor);
@@ -55,15 +58,38 @@ export default function SettingsPage() {
     navigate("/login");
   }
 
+  // Check if user uses email/password auth
+  const isEmailPasswordUser = () => {
+    const user = auth.currentUser;
+    if (!user) return false;
+    return user.providerData.some(
+      (provider) => provider.providerId === "password"
+    );
+  };
+
   async function handleDeleteAccount() {
     try {
       setIsDeleting(true);
-      await deleteAccount();
+      setDeleteError(null);
+      
+      // Get password if user uses email/password auth
+      const password = isEmailPasswordUser() ? deletePassword : undefined;
+      
+      if (isEmailPasswordUser() && !password) {
+        setDeleteError("Please enter your password to confirm account deletion.");
+        setIsDeleting(false);
+        return;
+      }
+
+      await deleteAccount(password);
       // After account deletion, redirect to login
       navigate("/login", { replace: true });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error deleting account:", error);
-      alert("Failed to delete account. Please try again.");
+      const errorMessage =
+        error.message ||
+        "Failed to delete account. Please try again.";
+      setDeleteError(errorMessage);
       setIsDeleting(false);
     }
   }
@@ -332,10 +358,63 @@ export default function SettingsPage() {
                   </h4>
                   <p className={`${theme.textMuted} mb-6 text-sm`}>
                     This will permanently delete your account and all associated data. This action cannot be undone.
+                    {isEmailPasswordUser() && (
+                      <span className="block mt-2 font-medium">
+                        Please enter your password to confirm.
+                      </span>
+                    )}
                   </p>
+
+                  {/* Password input for email/password users */}
+                  {isEmailPasswordUser() && (
+                    <div className="mb-4">
+                      <label
+                        className={`block text-sm font-medium ${theme.text} mb-2`}
+                      >
+                        Password
+                      </label>
+                      <input
+                        type="password"
+                        value={deletePassword}
+                        onChange={(e) => {
+                          setDeletePassword(e.target.value);
+                          setDeleteError(null);
+                        }}
+                        disabled={isDeleting}
+                        className={`w-full px-4 py-2 rounded-xl border ${
+                          darkMode
+                            ? "bg-gray-800 border-gray-700 text-white"
+                            : "bg-white border-gray-300 text-gray-900"
+                        } disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2`}
+                        style={{
+                          focusRingColor: accentColor,
+                        }}
+                        placeholder="Enter your password"
+                        autoFocus
+                      />
+                    </div>
+                  )}
+
+                  {/* Error message */}
+                  {deleteError && (
+                    <div
+                      className={`mb-4 p-3 rounded-xl ${
+                        darkMode
+                          ? "bg-red-900/30 text-red-300"
+                          : "bg-red-50 text-red-700"
+                      } text-sm`}
+                    >
+                      {deleteError}
+                    </div>
+                  )}
+
                   <div className="flex gap-3">
                     <button
-                      onClick={() => setShowDeleteConfirm(false)}
+                      onClick={() => {
+                        setShowDeleteConfirm(false);
+                        setDeletePassword("");
+                        setDeleteError(null);
+                      }}
                       disabled={isDeleting}
                       className={`flex-1 px-4 py-2 rounded-xl font-medium transition-colors ${
                         darkMode

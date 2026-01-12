@@ -6,6 +6,7 @@ export interface User {
   displayName: string;
   email: string;
   photoURL?: string | null;
+  heroType?: "male" | "female"; // Hero character selection for battles
   role: UserRole;
   status: UserStatus;
   createdAt?: number;
