@@ -387,7 +387,7 @@ export default function SettingsPage() {
                             : "bg-white border-gray-300 text-gray-900"
                         } disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2`}
                         style={{
-                          focusRingColor: accentColor,
+                          borderColor: accentColor,
                         }}
                         placeholder="Enter your password"
                         autoFocus

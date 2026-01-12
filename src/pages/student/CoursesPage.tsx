@@ -162,6 +162,7 @@ export default function CoursesPage() {
 
     try {
       setEnrollingCourse(courseId);
+      // Unenroll via backend endpoint (this handles all Firestore writes)
       await CoursesAPI.unenroll(courseId, firebaseUser.uid);
 
       // Update enrolled courses
@@ -169,16 +170,6 @@ export default function CoursesPage() {
         const newSet = new Set(prev);
         newSet.delete(courseId);
         return newSet;
-      });
-
-      // Remove enrollment mirror from Firestore for consistency
-      const studentRef = doc(db, `courses/${courseId}/students/${firebaseUser.uid}`);
-      await deleteDoc(studentRef);
-
-      // Remove the student flag from the course document's students map
-      const courseRef = doc(db, `courses/${courseId}`);
-      await updateDoc(courseRef, {
-        [`students.${firebaseUser.uid}`]: deleteField(),
       });
     } catch (error) {
       console.error("Error unenrolling from course:", error);

@@ -139,7 +139,7 @@ export async function onTaskCompleted(totalCompletedTasks: number) {
         // Update all task achievements
         await Promise.all(
             taskAchievements.map(async (achievement) => {
-                const target = achievement.condition?.value || 1;
+                const target = (achievement as any).condition?.value || 1;
                 await updateTaskAchievementDirect(user.uid, achievement.achievementId, totalCompletedTasks, target);
             })
         );
@@ -184,7 +184,7 @@ export async function onFocusSessionCompleted(totalFocusSessions: number) {
         // Update all focus achievements
         await Promise.all(
             focusAchievements.map(async (achievement) => {
-                const target = achievement.condition?.value || 1;
+                const target = (achievement as any).condition?.value || 1;
                 await updateFocusAchievementDirect(user.uid, achievement.achievementId, totalFocusSessions, target);
             })
         );
@@ -213,8 +213,8 @@ async function updateFocusAchievementDirect(
         const existingData = existingDoc.exists() ? existingDoc.data() : {};
         
         // Don't decrease progress or lock an already unlocked achievement
-        const currentProgress = existingData.progress || 0;
-        const currentUnlocked = existingData.isUnlocked || false;
+        const currentProgress = existingData?.progress || 0;
+        const currentUnlocked = existingData?.isUnlocked || false;
         
         const updateData: any = {
             achievementId,
@@ -226,8 +226,8 @@ async function updateFocusAchievementDirect(
         // Set unlockedAt if just unlocked
         if (isUnlocked && !currentUnlocked) {
             updateData.unlockedAt = Date.now();
-        } else if (existingData.unlockedAt) {
-            updateData.unlockedAt = existingData.unlockedAt; // Preserve existing unlockedAt
+        } else if (existingData?.unlockedAt) {
+            updateData.unlockedAt = existingData?.unlockedAt; // Preserve existing unlockedAt
         }
 
         await setDoc(achievementRef, updateData, { merge: true });
@@ -257,11 +257,11 @@ async function updateStreakAchievementDirect(
         
         // Check if document exists
         const existingDoc = await getDoc(achievementRef);
-        const existingData = existingDoc.exists ? existingDoc.data() : {};
+        const existingData = existingDoc.exists() ? existingDoc.data() : {};
         
         // Don't decrease progress or lock an already unlocked achievement
-        const currentProgress = (existingData.progress as number) || 0;
-        const currentUnlocked = (existingData.isUnlocked as boolean) || false;
+        const currentProgress = (existingData?.progress as number) || 0;
+        const currentUnlocked = (existingData?.isUnlocked as boolean) || false;
         
         const updateData: any = {
             achievementId,
@@ -273,8 +273,8 @@ async function updateStreakAchievementDirect(
         // Set unlockedAt if just unlocked
         if (isUnlocked && !currentUnlocked) {
             updateData.unlockedAt = Date.now();
-        } else if (existingData.unlockedAt) {
-            updateData.unlockedAt = existingData.unlockedAt; // Preserve existing unlockedAt
+        } else if (existingData?.unlockedAt) {
+            updateData.unlockedAt = existingData?.unlockedAt; // Preserve existing unlockedAt
         }
 
         await setDoc(achievementRef, updateData, { merge: true });
@@ -321,7 +321,7 @@ export async function onStreakUpdated(currentStreak: number) {
         // Update all streak achievements
         await Promise.all(
             streakAchievements.map(async (achievement) => {
-                const target = achievement.condition?.value || 1;
+                const target = (achievement as any).condition?.value || 1;
                 await updateStreakAchievementDirect(user.uid, achievement.achievementId, currentStreak, target);
             })
         );
@@ -365,7 +365,7 @@ export async function onLevelUp(currentLevel: number) {
         // Update all level achievements
         await Promise.all(
             levelAchievements.map(async (achievement) => {
-                const target = achievement.condition?.value || 1;
+                const target = (achievement as any).condition?.value || 1;
                 await updateLevelAchievementDirect(user.uid, achievement.achievementId, currentLevel, target);
             })
         );
@@ -392,8 +392,8 @@ async function updateLevelAchievementDirect(
         const existingDoc = await getDoc(achievementRef);
         const existingData = existingDoc.exists() ? existingDoc.data() : {};
         
-        const currentProgress = (existingData.progress as number) || 0;
-        const currentUnlocked = (existingData.isUnlocked as boolean) || false;
+        const currentProgress = (existingData?.progress as number) || 0;
+        const currentUnlocked = (existingData?.isUnlocked as boolean) || false;
         
         const updateData: any = {
             achievementId,
@@ -404,8 +404,8 @@ async function updateLevelAchievementDirect(
         
         if (isUnlocked && !currentUnlocked) {
             updateData.unlockedAt = Date.now();
-        } else if (existingData.unlockedAt) {
-            updateData.unlockedAt = existingData.unlockedAt;
+        } else if (existingData?.unlockedAt) {
+            updateData.unlockedAt = existingData?.unlockedAt;
         }
 
         await setDoc(achievementRef, updateData, { merge: true });
@@ -453,7 +453,7 @@ export async function onMonsterDefeated(totalMonstersDefeated: number) {
         // Update all monster achievements
         await Promise.all(
             monsterAchievements.map(async (achievement) => {
-                const target = achievement.condition?.value || 1;
+                const target = (achievement as any).condition?.value || 1;
                 await updateMonsterAchievementDirect(user.uid, achievement.achievementId, totalMonstersDefeated, target);
             })
         );
@@ -480,8 +480,8 @@ async function updateMonsterAchievementDirect(
         const existingDoc = await getDoc(achievementRef);
         const existingData = existingDoc.exists() ? existingDoc.data() : {};
         
-        const currentProgress = (existingData.progress as number) || 0;
-        const currentUnlocked = (existingData.isUnlocked as boolean) || false;
+        const currentProgress = (existingData?.progress as number) || 0;
+        const currentUnlocked = (existingData?.isUnlocked as boolean) || false;
         
         const updateData: any = {
             achievementId,
@@ -492,8 +492,8 @@ async function updateMonsterAchievementDirect(
         
         if (isUnlocked && !currentUnlocked) {
             updateData.unlockedAt = Date.now();
-        } else if (existingData.unlockedAt) {
-            updateData.unlockedAt = existingData.unlockedAt;
+        } else if (existingData?.unlockedAt) {
+            updateData.unlockedAt = existingData?.unlockedAt;
         }
 
         await setDoc(achievementRef, updateData, { merge: true });
@@ -523,8 +523,8 @@ async function updateTaskAchievementDirect(
         const existingDoc = await getDoc(achievementRef);
         const existingData = existingDoc.exists() ? existingDoc.data() : {};
         
-        const currentProgress = (existingData.progress as number) || 0;
-        const currentUnlocked = (existingData.isUnlocked as boolean) || false;
+        const currentProgress = (existingData?.progress as number) || 0;
+        const currentUnlocked = (existingData?.isUnlocked as boolean) || false;
         
         const updateData: any = {
             achievementId,
@@ -535,8 +535,8 @@ async function updateTaskAchievementDirect(
         
         if (isUnlocked && !currentUnlocked) {
             updateData.unlockedAt = Date.now();
-        } else if (existingData.unlockedAt) {
-            updateData.unlockedAt = existingData.unlockedAt;
+        } else if (existingData?.unlockedAt) {
+            updateData.unlockedAt = existingData?.unlockedAt;
         }
 
         await setDoc(achievementRef, updateData, { merge: true });
