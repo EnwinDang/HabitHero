@@ -1002,6 +1002,23 @@ export default function AutoBattlePage() {
         }
     }, [showBossAnimation]);
 
+    // Handle beforeunload to warn about leaving during an active battle
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            // Only show warning if battle is active or not yet won (final battle not done)
+            if (battleState.isActive || !battleState.winner) {
+                e.preventDefault();
+                e.returnValue = '';
+                return '';
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [battleState.isActive, battleState.winner]);
+
     // Cleanup on unmount
     useEffect(() => {
         return () => {

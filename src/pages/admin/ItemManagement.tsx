@@ -207,7 +207,7 @@ const ItemManagement = () => {
                   </span>
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={() => { setEditItem({ item: entry, collection: activeTab === 'items' ? activeCollection : activeTab }); setIsModalOpen(true); }}
+                  <button onClick={() => { setEditItem({ item: entry, collection: activeTab, activeCollection }); setIsModalOpen(true); }}
                     className="p-2 hover:bg-violet-50 rounded-xl text-slate-300 hover:text-violet-600 transition-colors"
                     title="Bewerk status of details"
                   >

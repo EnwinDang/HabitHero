@@ -14,6 +14,9 @@ const AddItemModal = ({ isOpen, onClose, onSuccess, activeTab, editData }: AddIt
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<any>({});
 
+  // Determine the actual tab being edited - if editData has collection, use that, otherwise use activeTab
+  const currentTab = editData?.collection || activeTab;
+
   const sanitizeId = (text: string) => {
     return text
       .toLowerCase()
@@ -48,16 +51,16 @@ const AddItemModal = ({ isOpen, onClose, onSuccess, activeTab, editData }: AddIt
       const baseName = finalData.name || finalData.title || 'new_asset';
       const cleanId = sanitizeId(baseName);
 
-      if (activeTab === 'items') finalData.itemId = cleanId;
-      else if (activeTab === 'lootboxes') finalData.lootboxId = cleanId;
-      else if (activeTab === 'achievements') {
+      if (currentTab === 'items') finalData.itemId = cleanId;
+      else if (currentTab === 'lootboxes') finalData.lootboxId = cleanId;
+      else if (currentTab === 'achievements') {
         finalData.achievementId = cleanId;
         finalData.id = cleanId; 
       }
     }
 
     try {
-      if (activeTab === 'achievements') {
+      if (currentTab === 'achievements') {
         if (editData) {
           const safeId = encodeURIComponent(finalData.achievementId || finalData.id);
           await AchievementsAPI.patch(safeId, finalData);
@@ -92,7 +95,7 @@ const AddItemModal = ({ isOpen, onClose, onSuccess, activeTab, editData }: AddIt
         <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-violet-50/30">
           <div>
             <h2 className="text-2xl font-black text-slate-900 uppercase italic">
-              {editData ? 'Edit Achievement' : 'New Achievement'}
+              {editData ? `Edit ${currentTab === 'items' ? 'Item' : currentTab === 'lootboxes' ? 'Lootbox' : 'Achievement'}` : `New ${currentTab === 'items' ? 'Item' : currentTab === 'lootboxes' ? 'Lootbox' : 'Achievement'}`}
             </h2>
           </div>
           <button onClick={onClose} className="p-3 hover:bg-white rounded-2xl text-slate-400">

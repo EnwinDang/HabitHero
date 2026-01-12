@@ -559,12 +559,25 @@ const formatStatName = (stat: string): string => {
                                                     {hasBonus && (
                                                         <div className="mt-2 text-xs space-y-1">
                                                             {Object.entries(item.bonus || {}).map(([stat, value]) => {
-                                                                const isPercentage = stat.toLowerCase().includes('chance') || stat.toLowerCase().includes('damage');
+                                                                const isPercentage = stat.toLowerCase().includes('chance') || stat.toLowerCase().includes('damage') || stat.toLowerCase().includes('bonus');
                                                                 const displayValue = typeof value === 'number' ? value.toFixed(isPercentage ? 1 : 0) : value;
-                                                                const formattedStatName = formatStatName(stat);
+                                                                const statKeyLabels: Record<string, string> = {
+                                                                    'hp': 'HP',
+                                                                    'attack': 'ATK',
+                                                                    'magicAttack': 'MAG ATK',
+                                                                    'defense': 'DEF',
+                                                                    'magicResist': 'MAG RES',
+                                                                    'crit': 'CRIT',
+                                                                    'critChance': 'CRIT CH',
+                                                                    'critDamage': 'CRIT DMG',
+                                                                    'speed': 'SPD',
+                                                                    'goldBonus': 'GOLD',
+                                                                    'xpBonus': 'XP',
+                                                                };
+                                                                const displayLabel = statKeyLabels[stat] || formatStatName(stat);
                                                                 return (
                                                                     <div key={stat} className="text-yellow-600 font-medium">
-                                                                        +{displayValue}{isPercentage ? '%' : ''} {formattedStatName}
+                                                                        +{displayValue}{isPercentage ? '%' : ''} {displayLabel}
                                                                     </div>
                                                                 );
                                                             })}

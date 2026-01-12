@@ -1588,7 +1588,7 @@ function buildStatsTooltip(item: InventoryItem): string {
     // Bonus (lootbox) applies to any type
     const bonusEntries = Object.entries(item.bonus || {}).filter(([, v]) => v !== undefined && v !== null && Number(v) !== 0);
     if (bonusEntries.length > 0) {
-        const bonusText = bonusEntries.map(([k, v]) => `Bonus ${formatStatKey(k)} ${v}`).join(" • ");
+        const bonusText = bonusEntries.map(([k, v]) => `Bonus ${formatStatKey(k)} ${formatStatValue(k, Number(v))}`).join(" • ");
         parts.push(bonusText);
     }
 

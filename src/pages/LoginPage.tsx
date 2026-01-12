@@ -161,6 +161,24 @@ export default function LoginPage() {
             No account? <Link to="/register">Create account</Link>
           </div>
         </div>
+
+        {/* GDPR Footer */}
+        <div style={{ 
+          marginTop: '32px', 
+          padding: '16px', 
+          borderTop: '1px solid var(--hh-border)',
+          fontSize: '12px',
+          color: 'var(--hh-muted)',
+          lineHeight: '1.6'
+        }}>
+          <p style={{ margin: '0 0 8px 0', fontWeight: 500 }}>Privacy & Gegevensbescherming</p>
+          <p style={{ margin: '0 0 8px 0' }}>
+            Door in te loggen ga je akkoord met ons <a href="/privacy-policy" style={{ color: 'var(--hh-accent)', textDecoration: 'underline' }}>Privacybeleid</a> en onze verwerking van je persoonsgegevens volgens de AVG/GDPR.
+          </p>
+          <p style={{ margin: '0' }}>
+            We gebruiken je gegevens uitsluitend voor educatieve doeleinden. Je hebt recht op inzage, rectificatie en verwijdering van je gegevens.
+          </p>
+        </div>
       </div>
       </div>
     </div>

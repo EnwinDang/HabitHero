@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "../pages/LoginPage";
 import RegisterPage from "../pages/RegisterPage";
+import PrivacyPolicyPage from "../pages/PrivacyPolicyPage";
 import HomePage from "../pages/HomePage";
 import AdminLayout from "../pages/layouts/AdminLayout";
 import StudentLayout from "../pages/layouts/StudentLayout";
@@ -47,6 +48,7 @@ export const AppRoutes = () => {
       <Route path="/" element={<LoginPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
       
       {/* Admin dashboard Routes */}
       <Route
