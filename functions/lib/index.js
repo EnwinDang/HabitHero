@@ -350,9 +350,34 @@ async function updateLevelAchievements(uid, currentLevel) {
 /**
  * Helper: Update task-related achievements
  * Queries catalog for all task achievements and updates them
+ * IMPORTANT: Difficulty-specific achievements are updated with count for that specific difficulty only
+ * Generic achievements (first_task, task_master_10, etc.) are updated with total count
  */
 async function updateTaskAchievements(uid, totalCompletedTasks) {
     try {
+        // Get user's completed tasks to count by difficulty
+        const userRef = db.collection("users").doc(uid);
+        const tasksSnapshot = await userRef.collection("tasks").where("isActive", "==", false).get();
+        // Count tasks by difficulty (only count tasks with difficulty field)
+        const tasksByDifficulty = {
+            easy: 0,
+            medium: 0,
+            hard: 0,
+            extreme: 0,
+            total: 0
+        };
+        tasksSnapshot.docs.forEach((doc) => {
+            const task = doc.data();
+            if (task.difficulty && task.difficulty !== null && task.difficulty !== undefined) {
+                const difficulty = String(task.difficulty).toLowerCase();
+                if (difficulty === "easy" || difficulty === "medium" || difficulty === "hard" || difficulty === "extreme") {
+                    tasksByDifficulty[difficulty] = (tasksByDifficulty[difficulty] || 0) + 1;
+                    tasksByDifficulty.total += 1;
+                }
+            }
+        });
+        // Use the provided totalCompletedTasks if it's more accurate (from caller)
+        tasksByDifficulty.total = Math.max(tasksByDifficulty.total, totalCompletedTasks);
         // Query catalog for all task-related achievements
         const achievementsRef = db.collection("achievements");
         const snapshot = await achievementsRef.get();
@@ -368,11 +393,33 @@ async function updateTaskAchievements(uid, totalCompletedTasks) {
                 id.includes("task") || id.includes("easy") || id.includes("medium") ||
                 id.includes("hard") || id.includes("extreme");
         });
-        // Update all task achievements
+        // Update achievements based on their type
         await Promise.all(taskAchievements.map(async (achievement) => {
-            const target = achievement.condition?.value || 1;
-            await updateAchievementProgress(uid, achievement.achievementId, totalCompletedTasks);
+            const achievementId = String(achievement.achievementId || "").toLowerCase();
+            let progressToUse = tasksByDifficulty.total; // Default to total
+            // Check if this is a difficulty-specific achievement
+            if (achievementId.includes("extreme")) {
+                progressToUse = tasksByDifficulty.extreme;
+            }
+            else if (achievementId.includes("hard")) {
+                progressToUse = tasksByDifficulty.hard;
+            }
+            else if (achievementId.includes("medium")) {
+                progressToUse = tasksByDifficulty.medium;
+            }
+            else if (achievementId.includes("easy")) {
+                progressToUse = tasksByDifficulty.easy;
+            }
+            // If it's a generic achievement (first_task, task_master_10, etc.), use total
+            await updateAchievementProgress(uid, achievement.achievementId, progressToUse);
         }));
+        console.log(`✅ Updated task achievements for user ${uid}:`, {
+            easy: tasksByDifficulty.easy,
+            medium: tasksByDifficulty.medium,
+            hard: tasksByDifficulty.hard,
+            extreme: tasksByDifficulty.extreme,
+            total: tasksByDifficulty.total
+        });
     }
     catch (error) {
         console.error("Error updating task achievements:", error);
@@ -504,6 +551,209 @@ async function updateMonsterDefeatAchievements(uid, totalMonstersDefeated) {
         console.error("Error updating monster achievements:", error);
     }
 }
+/**
+ * Helper: Update module completion achievements
+ * Checks if a module is complete (all tasks have approved submissions) and updates achievements
+ */
+async function updateModuleCompletionAchievements(uid, courseId, moduleId) {
+    try {
+        // Get all tasks in this module
+        const tasksRef = db
+            .collection("courses")
+            .doc(String(courseId))
+            .collection("modules")
+            .doc(String(moduleId))
+            .collection("tasks");
+        const tasksSnapshot = await tasksRef.get();
+        const totalTasks = tasksSnapshot.docs.length;
+        if (totalTasks === 0) {
+            return; // No tasks in module, skip
+        }
+        // Check each task to see if user has an approved submission
+        let completedTasks = 0;
+        for (const taskDoc of tasksSnapshot.docs) {
+            const taskData = taskDoc.data();
+            const submissions = taskData.submissions || {};
+            // Check if user has an approved submission for this task
+            const userSubmission = Object.values(submissions).find((sub) => sub.studentId === uid && sub.status === "approved");
+            if (userSubmission) {
+                completedTasks++;
+            }
+        }
+        const isModuleComplete = completedTasks >= totalTasks;
+        // Always update module achievements (even if not complete, to track progress)
+        // Query catalog for module completion achievements
+        const achievementsRef = db.collection("achievements");
+        const snapshot = await achievementsRef.get();
+        const moduleAchievements = snapshot.docs
+            .map(doc => ({
+            achievementId: doc.id,
+            ...doc.data()
+        }))
+            .filter((achievement) => {
+            const category = (achievement.category || "").toLowerCase();
+            const id = (achievement.achievementId || "").toLowerCase();
+            return category === "module" || category === "course" ||
+                id.includes("module") || id.includes("module_");
+        });
+        // Count total completed modules across all courses for this user
+        // This gives us a total count to update achievements with
+        let totalCompletedModules = 0;
+        try {
+            // Get all courses
+            const coursesSnapshot = await db.collection("courses").get();
+            for (const courseDoc of coursesSnapshot.docs) {
+                const courseId = courseDoc.id;
+                // Check if user is enrolled
+                const enrollmentSnap = await db.collection("courses").doc(courseId).collection("students").doc(uid).get();
+                const courseData = courseDoc.data() || {};
+                const studentsMap = courseData.students || {};
+                const mapHasUser = studentsMap[uid] === true || studentsMap[uid] === 1 || Boolean(studentsMap[uid]);
+                if (!enrollmentSnap.exists && !mapHasUser) {
+                    continue; // User not enrolled in this course
+                }
+                // Get all modules in this course
+                const modulesSnapshot = await db.collection("courses").doc(courseId).collection("modules").get();
+                for (const moduleDoc of modulesSnapshot.docs) {
+                    const moduleId = moduleDoc.id;
+                    // Get all tasks in this module
+                    const moduleTasksSnapshot = await db
+                        .collection("courses")
+                        .doc(courseId)
+                        .collection("modules")
+                        .doc(moduleId)
+                        .collection("tasks")
+                        .get();
+                    if (moduleTasksSnapshot.docs.length === 0) {
+                        continue; // No tasks in module
+                    }
+                    // Check if all tasks have approved submissions
+                    let moduleCompletedTasks = 0;
+                    for (const taskDoc of moduleTasksSnapshot.docs) {
+                        const taskData = taskDoc.data();
+                        const submissions = taskData.submissions || {};
+                        const userSubmission = Object.values(submissions).find((sub) => sub.studentId === uid && sub.status === "approved");
+                        if (userSubmission) {
+                            moduleCompletedTasks++;
+                        }
+                    }
+                    if (moduleCompletedTasks >= moduleTasksSnapshot.docs.length) {
+                        totalCompletedModules++;
+                    }
+                }
+            }
+        }
+        catch (error) {
+            console.warn("Error counting total completed modules:", error);
+            // Fallback: if we can't count all, just use the current module status
+            totalCompletedModules = isModuleComplete ? 1 : 0;
+        }
+        // Update module completion achievements with total count
+        await Promise.all(moduleAchievements.map(async (achievement) => {
+            await updateAchievementProgress(uid, achievement.achievementId, totalCompletedModules);
+        }));
+        if (isModuleComplete) {
+            console.log(`✅ Module completion checked: ${courseId}/${moduleId} - ${completedTasks}/${totalTasks} tasks completed - MODULE COMPLETE!`);
+        }
+        else {
+            console.log(`📊 Module completion checked: ${courseId}/${moduleId} - ${completedTasks}/${totalTasks} tasks completed`);
+        }
+    }
+    catch (error) {
+        console.error("Error updating module completion achievements:", error);
+    }
+}
+/**
+ * Helper: Update world completion achievements
+ * Checks if a world is complete (all monsters defeated) and updates achievements
+ */
+async function updateWorldCompletionAchievements(uid, worldId) {
+    try {
+        // Get user's world progress
+        const userRef = db.collection("users").doc(uid);
+        const userSnap = await userRef.get();
+        const user = userSnap.data() || {};
+        const worldProgress = user.worldMapProgress?.[worldId];
+        const completedLevels = worldProgress?.completedLevels || [];
+        // Get world data to find total monsters
+        // Worlds have stages, and monsters are extracted from stages
+        let totalMonsters = 0;
+        try {
+            const worldSnap = await db.collection("worlds").doc(worldId).get();
+            if (worldSnap.exists) {
+                const worldData = worldSnap.data() || {};
+                const stages = worldData.stages || [];
+                // Extract unique monster IDs from all stages (same logic as frontend)
+                const monsterIdsInOrder = [];
+                stages.forEach((stage) => {
+                    if (stage && stage.values && Array.isArray(stage.values)) {
+                        stage.values.forEach((id) => {
+                            if (id && !monsterIdsInOrder.includes(id)) {
+                                monsterIdsInOrder.push(id);
+                            }
+                        });
+                    }
+                });
+                totalMonsters = monsterIdsInOrder.length;
+            }
+            else {
+                // If world document doesn't exist, estimate from completedLevels
+                // A world typically has monsters, and we need at least completedLevels.length + 2
+                // (first 2 are always unlocked)
+                totalMonsters = completedLevels.length + 2;
+            }
+        }
+        catch (error) {
+            console.warn(`Could not get world data for ${worldId}, estimating from progress:`, error);
+            // Estimate: completedLevels.length + 2 (first 2 always unlocked)
+            totalMonsters = completedLevels.length + 2;
+        }
+        if (totalMonsters === 0) {
+            return; // No monsters in world, skip
+        }
+        // A world is complete when all monsters are defeated
+        // First 2 monsters (indices 0, 1) are always unlocked, so they don't need to be in completedLevels
+        // Total monsters to complete = totalMonsters - 2
+        const totalMonstersToComplete = Math.max(0, totalMonsters - 2);
+        const completedMonsters = completedLevels.length;
+        const isWorldComplete = completedMonsters >= totalMonstersToComplete;
+        if (isWorldComplete) {
+            // Query catalog for world completion achievements
+            const achievementsRef = db.collection("achievements");
+            const snapshot = await achievementsRef.get();
+            const worldAchievements = snapshot.docs
+                .map(doc => ({
+                achievementId: doc.id,
+                ...doc.data()
+            }))
+                .filter((achievement) => {
+                const category = (achievement.category || "").toLowerCase();
+                const id = (achievement.achievementId || "").toLowerCase();
+                return category === "world" || category === "map" ||
+                    id.includes("world") || id.includes("world_");
+            });
+            // Update world completion achievements
+            // For world-specific achievements (e.g., ach_world_1_complete), check if this is the right world
+            await Promise.all(worldAchievements.map(async (achievement) => {
+                const achievementId = String(achievement.achievementId || "").toLowerCase();
+                // Check if this achievement is for this specific world
+                // Extract world number from ID (e.g., "ach_world_1_complete" -> world 1)
+                const worldMatch = achievementId.match(/world[_\s]*(\d+)/);
+                if (worldMatch) {
+                    const worldNumber = parseInt(worldMatch[1], 10);
+                    // Try to match world by order or ID - for now, update all world achievements
+                    // This could be refined to match specific worlds if needed
+                }
+                // Update with completion status (1 = complete, 0 = incomplete)
+                await updateAchievementProgress(uid, achievement.achievementId, isWorldComplete ? 1 : 0);
+            }));
+            console.log(`✅ World completion checked: ${worldId} - ${completedMonsters}/${totalMonstersToComplete} monsters defeated`);
+        }
+    }
+    catch (error) {
+        console.error("Error updating world completion achievements:", error);
+    }
+}
 // ============ AUTH ============
 /**
  * GET /auth/me
@@ -523,6 +773,21 @@ app.get("/auth/me", requireAuth, async (req, res) => {
         const day = String(now.getDate()).padStart(2, '0');
         const todayDateString = `${year}-${month}-${day}`; // "2026-01-08"
         if (!snap.exists) {
+            // IMPORTANT: Verify that the Firebase Auth account still exists before creating the document
+            // If the account was deleted, we should NOT create a new document
+            try {
+                await admin.auth().getUser(uid);
+                // Auth account exists, safe to create document
+            }
+            catch (authErr) {
+                if (authErr.code === "auth/user-not-found") {
+                    // Auth account doesn't exist - don't create the document
+                    console.log(`⚠️ Auth account ${uid} doesn't exist, skipping document creation`);
+                    return res.status(404).json({ error: "User account not found" });
+                }
+                // Other error - rethrow
+                throw authErr;
+            }
             // Get defaultPlayer template from Firestore
             const templateSnap = await db.collection("templates").doc("defaultPlayer").get();
             const defaultPlayer = templateSnap.data()?.player || {};
@@ -1178,7 +1443,7 @@ app.post("/tasks/:taskId/claim", requireAuth, async (req, res) => {
         const baseRewards = difficultyRewards[difficulty] || difficultyRewards.medium;
         const baseXP = baseRewards.xp || 100;
         const baseGold = baseRewards.gold || 25;
-        console.log(`🎯 [Claim Reward] Task: ${taskData.name}, difficulty: ${difficulty}, baseXP: ${baseXP}, baseGold: ${baseGold}`);
+        console.log(`🎯 [Claim Reward] Task: ${taskData.title || taskData.name || "Task"}, difficulty: ${difficulty}, baseXP: ${baseXP}, baseGold: ${baseGold}`);
         const xpGained = baseXP;
         const goldGained = baseGold;
         console.log(`💰 [Claim Reward] XP/Gold gained - xpGained: ${xpGained}, goldGained: ${goldGained}`);
@@ -1229,7 +1494,7 @@ app.post("/tasks/:taskId/claim", requireAuth, async (req, res) => {
                 completedAt: now,
                 claimedAt: now,
                 difficulty: difficulty,
-                name: taskData.name || "Task",
+                name: taskData.title || taskData.name || "Task",
             }, { merge: true });
         }
         // Count total completed tasks (from user's tasks collection) and update task achievements
@@ -1250,6 +1515,14 @@ app.post("/tasks/:taskId/claim", requireAuth, async (req, res) => {
         // Update level achievements if leveled up
         if (leveledUp) {
             await updateLevelAchievements(uid, levelData.level);
+        }
+        // Check module completion and update achievements
+        try {
+            await updateModuleCompletionAchievements(uid, courseId, moduleId);
+        }
+        catch (error) {
+            console.error("Error checking module completion:", error);
+            // Don't fail the request if module completion check fails
         }
         return res.status(200).json({
             success: true,
@@ -3606,6 +3879,241 @@ app.patch("/users/:uid", requireAuth, async (req, res) => {
     }
 });
 /**
+ * DELETE /users/{uid}
+ * Cascading deletion: removes user and all related data
+ * Users can only delete their own account, admins can delete any account
+ */
+app.delete("/users/:uid", requireAuth, async (req, res) => {
+    try {
+        const { uid } = req.params;
+        const requesterUid = req.user.uid;
+        // Check if requester is admin or deleting their own account
+        // Note: We check requester's role, but allow deletion even if their document doesn't exist
+        let requesterRole = "student";
+        try {
+            const requesterSnap = await db.collection("users").doc(requesterUid).get();
+            requesterRole = requesterSnap.data()?.role || "student";
+        }
+        catch (err) {
+            console.warn(`⚠️ Could not fetch requester role for ${requesterUid}, defaulting to student`);
+        }
+        const isAdmin = requesterRole === "admin";
+        const isSelf = requesterUid === uid;
+        if (!isAdmin && !isSelf) {
+            return res.status(403).json({ error: "Forbidden: You can only delete your own account" });
+        }
+        // Check if user document exists (but allow deletion even if it doesn't - might be orphaned Auth account)
+        const userSnap = await db.collection("users").doc(uid).get();
+        const userExists = userSnap.exists;
+        if (!userExists) {
+            console.log(`⚠️ User document ${uid} not found in Firestore, but proceeding with cleanup...`);
+        }
+        console.log(`🗑️ Starting cascading deletion for user ${uid}...`);
+        // 1. Delete all course enrollments (both subcollection and map field)
+        try {
+            const coursesSnap = await db.collection("courses").get();
+            const enrollmentDeletions = coursesSnap.docs.map(async (courseDoc) => {
+                const courseRef = courseDoc.ref;
+                const courseData = courseDoc.data() || {};
+                // Delete from students subcollection
+                const studentRef = courseRef.collection("students").doc(uid);
+                const studentSnap = await studentRef.get();
+                if (studentSnap.exists) {
+                    await studentRef.delete();
+                    console.log(`  ✅ Deleted enrollment subcollection from course ${courseDoc.id}`);
+                }
+                // Delete from students map field (if it exists)
+                if (courseData.students && courseData.students[uid]) {
+                    await courseRef.update({
+                        [`students.${uid}`]: admin.firestore.FieldValue.delete()
+                    });
+                    console.log(`  ✅ Deleted enrollment map field from course ${courseDoc.id}`);
+                }
+            });
+            await Promise.all(enrollmentDeletions);
+            console.log(`✅ Deleted all course enrollments for user ${uid}`);
+        }
+        catch (err) {
+            console.error(`⚠️ Error deleting course enrollments:`, err);
+            // Continue with deletion even if this fails
+        }
+        // 2. Delete all task submissions (submissions are stored inside task documents)
+        try {
+            const coursesSnap = await db.collection("courses").get();
+            let totalSubmissionsDeleted = 0;
+            for (const courseDoc of coursesSnap.docs) {
+                const modulesSnap = await courseDoc.ref.collection("modules").get();
+                for (const moduleDoc of modulesSnap.docs) {
+                    const tasksSnap = await moduleDoc.ref.collection("tasks").get();
+                    for (const taskDoc of tasksSnap.docs) {
+                        const taskData = taskDoc.data() || {};
+                        const submissions = taskData.submissions || {};
+                        const submissionsToDelete = [];
+                        // Find all submissions by this user
+                        for (const [submissionId, sub] of Object.entries(submissions)) {
+                            if (sub.studentId === uid) {
+                                submissionsToDelete.push(submissionId);
+                            }
+                        }
+                        // Delete submissions from task document
+                        if (submissionsToDelete.length > 0) {
+                            const updates = {};
+                            submissionsToDelete.forEach((subId) => {
+                                updates[`submissions.${subId}`] = admin.firestore.FieldValue.delete();
+                            });
+                            await taskDoc.ref.update(updates);
+                            totalSubmissionsDeleted += submissionsToDelete.length;
+                            console.log(`  ✅ Deleted ${submissionsToDelete.length} submission(s) from task ${taskDoc.id} in course ${courseDoc.id}`);
+                        }
+                    }
+                }
+            }
+            if (totalSubmissionsDeleted > 0) {
+                console.log(`✅ Deleted ${totalSubmissionsDeleted} total submissions for user ${uid}`);
+            }
+        }
+        catch (err) {
+            console.error(`⚠️ Error deleting task submissions:`, err);
+            // Continue with deletion even if this fails
+        }
+        // 3. Delete user subcollections (tasks, achievements, inventory, notifications)
+        // Note: Subcollections can exist even if parent document doesn't, so we try to delete them
+        const subcollections = ["tasks", "achievements", "notifications", "inventory", "lootboxes"];
+        const userRef = db.collection("users").doc(uid);
+        // IMPORTANT: Get a fresh reference to ensure we're working with the correct document
+        console.log(`🔍 Attempting to delete user document at path: users/${uid}`);
+        for (const subcollection of subcollections) {
+            try {
+                const subcollectionRef = userRef.collection(subcollection);
+                const subcollectionSnap = await subcollectionRef.get();
+                if (!subcollectionSnap.empty) {
+                    // Firestore batch limit is 500 operations
+                    const docs = subcollectionSnap.docs;
+                    const batchSize = 500;
+                    for (let i = 0; i < docs.length; i += batchSize) {
+                        const batch = db.batch();
+                        const batchDocs = docs.slice(i, i + batchSize);
+                        batchDocs.forEach((doc) => {
+                            batch.delete(doc.ref);
+                        });
+                        await batch.commit();
+                    }
+                    console.log(`  ✅ Deleted ${docs.length} documents from ${subcollection} subcollection`);
+                }
+            }
+            catch (err) {
+                // Subcollections might not exist or might fail if parent doesn't exist
+                // This is okay - continue with cleanup
+                console.warn(`⚠️ Could not delete ${subcollection} subcollection (may not exist):`, err.message);
+            }
+        }
+        // 4. Delete Firebase Auth account FIRST to prevent /auth/me from recreating the document
+        // This MUST happen before deleting the user document to prevent race conditions
+        try {
+            await admin.auth().deleteUser(uid);
+            console.log(`✅ Deleted Firebase Auth account ${uid}`);
+            // Verify deletion
+            try {
+                await admin.auth().getUser(uid);
+                // If we get here, user still exists - this is a problem
+                console.error(`❌ CRITICAL: Firebase Auth account ${uid} still exists after deletion attempt!`);
+                throw new Error(`Failed to delete Firebase Auth account ${uid} - account still exists`);
+            }
+            catch (verifyErr) {
+                if (verifyErr.code === "auth/user-not-found") {
+                    console.log(`✅ Verified: Firebase Auth account ${uid} successfully deleted`);
+                }
+                else {
+                    throw verifyErr;
+                }
+            }
+        }
+        catch (err) {
+            // If auth account doesn't exist, that's okay
+            if (err.code === "auth/user-not-found") {
+                console.log(`ℹ️ Firebase Auth account ${uid} doesn't exist (already deleted)`);
+            }
+            else {
+                console.error(`❌ CRITICAL ERROR deleting Firebase Auth account ${uid}:`, err);
+                // This is critical - if we can't delete the Auth account, the user document will be recreated
+                throw new Error(`Failed to delete Firebase Auth account: ${err.message || err.code || 'Unknown error'}`);
+            }
+        }
+        // 5. Delete user document (now that Auth account is deleted, /auth/me can't recreate it)
+        try {
+            // Check if document exists before deletion
+            const beforeDeleteSnap = await userRef.get();
+            console.log(`🔍 User document ${uid} exists before deletion: ${beforeDeleteSnap.exists}`);
+            if (beforeDeleteSnap.exists) {
+                // Always attempt deletion - use Admin SDK which bypasses security rules
+                await userRef.delete();
+                console.log(`✅ Deleted user document ${uid}`);
+                // Verify deletion succeeded - wait a moment for consistency
+                await new Promise(resolve => setTimeout(resolve, 100));
+                const verifySnap = await userRef.get();
+                if (verifySnap.exists) {
+                    console.error(`❌ CRITICAL: User document ${uid} still exists after deletion attempt!`);
+                    // Try one more time
+                    await userRef.delete();
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    const verifySnap2 = await userRef.get();
+                    if (verifySnap2.exists) {
+                        // Last resort: try using admin.firestore() directly
+                        await admin.firestore().collection("users").doc(uid).delete();
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        const verifySnap3 = await admin.firestore().collection("users").doc(uid).get();
+                        if (verifySnap3.exists) {
+                            throw new Error(`Failed to delete user document ${uid} - document still exists after multiple attempts. This may indicate a Firestore permissions or configuration issue.`);
+                        }
+                        else {
+                            console.log(`✅ User document ${uid} deleted on second attempt using admin.firestore()`);
+                        }
+                    }
+                    else {
+                        console.log(`✅ User document ${uid} deleted on second attempt`);
+                    }
+                }
+                else {
+                    console.log(`✅ Verified: User document ${uid} successfully deleted`);
+                }
+            }
+            else {
+                console.log(`ℹ️ User document ${uid} doesn't exist, nothing to delete`);
+            }
+        }
+        catch (err) {
+            // If it's a "not found" error, that's okay - document doesn't exist
+            if (err.code === 5 || err.code === 'NOT_FOUND' || err.message?.includes('not found') || err.message?.includes('NOT_FOUND')) {
+                console.log(`ℹ️ User document ${uid} doesn't exist (already deleted or never existed)`);
+            }
+            else {
+                console.error(`❌ CRITICAL ERROR deleting user document ${uid}:`, err);
+                console.error(`   Error code: ${err.code}, Error message: ${err.message}`);
+                // Don't continue if we can't delete the user document - this is critical
+                throw new Error(`Failed to delete user document: ${err.message || err.code || 'Unknown error'}`);
+            }
+        }
+        console.log(`✅ Successfully completed cascading deletion for user ${uid}`);
+        // IMPORTANT: Return success only after everything is deleted
+        // The frontend will handle logout after receiving this response
+        return res.status(200).json({
+            success: true,
+            message: "User and all related data deleted",
+            deleted: {
+                enrollments: true,
+                submissions: true,
+                subcollections: true,
+                userDocument: true,
+                authAccount: true
+            }
+        });
+    }
+    catch (e) {
+        console.error("Error in DELETE /users/:uid:", e);
+        return res.status(500).json({ error: e?.message });
+    }
+});
+/**
  * GET /users
  */
 app.get("/users", requireAuth, async (req, res) => {
@@ -4803,6 +5311,14 @@ app.post("/combat/:combatId/resolve", requireAuth, async (req, res) => {
                                     [`worldMapProgress.${worldId}.completedLevels`]: updatedCompletedLevels,
                                     updatedAt: Date.now(),
                                 });
+                                // Check world completion and update achievements
+                                try {
+                                    await updateWorldCompletionAchievements(uid, worldId);
+                                }
+                                catch (error) {
+                                    console.error("Error checking world completion:", error);
+                                    // Don't fail the request if world completion check fails
+                                }
                             }
                             else {
                                 console.log(`ℹ️ [Combat Resolve] Monster ${monsterIndex} already completed`);
@@ -5952,6 +6468,7 @@ app.post("/pomodoro/session-completed", async (req, res) => {
                 todaysFocusSeconds: needsReset ? focusSeconds : firestore_1.FieldValue.increment(focusSeconds),
                 totalSessions: firestore_1.FieldValue.increment(1),
                 totalFocusSeconds: firestore_1.FieldValue.increment(focusSeconds),
+                focusSessionsCompleted: firestore_1.FieldValue.increment(1), // Track total completed focus sessions for achievements
                 xp: firestore_1.FieldValue.increment(25),
                 totalXP: firestore_1.FieldValue.increment(25),
                 streak: newStreak,

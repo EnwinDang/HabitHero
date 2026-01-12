@@ -7,10 +7,8 @@ import { useAuth } from "@/context/AuthContext";
 import { UsersAPI } from "@/api/users.api";
 import {
   onStreakUpdated,
-  onLevelUp,
-  onTaskCompleted,
   onFocusSessionCompleted,
-  onMonsterDefeated,
+  // Note: onLevelUp, onTaskCompleted, onMonsterDefeated removed - backend handles these
 } from "@/services/achievement.service";
 import { AchievementsAPI } from "@/api/achievements.api";
 import { Trophy, Star, TrendingUp, Coins, Lock, Check, Gift, Zap, X } from "lucide-react";
@@ -44,6 +42,7 @@ export default function AchievementsPage() {
   // Track previous values to avoid unnecessary syncs
   const prevLevelRef = useRef<number>(0);
   const prevStreakRef = useRef<number>(0);
+  const prevLoginStreakRef = useRef<number>(0);
   const prevFocusSessionsRef = useRef<number>(0);
   const prevCompletedTasksRef = useRef<number>(0);
   const prevMonstersDefeatedRef = useRef<number>(0);
@@ -142,17 +141,28 @@ export default function AchievementsPage() {
   useEffect(() => {
     if (user && !userLoading) {
       // Update streak achievements only if streak changed
-      const currentStreak = user.stats.streak || 0;
-      if (currentStreak > 0 && currentStreak !== prevStreakRef.current) {
-        prevStreakRef.current = currentStreak;
-        onStreakUpdated(currentStreak);
+      // Check both pomodoro streak and login streak
+      const currentPomodoroStreak = user.stats.streak || 0;
+      const currentLoginStreak = user.stats.loginStreak || 0;
+      
+      // Update pomodoro streak achievements (general streak achievements)
+      if (currentPomodoroStreak > 0 && currentPomodoroStreak !== prevStreakRef.current) {
+        prevStreakRef.current = currentPomodoroStreak;
+        onStreakUpdated(currentPomodoroStreak, 'pomodoro');
+      }
+      
+      // Update login streak achievements (e.g., "consistent hero")
+      if (currentLoginStreak > 0 && currentLoginStreak !== prevLoginStreakRef.current) {
+        prevLoginStreakRef.current = currentLoginStreak;
+        onStreakUpdated(currentLoginStreak, 'login');
       }
 
-      // Update level achievements only if level changed
+      // Note: Level achievement updates are handled by backend when user levels up
+      // (in /tasks/{taskId}/complete, /users/{uid}/battle-rewards, etc.)
+      // No need to sync here - backend already handles it
       const userLevel = user.stats?.level || 1;
-      if (userLevel > 0 && userLevel !== prevLevelRef.current) {
+      if (userLevel !== prevLevelRef.current) {
         prevLevelRef.current = userLevel;
-        onLevelUp(userLevel);
       }
 
       // Update focus session achievements only if count changed
@@ -166,21 +176,18 @@ export default function AchievementsPage() {
         });
       }
 
-      // Update monster defeat achievements only if count changed
-      // Check both progression.monstersDefeated (primary) and stats.monstersDefeated (fallback)
+      // Note: Monster achievement updates are handled by backend in /users/{uid}/battle-rewards endpoint
+      // No need to sync here - backend already handles it
       const monstersDefeated = user.progression?.monstersDefeated || user.stats.monstersDefeated || 0;
       if (monstersDefeated !== prevMonstersDefeatedRef.current) {
         prevMonstersDefeatedRef.current = monstersDefeated;
-        console.log(`🔄 Syncing monster defeat achievements with ${monstersDefeated} monsters`);
-        onMonsterDefeated(monstersDefeated).catch(err => {
-          console.error("Failed to update monster achievements:", err);
-        });
       }
     }
     // Use specific values instead of the entire user object to avoid re-renders
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     user?.stats?.streak,
+    user?.stats?.loginStreak,
     user?.stats?.level,
     user?.stats?.focusSessionsCompleted,
     user?.progression?.monstersDefeated,
@@ -188,19 +195,8 @@ export default function AchievementsPage() {
     userLoading
   ]);
 
-  // Sync task achievements when tasks change
-  // Note: Only count tasks WITH difficulty (exclude personal tasks without difficulty)
-  useEffect(() => {
-    if (tasks.length > 0) {
-      const completedTasks = tasks.filter((t) => 
-        !t.isActive && t.difficulty && t.difficulty !== null && t.difficulty !== undefined
-      ).length;
-      if (completedTasks > 0 && completedTasks !== prevCompletedTasksRef.current) {
-        prevCompletedTasksRef.current = completedTasks;
-        onTaskCompleted(completedTasks);
-      }
-    }
-  }, [tasks]);
+  // Note: Task achievement updates are handled by backend in /tasks/{taskId}/complete endpoint
+  // No need to sync here - backend already handles it when tasks are completed
 
   if (userLoading || achievementsLoading) {
     return (

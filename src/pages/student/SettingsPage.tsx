@@ -82,7 +82,8 @@ export default function SettingsPage() {
       }
 
       await deleteAccount(password);
-      // After account deletion, redirect to login
+      // Account deleted successfully - user is already logged out by deleteAccount
+      // Navigate to login page
       navigate("/login", { replace: true });
     } catch (error: any) {
       console.error("Error deleting account:", error);

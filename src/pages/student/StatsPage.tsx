@@ -3,9 +3,10 @@ import { useRealtimeTasks } from "@/hooks/useRealtimeTasks";
 import { useRealtimeAchievements } from "@/hooks/useRealtimeAchievements";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
 import { getCurrentLevelProgress, getXPForLevel, getXPToNextLevel, getLevelFromXP } from "@/utils/xpCurve";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { db } from "@/firebase";
 import { doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
+import type { Task } from "@/models/task.model";
 import { StaminaBar } from "@/components/StaminaBar";
 import {
   Sword,
@@ -31,6 +32,8 @@ export default function StatsPage() {
   const { darkMode, accentColor } = useTheme();
   const [equippedStats, setEquippedStats] = useState<Record<string, number>>({});
   const [totalAvailableItems, setTotalAvailableItems] = useState<number>(0);
+  const [courseTasks, setCourseTasks] = useState<Task[]>([]);
+  const [completedCourseTaskIds, setCompletedCourseTaskIds] = useState<Set<string>>(new Set());
   const [staminaConfig, setStaminaConfig] = useState<{
     maxStamina: number;
     regenRateMinutes: number;
@@ -177,7 +180,200 @@ export default function StatsPage() {
     fetchTotalItems();
   }, []);
 
+  // Load course tasks
+  useEffect(() => {
+    async function loadCourseTasks() {
+      if (!user) {
+        setCourseTasks([]);
+        return;
+      }
+      
+      try {
+        // Get all courses and their modules to load tasks
+        const coursesRef = collection(db, "courses");
+        const coursesSnapshot = await getDocs(coursesRef);
+        
+        const allTasks: Task[] = [];
+        
+        for (const courseDoc of coursesSnapshot.docs) {
+          const courseId = courseDoc.id;
+          const courseData = courseDoc.data();
 
+          // Check enrollment in two places:
+          // 1. Check the students map field on the course document (faster)
+          const mapHasUser = courseData.students && Boolean(courseData.students[user.uid]);
+          
+          // 2. Check the students subcollection (fallback)
+          let subcollectionHasUser = false;
+          if (!mapHasUser) {
+            const enrollmentSnap = await getDoc(doc(db, `courses/${courseId}/students/${user.uid}`));
+            subcollectionHasUser = enrollmentSnap.exists();
+          }
+
+          // Skip courses where the student is not enrolled
+          if (!mapHasUser && !subcollectionHasUser) {
+            continue;
+          }
+
+          const modulesRef = collection(db, `courses/${courseId}/modules`);
+          const modulesSnapshot = await getDocs(modulesRef);
+          
+          for (const moduleDoc of modulesSnapshot.docs) {
+            const moduleId = moduleDoc.id;
+            const tasksRef = collection(db, `courses/${courseId}/modules/${moduleId}/tasks`);
+            const tasksSnapshot = await getDocs(tasksRef);
+            
+            tasksSnapshot.docs.forEach(taskDoc => {
+              const task = {
+                taskId: taskDoc.id,
+                courseId,
+                moduleId,
+                ...taskDoc.data()
+              } as Task;
+              allTasks.push(task);
+            });
+          }
+        }
+        
+        console.log(`📚 [StatsPage] Loaded ${allTasks.length} course tasks from ${coursesSnapshot.docs.length} courses`);
+        setCourseTasks(allTasks);
+      } catch (error) {
+        console.error("Error loading course tasks:", error);
+      }
+    }
+    
+    loadCourseTasks();
+  }, [user]);
+
+  // Load completed course task IDs from user's tasks collection
+  useEffect(() => {
+    async function loadCompletedCourseTasks() {
+      if (!user) {
+        setCompletedCourseTaskIds(new Set());
+        return;
+      }
+
+      try {
+        // Get all completed tasks from user's tasks collection
+        const userTasksRef = collection(db, "users", user.uid, "tasks");
+        const userTasksSnapshot = await getDocs(userTasksRef);
+        
+        const completedIds = new Set<string>();
+        userTasksSnapshot.docs.forEach((doc) => {
+          const task = doc.data();
+          // Check if it's a completed course task (has courseId, moduleId, and isActive: false or claimedAt)
+          if (task.courseId && task.moduleId && (!task.isActive || task.claimedAt)) {
+            // Create the same ID format used when storing: `${courseId}_${moduleId}_${taskId}`
+            const taskId = task.taskId || doc.id.split('_').slice(2).join('_'); // Extract taskId from doc ID if needed
+            const key = `${task.courseId}_${task.moduleId}_${taskId}`;
+            completedIds.add(key);
+            // Also add just the taskId for matching
+            if (task.taskId) {
+              completedIds.add(task.taskId);
+            }
+          }
+        });
+        
+        setCompletedCourseTaskIds(completedIds);
+      } catch (error) {
+        console.error("Error loading completed course tasks:", error);
+      }
+    }
+
+    loadCompletedCourseTasks();
+  }, [user, tasks]); // Re-check when tasks change
+
+  // Calculate tasks by difficulty (including course tasks) - MUST be before early returns
+  const tasksByDifficulty = useMemo(() => {
+    // Handle case when user or data is not loaded yet
+    if (!user || !tasks || !courseTasks) {
+      return {
+        personal: { total: 0, completed: 0 },
+        easy: { total: 0, completed: 0 },
+        medium: { total: 0, completed: 0 },
+        hard: { total: 0, completed: 0 },
+        extreme: { total: 0, completed: 0 },
+      };
+    }
+    const difficultyCounts: Record<string, { total: number; completed: number }> = {
+      personal: { total: 0, completed: 0 },
+      easy: { total: 0, completed: 0 },
+      medium: { total: 0, completed: 0 },
+      hard: { total: 0, completed: 0 },
+      extreme: { total: 0, completed: 0 },
+    };
+
+    // Count total tasks by difficulty from all course tasks
+    courseTasks.forEach((task) => {
+      const difficulty = (task.difficulty || "personal").toLowerCase();
+      if (difficulty in difficultyCounts) {
+        difficultyCounts[difficulty].total += 1;
+      } else {
+        difficultyCounts.personal.total += 1;
+      }
+    });
+
+    // Count completed course tasks by difficulty from user's tasks collection
+    // Only count tasks that have courseId and moduleId (course tasks)
+    tasks.forEach((task) => {
+      if (task.courseId && task.moduleId) {
+        // This is a course task
+        const difficulty = (task.difficulty || "personal").toLowerCase();
+        if (difficulty in difficultyCounts && (!task.isActive || task.completedAt || task.claimedAt)) {
+          difficultyCounts[difficulty].completed += 1;
+        }
+      } else {
+        // Personal task (no courseId/moduleId)
+        const difficulty = (task.difficulty || "personal").toLowerCase();
+        if (difficulty in difficultyCounts) {
+          difficultyCounts[difficulty].total += 1;
+          if (!task.isActive || task.completedAt) {
+            difficultyCounts[difficulty].completed += 1;
+          }
+        } else {
+          difficultyCounts.personal.total += 1;
+          if (!task.isActive || task.completedAt) {
+            difficultyCounts.personal.completed += 1;
+          }
+        }
+      }
+    });
+
+    // Also check completedCourseTaskIds for course tasks that might not be in tasks collection yet
+    courseTasks.forEach((task) => {
+      if (task.courseId && task.moduleId) {
+        const taskKey = `${task.courseId}_${task.moduleId}_${task.taskId}`;
+        const isCompleted = completedCourseTaskIds.has(taskKey) || completedCourseTaskIds.has(task.taskId);
+        if (isCompleted) {
+          const difficulty = (task.difficulty || "personal").toLowerCase();
+          if (difficulty in difficultyCounts) {
+            // Only increment if not already counted from tasks collection
+            // This prevents double counting
+            const alreadyCounted = tasks.some(
+              (t) => t.courseId === task.courseId && 
+                     t.moduleId === task.moduleId && 
+                     t.taskId === task.taskId && 
+                     (!t.isActive || t.completedAt || t.claimedAt)
+            );
+            if (!alreadyCounted) {
+              difficultyCounts[difficulty].completed += 1;
+            }
+          }
+        }
+      }
+    });
+
+    console.log('📊 [StatsPage] Tasks by Difficulty:', {
+      totalCourseTasks: courseTasks.length,
+      breakdown: Object.entries(difficultyCounts).map(([difficulty, counts]) => ({
+        difficulty,
+        total: counts.total,
+        completed: counts.completed
+      }))
+    });
+
+    return difficultyCounts;
+  }, [courseTasks, tasks, completedCourseTaskIds, user]);
 
   if (userLoading) {
     return (
@@ -194,7 +390,6 @@ export default function StatsPage() {
   if (!user) {
     return null;
   }
-
 
   // Real data from database only - use stats.level from database, not calculated
   const level = user.stats?.level || 1;  // Use level from database (updated by backend)
@@ -215,36 +410,24 @@ export default function StatsPage() {
   const maxXP = levelProgress.required;
   const xpProgress = levelProgress.percentage;
 
-  // Real task data from database
+  // Real task data from database (personal tasks only for display)
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter((t) => !t.isActive).length;
   const activeTasks = tasks.filter((t) => t.isActive).length;
 
-  // Tasks by difficulty (real data)
-  const easyTasks = tasks.filter((t) => t.difficulty === "easy").length;
-  const mediumTasks = tasks.filter((t) => t.difficulty === "medium").length;
-  const hardTasks = tasks.filter((t) => t.difficulty === "hard").length;
-  const extremeTasks = tasks.filter((t) => t.difficulty === "extreme").length;
-  // Personal tasks (tasks without difficulty field)
-  const personalTasks = tasks.filter((t) => !t.difficulty || t.difficulty === undefined || t.difficulty === null).length;
+  // Tasks by difficulty (including course tasks)
+  const easyTasks = tasksByDifficulty.easy.total;
+  const mediumTasks = tasksByDifficulty.medium.total;
+  const hardTasks = tasksByDifficulty.hard.total;
+  const extremeTasks = tasksByDifficulty.extreme.total;
+  const personalTasks = tasksByDifficulty.personal.total;
 
-  // Completed tasks by difficulty (real data)
-  const completedEasy = tasks.filter(
-    (t) => !t.isActive && t.difficulty === "easy"
-  ).length;
-  const completedMedium = tasks.filter(
-    (t) => !t.isActive && t.difficulty === "medium"
-  ).length;
-  const completedHard = tasks.filter(
-    (t) => !t.isActive && t.difficulty === "hard"
-  ).length;
-  const completedExtreme = tasks.filter(
-    (t) => !t.isActive && t.difficulty === "extreme"
-  ).length;
-  // Completed personal tasks
-  const completedPersonal = tasks.filter(
-    (t) => !t.isActive && (!t.difficulty || t.difficulty === undefined || t.difficulty === null)
-  ).length;
+  // Completed tasks by difficulty (including course tasks)
+  const completedEasy = tasksByDifficulty.easy.completed;
+  const completedMedium = tasksByDifficulty.medium.completed;
+  const completedHard = tasksByDifficulty.hard.completed;
+  const completedExtreme = tasksByDifficulty.extreme.completed;
+  const completedPersonal = tasksByDifficulty.personal.completed;
 
   // Combat stats (if tracked in user.stats or user.progression)
   const battlesWon = user.stats?.battlesWon || 0;

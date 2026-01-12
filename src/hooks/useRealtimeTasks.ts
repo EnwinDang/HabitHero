@@ -24,6 +24,14 @@ export function useRealtimeTasks() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
+        // Check if user still exists (might have been deleted)
+        if (!auth.currentUser || auth.currentUser.uid !== user.uid) {
+          setTasks([]);
+          setLoading(false);
+          unsubscribe();
+          return;
+        }
+
         const taskList = snapshot.docs.map((doc) => ({
           taskId: doc.id,
           ...doc.data(),
@@ -34,7 +42,21 @@ export function useRealtimeTasks() {
         setError(null);
         console.log("📡 Realtime tasks updated:", taskList.length, "tasks");
       },
-      (err) => {
+      (err: any) => {
+        // Handle BloomFilter errors gracefully (these are warnings, not critical errors)
+        if (err?.name === "BloomFilterError" || err?.code === "failed-precondition") {
+          console.warn("⚠️ Firestore sync warning (can occur when data is deleted):", err.message);
+          // Check if user still exists
+          if (!auth.currentUser || auth.currentUser.uid !== user.uid) {
+            setTasks([]);
+            setLoading(false);
+            unsubscribe();
+            return;
+          }
+          // Continue - this is usually a temporary sync issue
+          return;
+        }
+        
         console.error("❌ Firestore listener error:", err);
         setError("Could not load realtime tasks");
         setLoading(false);
@@ -43,7 +65,7 @@ export function useRealtimeTasks() {
 
     // Cleanup listener
     return () => {
-      console.log("🔌 Disconnecting realtime listener");
+      console.log("🔌 Disconnecting realtime tasks listener");
       unsubscribe();
     };
   }, []);
