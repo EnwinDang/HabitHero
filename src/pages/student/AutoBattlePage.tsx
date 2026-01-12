@@ -266,6 +266,10 @@ export default function AutoBattlePage() {
                     magic: number;
                     magicResist: number;
                 }>(`/combat/monster-stats/${battleWorldId}/${initialStage}/${newPlayer.level}?monsterId=${targetMonsterId}&equippedItemsCount=${equippedItemsCount}`);
+                const scaleMonsterHp = (hp: number) => {
+                    // Soften scaling: reduce to 65% to avoid runaway HP inflation
+                    return Math.max(50, Math.round(hp * 0.65));
+                };
 
 
                 let monsterTierForStamina: string = 'normal';
@@ -403,8 +407,8 @@ export default function AutoBattlePage() {
                     name: selectedMonster.name, // Use actual monster name from database
                     level: initialStage,
                     element: (selectedMonster.elementType as any) || stateElement || 'fire',
-                    hp: monsterStats.hp,
-                    maxHP: monsterStats.hp,
+                    hp: scaleMonsterHp(monsterStats.hp),
+                    maxHP: scaleMonsterHp(monsterStats.hp),
                     attack: monsterStats.attack,
                     defense: monsterStats.defense, // Use scaled defense
                     speed: monsterStats.speed, // Use scaled speed
@@ -447,6 +451,20 @@ export default function AutoBattlePage() {
             return () => clearTimeout(timer);
         }
     }, [loading, player, enemy, battleState.isActive, battleState.winner, showBossAnimation]);
+
+    // Cleanup battle interval when a winner is set or on unmount to avoid extra calls after battle
+    useEffect(() => {
+        if (battleState.winner && battleInterval.current) {
+            clearInterval(battleInterval.current);
+            battleInterval.current = null;
+        }
+        return () => {
+            if (battleInterval.current) {
+                clearInterval(battleInterval.current);
+                battleInterval.current = null;
+            }
+        };
+    }, [battleState.winner]);
 
     // Add log entry
     const addLog = (message: string, type: BattleLog['type'] = 'info') => {
@@ -501,14 +519,32 @@ export default function AutoBattlePage() {
         let currentEnemyHP = enemy.hp;
         let turn = 0;
         const battleLog: Array<{ type: string; attacker: string; defender: string; damage: number; hitType: string }> = [];
+        let battleEnded = false;
+
+        const stopIfDead = () => {
+            if (battleEnded) return true;
+            if (currentPlayerHP <= 0) {
+                battleEnded = true;
+                endBattle('enemy', battleLog);
+                return true;
+            }
+            if (currentEnemyHP <= 0) {
+                battleEnded = true;
+                endBattle('player', battleLog);
+                return true;
+            }
+            return false;
+        };
 
         battleInterval.current = window.setInterval(() => {
+            if (stopIfDead()) return;
             turn++;
 
             // Determine who attacks first based on speed
             const playerFirst = player.speed >= enemy.speed;
 
             if (playerFirst) {
+                if (stopIfDead()) return;
                 // Player attacks
                 const attackResult = calculateDamageWithModifiers(player, enemy);
                 const damage = attackResult.damage;
@@ -554,13 +590,11 @@ export default function AutoBattlePage() {
 
                 setBattleState(prev => ({ ...prev, enemyHP: Math.max(0, currentEnemyHP), turn }));
 
-                if (currentEnemyHP <= 0) {
-                    endBattle('player', battleLog);
-                    return;
-                }
+                if (stopIfDead()) return;
 
                 // Enemy attacks back
                 setTimeout(() => {
+                    if (stopIfDead()) return;
                     const enemyAttackResult = calculateDamageWithModifiers(enemy, player);
                     const enemyDamage = enemyAttackResult.damage;
                     currentPlayerHP -= enemyDamage;
@@ -605,11 +639,10 @@ export default function AutoBattlePage() {
                         addLog(`${enemy.name} attacks ${player.name} for ${enemyDamage} damage!`, 'damage');
                     }
 
-                    if (currentPlayerHP <= 0) {
-                        endBattle('enemy', battleLog);
-                    }
+                    stopIfDead();
                 }, 800);
             } else {
+                if (stopIfDead()) return;
                 // Enemy attacks first
                 const enemyAttackResult = calculateDamageWithModifiers(enemy, player);
                 const enemyDamage = enemyAttackResult.damage;
@@ -655,13 +688,11 @@ export default function AutoBattlePage() {
                     addLog(`${enemy.name} attacks ${player.name} for ${enemyDamage} damage!`, 'damage');
                 }
 
-                if (currentPlayerHP <= 0) {
-                    endBattle('enemy', battleLog);
-                    return;
-                }
+                if (stopIfDead()) return;
 
                 // Player attacks back
                 setTimeout(() => {
+                    if (stopIfDead()) return;
                     const playerAttackResult = calculateDamageWithModifiers(player, enemy);
                     const damage = playerAttackResult.damage;
                     currentEnemyHP -= damage;
@@ -706,9 +737,7 @@ export default function AutoBattlePage() {
                         addLog(`${player.name} attacks ${enemy.name} for ${damage} damage!`, 'attack');
                     }
 
-                    if (currentEnemyHP <= 0) {
-                        endBattle('player', battleLog);
-                    }
+                    stopIfDead();
                 }, 800);
             }
         }, 1500); // Battle speed: 1.5 seconds per turn
@@ -830,6 +859,7 @@ export default function AutoBattlePage() {
                 magic: number;
                 magicResist: number;
             }>(`/combat/monster-stats/${worldId}/${stage}/${userLevel}?monsterId=${nextMonsterId}&equippedItemsCount=${equippedItemsCount}`);
+            const scaleMonsterHp = (hp: number) => Math.max(50, Math.round(hp * 0.65));
 
             // Update tier
             const nextMonsterTier = nextMonster.tier || 'normal';
@@ -850,8 +880,8 @@ export default function AutoBattlePage() {
                 name: nextMonster.name,
                 level: stage,
                 element: (nextMonster.elementType as any) || 'fire',
-                hp: monsterStats.hp,
-                maxHP: monsterStats.hp,
+                hp: scaleMonsterHp(monsterStats.hp),
+                maxHP: scaleMonsterHp(monsterStats.hp),
                 attack: monsterStats.attack,
                 defense: monsterStats.defense,
                 speed: monsterStats.speed,
