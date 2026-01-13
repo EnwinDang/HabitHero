@@ -1101,24 +1101,26 @@ export default function InventoryPage() {
                             <div className="flex items-center gap-3">
                                 <div className="text-4xl">{sellConfirm.icon}</div>
                                 <div>
-                                    <p className="font-bold">{sellConfirm.name}</p>
-                                    <p className="text-sm text-gray-500 capitalize">{sellConfirm.rarity}</p>
+                                    <p className={`font-bold ${theme.text}`}>{sellConfirm.name}</p>
+                                    <p className={`text-sm capitalize ${theme.textMuted}`}>{sellConfirm.rarity}</p>
                                 </div>
                             </div>
-                            <div className={`p-3 rounded-lg ${darkMode ? 'bg-yellow-900/20' : 'bg-yellow-100'}`}>
-                                <p className="text-sm text-gray-600">Sell for</p>
-                                <p className="text-2xl font-bold text-yellow-600">{sellConfirm.sellValue ?? 0} Gold</p>
+                            <div className={`p-3 rounded-lg border`} style={{ backgroundColor: darkMode ? 'rgba(250, 204, 21, 0.1)' : 'rgba(250, 204, 21, 0.15)', borderColor: darkMode ? '#374151' : '#e5e7eb' }}>
+                                <p className={`text-sm ${theme.textMuted}`}>Sell for</p>
+                                <p className="text-2xl font-bold text-yellow-500">{sellConfirm.sellValue ?? 0} Gold</p>
                             </div>
                             <div className="flex gap-2">
                                 <button
                                     onClick={() => setSellConfirm(null)}
-                                    className={`flex-1 py-2 rounded-lg font-bold transition-colors ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'}`}
+                                    className={`flex-1 py-2 rounded-lg font-bold transition-colors ${theme.inputBg} ${theme.text}`}
+                                    style={{ border: '1px solid', borderColor: darkMode ? '#374151' : '#e5e7eb' }}
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={() => handleSellConfirm(sellConfirm)}
-                                    className="flex-1 py-2 rounded-lg font-bold bg-yellow-500/30 text-yellow-700 hover:bg-yellow-500/40 transition-colors"
+                                    className="flex-1 py-2 rounded-lg font-bold text-white transition-colors"
+                                    style={{ backgroundColor: accentColor }}
                                 >
                                     Sell
                                 </button>
@@ -1652,8 +1654,14 @@ function hasStatBoost(item: InventoryItem): boolean {
 function normalizeItemType(item: any): ItemType {
     const col = (item?.collection || "").toLowerCase();
     const raw = (item?.type || item?.itemType || "").toLowerCase();
-    if (col.includes("items_weapons") || raw.includes("weapon") || raw.includes("sword") || raw.includes("bow") || raw.includes("staff")) return "weapon";
+    const slot = (item?.slot || "").toLowerCase();
+
+    // Armor slots override everything
+    const armorSlots = ["helmet", "chest", "legs", "boots", "gloves", "shoulders"];
+    if (armorSlots.includes(slot)) return "armor";
+
     if (col.includes("items_armor") || raw.includes("armor") || raw.includes("helm") || raw.includes("helmet") || raw.includes("chest") || raw.includes("plate") || raw.includes("pants") || raw.includes("boots")) return "armor";
+    if (col.includes("items_weapons") || raw.includes("weapon") || raw.includes("sword") || raw.includes("bow") || raw.includes("staff")) return "weapon";
     if (col.includes("items_pets") || raw.includes("pet")) return "pet";
     if (col.includes("items_accessories") || col.includes("items_arcane") || raw.includes("accessory") || raw.includes("ring") || raw.includes("amulet")) return "accessory";
     return "weapon"; // default so it appears under a category instead of being filtered out

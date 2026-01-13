@@ -267,8 +267,12 @@ export default function AutoBattlePage() {
                     magicResist: number;
                 }>(`/combat/monster-stats/${battleWorldId}/${initialStage}/${newPlayer.level}?monsterId=${targetMonsterId}&equippedItemsCount=${equippedItemsCount}`);
                 const scaleMonsterHp = (hp: number) => {
-                    // Soften scaling: reduce to 65% to avoid runaway HP inflation
+                    // Soften HP scaling to avoid runaway inflation
                     return Math.max(50, Math.round(hp * 0.65));
+                };
+                const scaleMonsterStat = (value: number) => {
+                    // Global softener for offensive/defensive stats
+                    return Math.max(1, Math.round(value * 0.8));
                 };
 
 
@@ -409,9 +413,9 @@ export default function AutoBattlePage() {
                     element: (selectedMonster.elementType as any) || stateElement || 'fire',
                     hp: scaleMonsterHp(monsterStats.hp),
                     maxHP: scaleMonsterHp(monsterStats.hp),
-                    attack: monsterStats.attack,
-                    defense: monsterStats.defense, // Use scaled defense
-                    speed: monsterStats.speed, // Use scaled speed
+                    attack: scaleMonsterStat(monsterStats.attack),
+                    defense: scaleMonsterStat(monsterStats.defense),
+                    speed: scaleMonsterStat(monsterStats.speed),
                     emoji: "👾", // Default emoji, will be replaced by image
                     realmId: battleWorldId,
                     levelId: initialStage,
@@ -489,8 +493,11 @@ export default function AutoBattlePage() {
             return { damage: 0, type: 'blocked' };
         }
 
-        const baseDamage = attacker.attack - defender.defense;
-        const normalDamage = Math.max(1, baseDamage + Math.floor(Math.random() * 5));
+        // Soften defender mitigation and boost baseline so player can deal damage
+        const mitigatedAttack = attacker.attack * 1.35; // stronger boost to attacker (late-game help)
+        const mitigatedDefense = defender.defense * 0.5; // soften defender further
+        const baseDamage = mitigatedAttack - mitigatedDefense;
+        const normalDamage = Math.max(1, Math.round(baseDamage) + Math.floor(Math.random() * 4));
         
         if (rand < missChance + blockChance + critChance) {
             return { damage: Math.floor(normalDamage * 1.5), type: 'critical' };
@@ -860,6 +867,7 @@ export default function AutoBattlePage() {
                 magicResist: number;
             }>(`/combat/monster-stats/${worldId}/${stage}/${userLevel}?monsterId=${nextMonsterId}&equippedItemsCount=${equippedItemsCount}`);
             const scaleMonsterHp = (hp: number) => Math.max(50, Math.round(hp * 0.65));
+            const scaleMonsterStat = (value: number) => Math.max(1, Math.round(value * 0.8));
 
             // Update tier
             const nextMonsterTier = nextMonster.tier || 'normal';
@@ -882,9 +890,9 @@ export default function AutoBattlePage() {
                 element: (nextMonster.elementType as any) || 'fire',
                 hp: scaleMonsterHp(monsterStats.hp),
                 maxHP: scaleMonsterHp(monsterStats.hp),
-                attack: monsterStats.attack,
-                defense: monsterStats.defense,
-                speed: monsterStats.speed,
+                attack: scaleMonsterStat(monsterStats.attack),
+                defense: scaleMonsterStat(monsterStats.defense),
+                speed: scaleMonsterStat(monsterStats.speed),
                 emoji: "👾",
                 realmId: worldId,
                 levelId: stage,

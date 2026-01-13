@@ -306,6 +306,10 @@
     background: rgba(15, 15, 20, 0.35);
   }
 
+  .dark .hh-modal-overlay {
+    background: rgba(0, 0, 0, 0.65);
+  }
+
   .hh-modal {
     width: 100%;
     max-width: 720px;
@@ -313,6 +317,13 @@
     border: 1px solid var(--hh-border);
     background: #fff;
     box-shadow: var(--hh-shadow);
+  }
+
+  .dark .hh-modal {
+    background: #0f172a;
+    border-color: #1f2937;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+    color: #e5e7eb;
   }
 
   .hh-modal__head {
@@ -324,8 +335,16 @@
     gap: 16px;
   }
 
+  .dark .hh-modal__head {
+    border-color: #1f2937;
+  }
+
   .hh-modal__body {
     padding: 18px 20px;
+  }
+
+  .dark .hh-modal__body {
+    color: #e5e7eb;
   }
 
   .hh-shell {
