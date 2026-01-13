@@ -5,14 +5,13 @@ import {
   GoogleAuthProvider,
   signOut,
   updateProfile,
-  deleteUser,
   reauthenticateWithCredential,
   reauthenticateWithPopup,
   EmailAuthProvider,
   User,
 } from "firebase/auth";
-import { auth, db } from "../../firebase";
-import { doc, deleteDoc } from "firebase/firestore";
+import { auth } from "../../firebase";
+import { UsersAPI } from "../../api/users.api";
 
 const googleProvider = new GoogleAuthProvider();
 
@@ -77,36 +76,48 @@ export async function deleteAccount(password?: string): Promise<void> {
     throw new Error("No user logged in");
   }
 
-  // Try to delete, and if it requires recent login, re-authenticate first
-  try {
-    // Delete Firestore user document
-    try {
-      await deleteDoc(doc(db, "users", user.uid));
-    } catch (error) {
-      console.error("Error deleting user document:", error);
-      // Continue with auth deletion even if Firestore deletion fails
-    }
+  const providerId = user.providerData[0]?.providerId;
 
-    // Delete Firebase Auth account
-    await deleteUser(user);
-  } catch (error: any) {
-    // Check if error is due to requiring recent login
-    if (error.code === "auth/requires-recent-login") {
-      // Re-authenticate the user
-      await reauthenticateUser(user, password);
-      
-      // Retry deletion after re-authentication
-      try {
-        await deleteDoc(doc(db, "users", user.uid));
-      } catch (firestoreError) {
-        console.error("Error deleting user document:", firestoreError);
-        // Continue with auth deletion even if Firestore deletion fails
+  // Re-authenticate before deletion (required for security)
+  try {
+    if (providerId === "google.com") {
+      // Google users: re-authenticate with popup
+      await reauthenticateWithPopup(user, googleProvider);
+    } else if (providerId === "password") {
+      // Email/password users: re-authenticate with password
+      if (!password) {
+        throw new Error("Password is required for account deletion");
       }
-      
-      await deleteUser(user);
+      const email = user.email;
+      if (!email) {
+        throw new Error("User email not found");
+      }
+      const credential = EmailAuthProvider.credential(email, password);
+      await reauthenticateWithCredential(user, credential);
     } else {
-      // Re-throw other errors
-      throw error;
+      throw new Error("Unsupported authentication provider");
     }
+  } catch (error: any) {
+    // Handle specific re-authentication errors
+    if (error.code === "auth/popup-closed-by-user" || error.code === "auth/cancelled-popup-request") {
+      throw new Error("Authentication cancelled");
+    } else if (error.code === "auth/wrong-password") {
+      throw new Error("Incorrect password");
+    } else if (error.code === "auth/user-mismatch") {
+      throw new Error("Authentication failed");
+    }
+    throw error;
   }
+
+  // Call backend API for cascading deletion
+  try {
+    await UsersAPI.delete(user.uid);
+    console.log("✅ Account deleted successfully via backend API");
+  } catch (error: any) {
+    console.error("❌ Error deleting account via backend API:", error);
+    throw new Error(error.message || "Failed to delete account");
+  }
+
+  // Sign out after successful deletion
+  await signOut(auth);
 }

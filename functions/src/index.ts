@@ -3993,6 +3993,172 @@ app.get("/users/:uid", async (req, res) => {
 });
 
 /**
+ * DELETE /users/{uid}
+ * Cascading deletion of user account and all related data
+ * Requires authentication - user can only delete their own account
+ */
+app.delete("/users/:uid", requireAuth, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const requesterUid = (req as any).user.uid;
+
+    // Users can only delete their own account
+    if (requesterUid !== uid) {
+      return res.status(403).json({ error: "You can only delete your own account" });
+    }
+
+    // Check if Firebase Auth account exists
+    let authUserExists = false;
+    try {
+      await admin.auth().getUser(uid);
+      authUserExists = true;
+    } catch (error: any) {
+      if (error.code === 'auth/user-not-found') {
+        authUserExists = false;
+      } else {
+        throw error;
+      }
+    }
+
+    // Delete Firebase Auth account FIRST (prevents /auth/me from recreating user document)
+    if (authUserExists) {
+      try {
+        await admin.auth().deleteUser(uid);
+        console.log(`✅ Firebase Auth account deleted: ${uid}`);
+      } catch (authError: any) {
+        console.error(`⚠️ Error deleting Firebase Auth account: ${authError.message}`);
+        // Continue with Firestore cleanup even if Auth deletion fails
+      }
+    }
+
+    // Delete user document in Firestore
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+    
+    if (userSnap.exists) {
+      // Delete all user subcollections
+      const subcollections = [
+        "tasks",
+        "achievements",
+        "pets",
+        "battleHistory",
+      ];
+
+      for (const subcollection of subcollections) {
+        try {
+          const subcollectionRef = userRef.collection(subcollection);
+          const snapshot = await subcollectionRef.get();
+          const batch = db.batch();
+          
+          snapshot.docs.forEach((doc) => {
+            batch.delete(doc.ref);
+          });
+          
+          if (snapshot.docs.length > 0) {
+            await batch.commit();
+            console.log(`✅ Deleted ${snapshot.docs.length} documents from users/${uid}/${subcollection}`);
+          }
+        } catch (error) {
+          console.warn(`⚠️ Error deleting subcollection ${subcollection}:`, error);
+        }
+      }
+
+      // Delete user document
+      await userRef.delete();
+      console.log(`✅ User document deleted: users/${uid}`);
+    } else {
+      console.warn(`⚠️ User document not found: users/${uid}`);
+    }
+
+    // Delete course enrollments
+    try {
+      const coursesSnapshot = await db.collection("courses").get();
+      const batch = db.batch();
+      let enrollmentCount = 0;
+      let submissionCount = 0;
+      let operationCount = 0;
+
+      for (const courseDoc of coursesSnapshot.docs) {
+        const courseId = courseDoc.id;
+        const courseData = courseDoc.data();
+
+        // Delete from students subcollection
+        const studentRef = db.collection("courses").doc(courseId).collection("students").doc(uid);
+        const studentSnap = await studentRef.get();
+        if (studentSnap.exists) {
+          batch.delete(studentRef);
+          enrollmentCount++;
+          operationCount++;
+        }
+
+        // Delete from students map field
+        if (courseData.students && courseData.students[uid]) {
+          batch.update(courseDoc.ref, {
+            [`students.${uid}`]: FieldValue.delete(),
+          });
+          operationCount++;
+        }
+
+        // Delete task submissions
+        const modulesSnapshot = await db
+          .collection("courses")
+          .doc(courseId)
+          .collection("modules")
+          .get();
+
+        for (const moduleDoc of modulesSnapshot.docs) {
+          const moduleId = moduleDoc.id;
+          const tasksSnapshot = await db
+            .collection("courses")
+            .doc(courseId)
+            .collection("modules")
+            .doc(moduleId)
+            .collection("tasks")
+            .get();
+
+          for (const taskDoc of tasksSnapshot.docs) {
+            const taskData = taskDoc.data();
+            const submissions = taskData.submissions || {};
+
+            // Remove user's submissions from task
+            const userSubmissions = Object.keys(submissions).filter(
+              (subId) => submissions[subId].studentId === uid
+            );
+
+            if (userSubmissions.length > 0) {
+              const taskRef = taskDoc.ref;
+              const updates: any = {};
+              userSubmissions.forEach((subId) => {
+                updates[`submissions.${subId}`] = FieldValue.delete();
+              });
+              batch.update(taskRef, updates);
+              submissionCount += userSubmissions.length;
+              operationCount++;
+            }
+          }
+        }
+      }
+
+      // Commit batch if there are operations
+      if (operationCount > 0) {
+        await batch.commit();
+        console.log(`✅ Deleted ${enrollmentCount} course enrollments and ${submissionCount} task submissions`);
+      }
+    } catch (error) {
+      console.warn("⚠️ Error deleting course enrollments:", error);
+    }
+
+    return res.status(200).json({ 
+      success: true,
+      message: "User account and all related data deleted successfully"
+    });
+  } catch (e: any) {
+    console.error("Error in DELETE /users/:uid:", e);
+    return res.status(500).json({ error: e?.message });
+  }
+});
+
+/**
  * PATCH /users/{uid}
  */
 app.patch("/users/:uid", requireAuth, async (req, res) => {
