@@ -20,6 +20,7 @@ export interface Task {
   canvasUrl?: string | null;
   createdAt?: number;
   completedAt?: number | null;
+  claimedAt?: number | null;
 }
 
 export interface TaskCompletionResult {
