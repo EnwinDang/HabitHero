@@ -13,7 +13,7 @@ HabitHero is een gamified leerplatform ontworpen om de betrokkenheid en voortgan
 * **Database:** Firestore (NoSQL)
 * **Emulatie:** Firebase Local Emulator Suite (Functions & Firestore)
 
-## lokale Installatue Setup
+## lokale Installatie Setup
 ### 1. Voorbereiding
 *   Zorg dat Node 20 is geïnstalleerd (controleer met `node -v`).
 *   Installeer de Firebase CLI: `npm i -g firebase-tools`.
