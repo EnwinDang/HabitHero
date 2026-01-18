@@ -21,6 +21,9 @@ De applicatie is gedeployed via **Firebase Hosting** en kan getest worden op:
 3. Na registratie:
    - Studenten worden automatisch doorgestuurd naar `/student`.
    - Docenten/admins worden doorgestuurd naar `/teacher`.
+     Doorwijzing wordt enkel door admin gedaan
+       email: nolween.admin@ehb.fr
+       wachtwoord: paswoord
 4. Test de volgende functionaliteiten:
    - Inschrijven voor een cursus via code
    - Bekijken en voltooien van taken
