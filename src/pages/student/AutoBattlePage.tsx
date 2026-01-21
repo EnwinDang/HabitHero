@@ -140,6 +140,7 @@ export default function AutoBattlePage() {
 
     const battleInterval = useRef<number | null>(null);
     const damageNumberIdCounter = useRef<number>(0); // Counter for unique damage number IDs
+    const animationTimers = useRef<number[]>([]); // Track all animation timers for cleanup
 
     // Initialize battle data
     useEffect(() => {
@@ -456,7 +457,7 @@ export default function AutoBattlePage() {
         }
     }, [loading, player, enemy, battleState.isActive, battleState.winner, showBossAnimation]);
 
-    // Cleanup battle interval when a winner is set or on unmount to avoid extra calls after battle
+    // Cleanup battle interval and animation timers when a winner is set or on unmount
     useEffect(() => {
         if (battleState.winner && battleInterval.current) {
             clearInterval(battleInterval.current);
@@ -467,15 +468,22 @@ export default function AutoBattlePage() {
                 clearInterval(battleInterval.current);
                 battleInterval.current = null;
             }
+            // Cleanup all animation timers
+            animationTimers.current.forEach(timer => clearTimeout(timer));
+            animationTimers.current = [];
         };
     }, [battleState.winner]);
 
-    // Add log entry
+    // Add log entry (limit to last 100 entries for performance)
     const addLog = (message: string, type: BattleLog['type'] = 'info') => {
-        setBattleState(prev => ({
-            ...prev,
-            logs: [...prev.logs, { message, timestamp: Date.now(), type }],
-        }));
+        setBattleState(prev => {
+            const newLogs = [...prev.logs, { message, timestamp: Date.now(), type }];
+            // Keep only last 100 logs to prevent memory issues
+            return {
+                ...prev,
+                logs: newLogs.slice(-100),
+            };
+        });
     };
 
     // Calculate damage with critical, block, and miss mechanics
@@ -568,21 +576,31 @@ export default function AutoBattlePage() {
 
                 // Trigger animations
                 setPlayerBump(true);
-                setTimeout(() => setPlayerBump(false), 200);
-                setTimeout(() => {
+                const timer1 = window.setTimeout(() => setPlayerBump(false), 200);
+                animationTimers.current.push(timer1);
+                
+                const timer2 = window.setTimeout(() => {
                     setEnemyHit(true);
                     if (damage > 0) {
                         damageNumberIdCounter.current += 1;
+                        const damageId = damageNumberIdCounter.current;
                         setDamageNumbers(prev => [...prev, { 
-                            id: damageNumberIdCounter.current, 
+                            id: damageId, 
                             damage, 
                             x: 65, // Right side (enemy position)
                             y: 50, 
                             isPlayer: false 
                         }]);
+                        // Remove damage number after animation completes (1 second)
+                        const cleanupTimer = window.setTimeout(() => {
+                            setDamageNumbers(prev => prev.filter(d => d.id !== damageId));
+                        }, 1000);
+                        animationTimers.current.push(cleanupTimer);
                     }
-                    setTimeout(() => setEnemyHit(false), 300);
+                    const timer3 = window.setTimeout(() => setEnemyHit(false), 300);
+                    animationTimers.current.push(timer3);
                 }, 200);
+                animationTimers.current.push(timer2);
 
                 // Add appropriate log message based on hit type
                 if (attackResult.type === 'miss') {
@@ -600,7 +618,7 @@ export default function AutoBattlePage() {
                 if (stopIfDead()) return;
 
                 // Enemy attacks back
-                setTimeout(() => {
+                const enemyAttackTimer = window.setTimeout(() => {
                     if (stopIfDead()) return;
                     const enemyAttackResult = calculateDamageWithModifiers(enemy, player);
                     const enemyDamage = enemyAttackResult.damage;
@@ -617,21 +635,32 @@ export default function AutoBattlePage() {
 
                     // Trigger animations
                     setEnemyBump(true);
-                    setTimeout(() => setEnemyBump(false), 200);
-                    setTimeout(() => {
+                    const timer1 = window.setTimeout(() => setEnemyBump(false), 200);
+                    animationTimers.current.push(timer1);
+                    
+                    const timer2 = window.setTimeout(() => {
                         setPlayerHit(true);
                         if (enemyDamage > 0) {
                             damageNumberIdCounter.current += 1;
+                            const damageId = damageNumberIdCounter.current;
                             setDamageNumbers(prev => [...prev, { 
-                                id: damageNumberIdCounter.current, 
+                                id: damageId, 
                                 damage: enemyDamage, 
                                 x: 30, // Left side (player position)
                                 y: 0, 
                                 isPlayer: true 
                             }]);
+                            // Remove damage number after animation completes (1 second)
+                            const cleanupTimer = window.setTimeout(() => {
+                                setDamageNumbers(prev => prev.filter(d => d.id !== damageId));
+                            }, 1000);
+                            animationTimers.current.push(cleanupTimer);
                         }
-                        setTimeout(() => setPlayerHit(false), 300);
+                        const timer3 = window.setTimeout(() => setPlayerHit(false), 300);
+                        animationTimers.current.push(timer3);
                     }, 200);
+                    animationTimers.current.push(timer2);
+                animationTimers.current.push(enemyAttackTimer);
 
                     setBattleState(prev => ({ ...prev, playerHP: Math.max(0, currentPlayerHP) }));
                     
@@ -666,21 +695,31 @@ export default function AutoBattlePage() {
 
                 // Trigger animations
                 setEnemyBump(true);
-                setTimeout(() => setEnemyBump(false), 200);
-                setTimeout(() => {
+                const timer1 = window.setTimeout(() => setEnemyBump(false), 200);
+                animationTimers.current.push(timer1);
+                
+                const timer2 = window.setTimeout(() => {
                     setPlayerHit(true);
                     if (enemyDamage > 0) {
                         damageNumberIdCounter.current += 1;
+                        const damageId = damageNumberIdCounter.current;
                         setDamageNumbers(prev => [...prev, { 
-                            id: damageNumberIdCounter.current, 
+                            id: damageId, 
                             damage: enemyDamage, 
                             x: 30, 
                             y: 0, 
                             isPlayer: true 
                         }]);
+                        // Remove damage number after animation completes (1 second)
+                        const cleanupTimer = window.setTimeout(() => {
+                            setDamageNumbers(prev => prev.filter(d => d.id !== damageId));
+                        }, 1000);
+                        animationTimers.current.push(cleanupTimer);
                     }
-                    setTimeout(() => setPlayerHit(false), 300);
+                    const timer3 = window.setTimeout(() => setPlayerHit(false), 300);
+                    animationTimers.current.push(timer3);
                 }, 200);
+                animationTimers.current.push(timer2);
 
                 setBattleState(prev => ({ ...prev, playerHP: Math.max(0, currentPlayerHP), turn }));
                 
@@ -698,7 +737,7 @@ export default function AutoBattlePage() {
                 if (stopIfDead()) return;
 
                 // Player attacks back
-                setTimeout(() => {
+                const playerAttackTimer = window.setTimeout(() => {
                     if (stopIfDead()) return;
                     const playerAttackResult = calculateDamageWithModifiers(player, enemy);
                     const damage = playerAttackResult.damage;
@@ -715,21 +754,32 @@ export default function AutoBattlePage() {
 
                     // Trigger animations
                     setPlayerBump(true);
-                    setTimeout(() => setPlayerBump(false), 200);
-                    setTimeout(() => {
+                    const timer1 = window.setTimeout(() => setPlayerBump(false), 200);
+                    animationTimers.current.push(timer1);
+                    
+                    const timer2 = window.setTimeout(() => {
                         setEnemyHit(true);
                         if (damage > 0) {
                             damageNumberIdCounter.current += 1;
+                            const damageId = damageNumberIdCounter.current;
                             setDamageNumbers(prev => [...prev, { 
-                                id: damageNumberIdCounter.current, 
+                                id: damageId, 
                                 damage, 
                                 x: 70, 
                                 y: 0, 
                                 isPlayer: false 
                             }]);
+                            // Remove damage number after animation completes (1 second)
+                            const cleanupTimer = window.setTimeout(() => {
+                                setDamageNumbers(prev => prev.filter(d => d.id !== damageId));
+                            }, 1000);
+                            animationTimers.current.push(cleanupTimer);
                         }
-                        setTimeout(() => setEnemyHit(false), 300);
+                        const timer3 = window.setTimeout(() => setEnemyHit(false), 300);
+                        animationTimers.current.push(timer3);
                     }, 200);
+                    animationTimers.current.push(timer2);
+                    animationTimers.current.push(playerAttackTimer);
 
                     setBattleState(prev => ({ ...prev, enemyHP: Math.max(0, currentEnemyHP) }));
                     
@@ -1418,8 +1468,8 @@ export default function AutoBattlePage() {
                                     </div>
                                     <div className="w-full bg-black border-2 border-white" style={{ height: '20px' }}>
                                         <div
-                                            className="bg-green-500 h-full transition-all duration-500"
-                                            style={{ width: `${playerHPPercent}%` }}
+                                            className="bg-green-500 h-full transition-all duration-300"
+                                            style={{ width: `${playerHPPercent}%`, willChange: 'width' }}
                                         />
                                     </div>
                                     <div className="flex items-center gap-2 mt-1">
@@ -1439,8 +1489,8 @@ export default function AutoBattlePage() {
                                     </div>
                                     <div className="w-full bg-black border-2 border-white" style={{ height: '20px' }}>
                                         <div
-                                            className="bg-red-500 h-full transition-all duration-500 ml-auto"
-                                            style={{ width: `${enemyHPPercent}%` }}
+                                            className="bg-red-500 h-full transition-all duration-300 ml-auto"
+                                            style={{ width: `${enemyHPPercent}%`, willChange: 'width' }}
                                         />
                                     </div>
                                     <div className="flex items-center justify-end gap-2 mt-1">

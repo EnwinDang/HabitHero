@@ -2,10 +2,11 @@ import { useEffect, useState, useRef } from "react";
 import { SubmissionsAPI, type Submission } from "@/api/submissions.api";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme, getThemeClasses } from "@/context/ThemeContext";
-import { FileCheck, Loader2, Clock, CheckCircle, XCircle, ExternalLink, X, Upload, Gift, Coins, Zap } from "lucide-react";
+import { FileCheck, Loader2, Clock, CheckCircle, XCircle, ExternalLink, X, Upload, Gift, Coins, Zap, RefreshCw } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import LevelUpAnimation from "@/components/LevelUpAnimation";
+import { cache } from "@/utils/cache";
 
 export default function StudentSubmissionsPage() {
   const { firebaseUser } = useAuth();
@@ -24,15 +25,41 @@ export default function StudentSubmissionsPage() {
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
-    loadSubmissions();
+    loadSubmissions(false);
   }, []);
 
-  async function loadSubmissions() {
+  async function loadSubmissions(forceRefresh = false) {
     if (!firebaseUser) return;
     try {
+      // Check cache first (unless force refresh) - BEFORE setting loading
+      const cacheKey = 'submissions:student';
+      if (!forceRefresh) {
+        // Use getIgnoreTTL to keep cache until explicit refresh
+        const cached = cache.getIgnoreTTL<Submission[]>(cacheKey);
+        if (cached) {
+          console.log('📦 Using cached submissions data');
+          setSubmissions(cached);
+          setLoading(false);
+          return; // Return early, no loading state needed
+        }
+      }
+      
+      // Only set loading if we need to fetch data
       setLoading(true);
+      
+      if (forceRefresh) {
+        // Clear cache when forcing refresh
+        cache.delete(cacheKey);
+        console.log('🔄 Cache cleared, fetching fresh submissions data...');
+      }
+
+      console.log('🌐 Fetching fresh submissions data...');
       const data = await SubmissionsAPI.listForStudent();
       setSubmissions(data);
+      
+      // Cache for 30 seconds (submissions change more frequently)
+      cache.set(cacheKey, data, 30 * 1000);
+      console.log('✅ Submissions data cached');
     } catch (err) {
       console.error("Failed to load submissions", err);
     } finally {
@@ -56,8 +83,8 @@ export default function StudentSubmissionsPage() {
       // Create new submission (will replace old one)
       await SubmissionsAPI.create(sub.taskId, sub.courseId, sub.moduleId, imageUrl);
       
-      // Reload submissions
-      await loadSubmissions();
+      // Reload submissions (force refresh)
+      await loadSubmissions(true);
     } catch (err) {
       console.error("Failed to resubmit", err);
       alert("Failed to resubmit. Please try again.");
@@ -94,8 +121,8 @@ export default function StudentSubmissionsPage() {
         taskTitles: [sub.taskTitle || "Task"]
       });
       
-      // Reload submissions to update claimed status
-      await loadSubmissions();
+      // Reload submissions to update claimed status (force refresh)
+      await loadSubmissions(true);
     } catch (err) {
       console.error("Failed to claim reward", err);
       alert("Failed to claim reward. Please try again.");
@@ -155,8 +182,8 @@ export default function StudentSubmissionsPage() {
         taskTitles
       });
       
-      // Reload submissions
-      await loadSubmissions();
+      // Reload submissions (force refresh)
+      await loadSubmissions(true);
     } catch (err) {
       console.error("Failed to claim rewards", err);
       alert("Failed to claim some rewards. Please try again.");
@@ -197,12 +224,27 @@ export default function StudentSubmissionsPage() {
         {/* Header */}
         <div className="mb-6">
           <div className="flex flex-wrap items-start justify-between gap-4 mb-2">
-            <div>
-              <h2 className={`text-3xl font-bold ${theme.text} flex items-center gap-3`}>
-                <FileCheck size={32} style={{ color: accentColor }} />
-                My Submissions
-              </h2>
-              <p className={`${theme.textMuted} mt-2`}>Track your submitted tasks and feedback</p>
+            <div className="flex items-center gap-3">
+              <div>
+                <h2 className={`text-3xl font-bold ${theme.text} flex items-center gap-3`}>
+                  <FileCheck size={32} style={{ color: accentColor }} />
+                  My Submissions
+                </h2>
+                <p className={`${theme.textMuted} mt-2`}>Track your submitted tasks and feedback</p>
+              </div>
+              <button
+                onClick={() => loadSubmissions(true)}
+                disabled={loading}
+                className="p-2 rounded-lg hover:opacity-80 transition-opacity disabled:opacity-50"
+                style={{ backgroundColor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }}
+                title="Refresh submissions"
+              >
+                <RefreshCw 
+                  size={20} 
+                  className={loading ? "animate-spin" : ""} 
+                  style={{ color: accentColor }}
+                />
+              </button>
             </div>
             
             {/* Claim All Button */}

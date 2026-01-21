@@ -12,7 +12,7 @@ export type UsersQuery = {
 };
 
 export type PatchUserRequest = Partial<
-  Pick<User, "displayName" | "photoURL" | "role" | "status">
+  Pick<User, "displayName" | "photoURL" | "role" | "status" | "heroType">
 > & {
   settings?: Partial<UserSettings>;
   stats?: Partial<User["stats"]>;

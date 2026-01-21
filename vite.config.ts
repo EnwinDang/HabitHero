@@ -51,4 +51,64 @@ export default defineConfig({
       "@": "/src",
     },
   },
+
+  // Build optimalisaties
+  build: {
+    // Code splitting configuratie
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          // Split node_modules into separate chunks
+          if (id.includes('node_modules')) {
+            // Firebase SDK in separate chunk (large)
+            if (id.includes('firebase')) {
+              return 'vendor-firebase';
+            }
+            // React & React DOM in separate chunk
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'vendor-react';
+            }
+            // React Router in separate chunk
+            if (id.includes('react-router')) {
+              return 'vendor-router';
+            }
+            // Framer Motion in separate chunk
+            if (id.includes('framer-motion')) {
+              return 'vendor-motion';
+            }
+            // Axios in separate chunk
+            if (id.includes('axios')) {
+              return 'vendor-axios';
+            }
+            // All other node_modules
+            return 'vendor';
+          }
+          
+          // Split pages by route type for better caching
+          if (id.includes('/pages/admin/')) {
+            return 'pages-admin';
+          }
+          if (id.includes('/pages/teacher/')) {
+            return 'pages-teacher';
+          }
+          if (id.includes('/pages/student/')) {
+            return 'pages-student';
+          }
+          if (id.includes('/pages/')) {
+            return 'pages-common';
+          }
+        },
+      },
+    },
+    // Increase chunk size warning limit (we're splitting manually)
+    chunkSizeWarningLimit: 1000,
+    // Enable source maps for production debugging (optional, can disable for smaller builds)
+    sourcemap: false,
+    // Minification
+    minify: 'esbuild',
+    // Optimize chunk loading
+    cssCodeSplit: true,
+    // Report compressed size
+    reportCompressedSize: true,
+  },
 });

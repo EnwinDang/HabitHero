@@ -126,7 +126,7 @@ export default function ProfilePage() {
 
     try {
       await UsersAPI.patch(user.uid, {
-        // heroType: selectedHero,
+        heroType: selectedHero,
       });
 
       setSaveMessage({ type: 'success', text: 'Hero selection saved successfully!' });

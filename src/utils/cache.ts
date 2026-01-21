@@ -44,6 +44,19 @@ class Cache {
   }
 
   /**
+   * Get a value from the cache, ignoring TTL expiration
+   * Returns null only if not found
+   * Useful for manual refresh scenarios where cache should persist until explicit refresh
+   */
+  getIgnoreTTL<T>(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (!entry) {
+      return null;
+    }
+    return entry.data as T;
+  }
+
+  /**
    * Check if a key exists and is valid
    */
   has(key: string): boolean {

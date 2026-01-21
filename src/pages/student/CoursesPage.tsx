@@ -13,6 +13,7 @@ import {
   Check,
   Loader2,
   GraduationCap,
+  RefreshCw,
 } from "lucide-react";
 import { UsersAPI } from "@/api/users.api";
 import { StaminaBar } from "@/components/StaminaBar";
@@ -85,9 +86,32 @@ export default function CoursesPage() {
   }, [toast]);
 
   // Reusable function to fetch and update courses
-  const fetchAndUpdateCourses = async () => {
+  const fetchAndUpdateCourses = async (forceRefresh = false) => {
     try {
+      // Check cache first (unless force refresh) - BEFORE setting loading
+      const cacheKey = cacheKeys.courses();
+      if (!forceRefresh) {
+        // Use getIgnoreTTL to keep cache until explicit refresh
+        const cached = cache.getIgnoreTTL<{ courses: Course[]; enrolled: string[] }>(cacheKey);
+        if (cached) {
+          console.log('📦 Using cached courses data');
+          setCourses(cached.courses);
+          setEnrolledCourses(new Set(cached.enrolled));
+          setLoading(false);
+          return; // Return early, no loading state needed
+        }
+      }
+      
+      // Only set loading if we need to fetch data
       setLoading(true);
+      
+      if (forceRefresh) {
+        // Clear cache when forcing refresh
+        cache.delete(cacheKey);
+        console.log('🔄 Cache cleared, fetching fresh courses data...');
+      }
+
+      console.log('🌐 Fetching fresh courses data...');
       // Include inactive/upcoming courses so already-enrolled ones always show
       const coursesData = await CoursesAPI.list(false);
       setCourses(coursesData);
@@ -112,6 +136,13 @@ export default function CoursesPage() {
           }
         }
         setEnrolledCourses(enrolled);
+        
+        // Cache the results for 5 minutes
+        cache.set(cacheKey, {
+          courses: coursesData,
+          enrolled: Array.from(enrolled),
+        }, 5 * 60 * 1000);
+        console.log('✅ Courses data cached');
       }
     } catch (error) {
       console.error("Error loading courses:", error);
@@ -120,9 +151,9 @@ export default function CoursesPage() {
     }
   };
 
-  // Load courses on mount
+  // Load courses on mount (with cache)
   useEffect(() => {
-    fetchAndUpdateCourses();
+    fetchAndUpdateCourses(false);
   }, [firebaseUser]);
 
   async function handleEnroll(courseId: string) {
@@ -143,8 +174,8 @@ export default function CoursesPage() {
       // Set flag to notify other pages to reload (like Calendar)
       sessionStorage.setItem('enrollmentChanged', 'true');
 
-      // Re-fetch courses to show the newly enrolled course
-      await fetchAndUpdateCourses();
+      // Re-fetch courses to show the newly enrolled course (force refresh)
+      await fetchAndUpdateCourses(true);
     } catch (error) {
       console.error("Error enrolling in course:", error);
       alert("Error al inscribirse en el curso. Por favor intenta de nuevo.");
@@ -168,8 +199,8 @@ export default function CoursesPage() {
       // Set a flag to notify other pages to reload
       sessionStorage.setItem('enrollmentChanged', 'true');
       
-      // Re-fetch courses to remove the unenrolled course
-      await fetchAndUpdateCourses();
+      // Re-fetch courses to remove the unenrolled course (force refresh)
+      await fetchAndUpdateCourses(true);
     } catch (error) {
       console.error("Error unenrolling from course:", error);
       alert("Error al desinscribirse del curso. Por favor intenta de nuevo.");
@@ -222,12 +253,27 @@ export default function CoursesPage() {
         <div className="mb-8">
           <div className="flex justify-between items-start mb-4">
             <div>
-              <h2
-                className={`text-4xl font-bold ${theme.text} flex items-center gap-3`}
-              >
-                <GraduationCap size={40} style={{ color: accentColor }} />
-                My Courses
-              </h2>
+              <div className="flex items-center gap-3">
+                <h2
+                  className={`text-4xl font-bold ${theme.text} flex items-center gap-3`}
+                >
+                  <GraduationCap size={40} style={{ color: accentColor }} />
+                  My Courses
+                </h2>
+                <button
+                  onClick={() => fetchAndUpdateCourses(true)}
+                  disabled={loading}
+                  className="p-2 rounded-lg hover:opacity-80 transition-opacity disabled:opacity-50"
+                  style={{ backgroundColor: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }}
+                  title="Refresh courses"
+                >
+                  <RefreshCw 
+                    size={20} 
+                    className={loading ? "animate-spin" : ""} 
+                    style={{ color: accentColor }}
+                  />
+                </button>
+              </div>
               <p style={theme.accentText} className="mt-2">
                 Only your enrolled courses are shown here
               </p>

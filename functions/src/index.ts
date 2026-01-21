@@ -24,6 +24,24 @@ app.use(
 );
 app.use(express.json());
 
+// Remove /api prefix from requests (Firebase Hosting includes it in the path)
+app.use((req, res, next) => {
+  // Check both originalUrl and url
+  let urlToCheck = req.originalUrl || req.url || '';
+  
+  if (urlToCheck.startsWith('/api/')) {
+    // Remove /api prefix and preserve query string
+    const queryString = urlToCheck.includes('?') ? urlToCheck.substring(urlToCheck.indexOf('?')) : '';
+    const newPath = urlToCheck.replace('/api', '').split('?')[0] + queryString;
+    req.url = newPath;
+    // Update baseUrl if needed
+    if (!req.baseUrl) {
+      req.baseUrl = '';
+    }
+  }
+  next();
+});
+
 /**
  * Calculate current level from total XP using Firestore level definitions
  */

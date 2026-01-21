@@ -51,6 +51,7 @@ export default function BattlePage() {
     });
 
     const battleInterval = useRef<number | null>(null);
+    const animationTimers = useRef<number[]>([]); // Track all animation timers for cleanup
     
     // Game config for tier-based stamina costs
     const [gameConfig, setGameConfig] = useState<{
@@ -221,12 +222,16 @@ export default function BattlePage() {
     }, [worldId, levelId]);
 
 
-    // Add log entry
+    // Add log entry (limit to last 100 entries for performance)
     const addLog = (message: string, type: BattleLog['type'] = 'info') => {
-        setBattleState(prev => ({
-            ...prev,
-            logs: [...prev.logs, { message, timestamp: Date.now(), type }],
-        }));
+        setBattleState(prev => {
+            const newLogs = [...prev.logs, { message, timestamp: Date.now(), type }];
+            // Keep only last 100 logs to prevent memory issues
+            return {
+                ...prev,
+                logs: newLogs.slice(-100),
+            };
+        });
     };
 
     // Calculate damage with critical, block, and miss mechanics
@@ -314,7 +319,7 @@ export default function BattlePage() {
                 }
 
                 // Enemy attacks back
-                setTimeout(() => {
+                const enemyAttackTimer = window.setTimeout(() => {
                     const enemyAttackResult = calculateDamageWithModifiers(enemy, player);
                     const enemyDamage = enemyAttackResult.damage;
                     currentPlayerHP -= enemyDamage;
@@ -345,6 +350,7 @@ export default function BattlePage() {
                         endBattle('enemy', battleLog);
                     }
                 }, 500);
+                animationTimers.current.push(enemyAttackTimer);
             } else {
                 // Enemy attacks first
                 const enemyAttackResult = calculateDamageWithModifiers(enemy, player);
@@ -379,7 +385,7 @@ export default function BattlePage() {
                 }
 
                 // Player attacks back
-                setTimeout(() => {
+                const playerAttackTimer = window.setTimeout(() => {
                     const playerAttackResult = calculateDamageWithModifiers(player, enemy);
                     const damage = playerAttackResult.damage;
                     currentEnemyHP -= damage;
@@ -410,6 +416,7 @@ export default function BattlePage() {
                         endBattle('player', battleLog);
                     }
                 }, 500);
+                animationTimers.current.push(playerAttackTimer);
             }
         }, 1500); // Battle speed: 1.5 seconds per turn
     };
@@ -419,7 +426,11 @@ export default function BattlePage() {
         console.log('📜 Battle logs:', battleLogs);
         if (battleInterval.current) {
             clearInterval(battleInterval.current);
+            battleInterval.current = null;
         }
+        // Cleanup all animation timers
+        animationTimers.current.forEach(timer => clearTimeout(timer));
+        animationTimers.current = [];
 
         setBattleState(prev => ({
             ...prev,
@@ -547,7 +558,11 @@ export default function BattlePage() {
         return () => {
             if (battleInterval.current) {
                 clearInterval(battleInterval.current);
+                battleInterval.current = null;
             }
+            // Cleanup all animation timers
+            animationTimers.current.forEach(timer => clearTimeout(timer));
+            animationTimers.current = [];
         };
     }, []);
 
@@ -662,8 +677,8 @@ export default function BattlePage() {
                                         </div>
                                         <div className={`w-full ${theme.inputBg} rounded-full h-3`}>
                                             <div
-                                                className="bg-green-500 rounded-full h-3 transition-all duration-500"
-                                                style={{ width: `${playerHPPercent}%` }}
+                                                className="bg-green-500 rounded-full h-3 transition-all duration-300"
+                                                style={{ width: `${playerHPPercent}%`, willChange: 'width' }}
                                             />
                                         </div>
                                         <div className="flex gap-4 mt-3 text-xs">
@@ -735,8 +750,8 @@ export default function BattlePage() {
                                         </div>
                                         <div className={`w-full ${theme.inputBg} rounded-full h-3`}>
                                             <div
-                                                className="bg-red-500 rounded-full h-3 transition-all duration-500"
-                                                style={{ width: `${enemyHPPercent}%` }}
+                                                className="bg-red-500 rounded-full h-3 transition-all duration-300"
+                                                style={{ width: `${enemyHPPercent}%`, willChange: 'width' }}
                                             />
                                         </div>
                                         <div className="flex gap-4 mt-3 text-xs">
