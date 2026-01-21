@@ -6,6 +6,34 @@ De applicatie is volledig ontwikkeld en kan zowel lokaal als in de cloud gebruik
 
 ---
 
+## Belangrijkste Features
+
+### Voor Studenten
+-  **Gamification**: XP-systeem, levels, en hero-characters
+-  **Combat Systeem**: Battle monsters en bosses door taken te voltooien
+-  **World Map**: Verken verschillende werelden (Fire, Water, Earth, Wind)
+-  **Lootboxes & Inventory**: Verzamel items en beloningen
+-  **Achievements**: Ontgrendel prestaties door voortgang
+-  **Calendar**: Interne kalenderweergave voor taken en deadlines
+-  **Focus Mode**: Pomodoro timer voor geconcentreerd werken
+-  **Stats & Voortgang**: Gedetailleerde statistieken en voortgangsrapporten
+-  **Task Management**: Bekijk en voltooi cursustaken
+-  **Submissions**: Dien opdrachten in voor beoordeling
+
+### Voor Docenten
+-  **Course Management**: Beheer cursussen, modules en taken
+-  **Student Management**: Overzicht van studenten en hun voortgang
+-  **Submissions Review**: Beoordeel ingediende opdrachten
+-  **Dashboard**: Analytics en overzichten
+
+### Voor Admins
+-  **User Management**: Beheer studenten en docenten
+-  **World & Monster Management**: Configureer game-elementen
+-  **Item Management**: Beheer items en beloningen
+-  **System Overview**: Volledig systeembeheer (CRUD)
+
+---
+
 ## Live Applicatie
 
 De applicatie is gedeployed via **Firebase Hosting** en kan getest worden op:
@@ -14,20 +42,23 @@ De applicatie is gedeployed via **Firebase Hosting** en kan getest worden op:
 
 ---
 
-## Testen van de applicatie (voor evaluatie)
+## Testen van de applicatie 
 
 1. Ga naar de live URL.
 2. Registreer een nieuw account via **email/password**.
 3. Na registratie:
    - Studenten worden automatisch doorgestuurd naar `/student`.
-   - Docenten/admins worden doorgestuurd naar `/teacher`.
-     Doorwijzing wordt enkel door admin gedaan
+   - Docenten worden doorgestuurd naar `/teacher`.
+     Doorwijzing wordt enkel door admin gedaan (teacher moet door admin toegewezen worden)
        email: nolween.admin@ehb.fr
        wachtwoord: paswoord
 4. Test de volgende functionaliteiten:
    - Inschrijven voor een cursus via code
    - Bekijken en voltooien van taken
    - XP, beloningen en voortgang
+   - Combat systeem en world map
+   - Lootboxes en inventory
+   - Achievements en stats
    - Authenticatie (login / logout)
 
 ---
@@ -51,9 +82,19 @@ De applicatie is gedeployed via **Firebase Hosting** en kan getest worden op:
 
 ## Technologie Stack
 
-- **Frontend:** React + Vite
-- **Backend:** Firebase Cloud Functions (Node.js 20)
+- **Frontend:** 
+  - React 19 + Vite 7
+  - TypeScript
+  - Tailwind CSS
+  - React Router DOM
+  - Framer Motion (animaties)
+  - Lucide React (icons)
+- **Backend:** 
+  - Firebase Cloud Functions (Node.js 20)
+  - Express.js
+  - Zod (validatie)
 - **Database:** Firestore (NoSQL)
+  - Zie [FIRESTORE_COLLECTIONS.md](FIRESTORE_COLLECTIONS.md) voor volledige documentatie van alle collecties en subcollections
 - **Authenticatie:** Firebase Authentication
 - **Hosting:** Firebase Hosting
 - **Emulatie:** Firebase Local Emulator Suite (Functions & Firestore)
@@ -97,11 +138,33 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
 ```
 
-**Opmerking:**  
-Firebase API keys zijn publiek zichtbaar in frontend-applicaties.  
-Beveiliging gebeurt via Firebase Authentication en Firestore Security Rules.
+
 
 ---
+
+## Project Structuur
+
+```
+HabitHero/
+├── src/
+│   ├── api/              # API client functies
+│   ├── components/       # Herbruikbare React componenten
+│   ├── context/          # React Context providers (Auth, Theme, Pomodoro)
+│   ├── hooks/            # Custom React hooks
+│   ├── models/           # TypeScript type definities
+│   ├── pages/            # Page componenten (student, teacher, admin)
+│   ├── router/           # React Router configuratie
+│   ├── services/         # Business logic services
+│   ├── store/            # State management (Zustand)
+│   ├── utils/            # Utility functies
+│   └── assets/           # Statische assets (afbeeldingen)
+├── functions/            # Firebase Cloud Functions
+│   ├── src/              # TypeScript source code
+│   └── lib/              # Gecompileerde JavaScript
+├── dist/                 # Production build output
+└── firebase.json         # Firebase configuratie
+
+```
 
 ## Development
 
@@ -132,6 +195,17 @@ npm run dev
 
 - **Frontend:** `http://localhost:5173`
 - **API proxy:** `/api/*` → `http://127.0.0.1:8020/habithero-73d98/us-central1`
+
+### Beschikbare Scripts
+
+**Root directory:**
+- `npm run dev` - Start development server
+- `npm run build` - Build voor productie
+
+**Functions directory:**
+- `npm run build` - Compileer TypeScript naar JavaScript
+- `npm run serve` - Build en start emulators (functions only)
+- `npm run deploy` - Build en deploy naar Firebase
 
 ---
 
@@ -178,11 +252,30 @@ Dit project is ontwikkeld volgens de principes van de Technology Impact Cycle To
 
 ---
 
+## Documentatie
+
+- **[FIRESTORE_COLLECTIONS.md](FIRESTORE_COLLECTIONS.md)** - Volledige documentatie van alle Firestore collecties, subcollections, velden en security rules
+
+---
+
 ## Belangrijke opmerkingen
 
 - De Vite proxy is geconfigureerd in `vite.config.ts`.
 - Firebase emulators dwingen Node.js 20 af via `engines.node`.
 - Gebruik `Ctrl + C` om lokale servers te stoppen.
+- De applicatie gebruikt Firebase Security Rules voor database beveiliging (zie `firestore.rules`).
+- Storage rules zijn geconfigureerd in `storage.rules`.
+
+
+---
+
+## Team
+
+- Shemsedine Boughaleb
+- Nguyen Dang
+- Nolween Sine
+- Ismael Charia Jimenez
+- Bilal Bouchta
 
 ---
 
